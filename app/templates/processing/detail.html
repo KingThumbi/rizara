@@ -1,0 +1,12 @@
+<h2>Processing Batch {{ batch.id }}</h2>
+
+<p><strong>Facility:</strong> {{ batch.facility }}</p>
+<p><strong>Slaughter Date:</strong> {{ batch.slaughter_date }}</p>
+<p><strong>Halal Cert:</strong> {{ batch.halal_cert_ref }}</p>
+
+<h3>Processed Goats</h3>
+<ul>
+  {% for goat in batch.goats %}
+    <li>{{ goat.rizara_id }} – {{ goat.farmer.name }}</li>
+  {% endfor %}
+</ul>

@@ -1,0 +1,12 @@
+<h2>Processing Batches</h2>
+
+<ul>
+  {% for batch in batches %}
+    <li>
+      <a href="{{ url_for('main.processing_batch_detail', batch_id=batch.id) }}">
+        {{ batch.facility }} – {{ batch.slaughter_date }}
+      </a>
+      ({{ batch.goats|length }} goats)
+    </li>
+  {% endfor %}
+</ul>

@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Create Processing Batch</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+
+<body class="bg-gray-100 min-h-screen flex items-center justify-center">
+
+<div class="bg-white p-8 rounded-xl shadow w-full max-w-xl">
+  <h1 class="text-2xl font-bold text-jungle mb-6">
+    Create Processing Batch
+  </h1>
+
+  <form method="POST" class="space-y-4">
+
+    <div>
+      <label class="block font-semibold">Facility</label>
+      <input name="facility" required
+             class="w-full border rounded px-3 py-2">
+    </div>
+
+    <div>
+      <label class="block font-semibold">Slaughter Date</label>
+      <input type="date" name="slaughter_date" required
+             class="w-full border rounded px-3 py-2">
+    </div>
+
+    <div>
+      <label class="block font-semibold">Halal Certificate Ref</label>
+      <input name="halal_cert_ref"
+             class="w-full border rounded px-3 py-2">
+    </div>
+
+    <div>
+      <label class="block font-semibold mb-2">Select Aggregated Goats</label>
+      <div class="max-h-48 overflow-y-auto border rounded p-3 space-y-2">
+        {% for goat in goats %}
+          <label class="flex items-center gap-2">
+            <input type="checkbox" name="goat_ids" value="{{ goat.id }}">
+            {{ goat.rizara_id }} — {{ goat.farmer.name }}
+          </label>
+        {% endfor %}
+      </div>
+    </div>
+
+    <button type="submit"
+      class="w-full bg-green-700 text-white py-3 rounded font-semibold hover:bg-green-600">
+      Create Processing Batch
+    </button>
+  </form>
+
+  <a href="{{ url_for('main.dashboard') }}"
+     class="block text-center text-sm text-gray-600 mt-4 hover:underline">
+    ← Back to Dashboard
+  </a>
+</div>
+
+</body>
+</html>

@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Rizara Dashboard</title>
+
+    <!-- Tailwind CDN (OK for dev; later compile locally) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        jungle: '#1f6f54',
+                        gold: '#d4af37',
+                        jungleLight: '#2f8f6b',
+                        grayDark: '#1f2937'
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+
+<body class="bg-gray-100 min-h-screen">
+
+<!-- NAVBAR -->
+<nav class="bg-jungle text-white px-6 py-4 flex justify-between items-center shadow">
+    <div class="text-2xl font-bold tracking-wide">
+        Rizara Meats
+    </div>
+
+    <div class="flex items-center gap-6">
+        <span class="text-sm opacity-90">Dashboard</span>
+        <a href="{{ url_for('auth.logout') }}"
+           class="bg-gold text-jungle font-semibold px-4 py-2 rounded hover:bg-yellow-400 transition">
+            Logout
+        </a>
+    </div>
+</nav>
+
+<!-- MAIN CONTAINER -->
+<main class="max-w-7xl mx-auto px-6 py-8">
+
+    <!-- PAGE TITLE -->
+    <div class="mb-8">
+        <h1 class="text-3xl font-bold text-jungle">Operations Dashboard</h1>
+        <p class="text-gray-600 mt-1">
+            Livestock aggregation & processing overview
+        </p>
+    </div>
+
+    <!-- KPI CARDS -->
+    <section class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-10">
+
+        <!-- Farmers -->
+        <div class="bg-white rounded-xl shadow p-6 border-l-8 border-jungle">
+            <h3 class="text-gray-500 text-sm uppercase">Farmers</h3>
+            <p class="text-3xl font-bold text-jungle mt-2">{{ stats.farmers or 0 }}</p>
+        </div>
+
+        <!-- Goats -->
+        <div class="bg-white rounded-xl shadow p-6 border-l-8 border-gold">
+            <h3 class="text-gray-500 text-sm uppercase">Goats Tracked</h3>
+            <p class="text-3xl font-bold text-jungle mt-2">{{ stats.goats or 0 }}</p>
+        </div>
+
+        <!-- Aggregation Batches -->
+        <div class="bg-white rounded-xl shadow p-6 border-l-8 border-jungleLight">
+            <h3 class="text-gray-500 text-sm uppercase">Aggregation Batches</h3>
+            <p class="text-3xl font-bold text-jungle mt-2">{{ stats.aggregation_batches or 0 }}</p>
+        </div>
+
+        <!-- Processing Batches -->
+        <div class="bg-white rounded-xl shadow p-6 border-l-8 border-gray-400">
+            <h3 class="text-gray-500 text-sm uppercase">Processing Batches</h3>
+            <p class="text-3xl font-bold text-jungle mt-2">{{ stats.processing_batches or 0 }}</p>
+        </div>
+
+    </section>
+
+    <!-- QUICK ACTIONS -->
+    <section class="bg-white rounded-xl shadow p-6 mb-10">
+        <h2 class="text-xl font-semibold text-jungle mb-4">Quick Actions</h2>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+
+            <!-- Add Farmer -->
+            <a href="{{ url_for('main.add_farmer') }}"
+               class="flex items-center justify-center gap-2 text-center bg-jungle text-white py-4 rounded-lg font-semibold hover:bg-jungleLight transition">
+                <!-- Heroicon Plus -->
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none"
+                     viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/>
+                </svg>
+                + Add Farmer
+            </a>
+
+            <!-- Register Goat -->
+            <a href="{{ url_for('main.add_goat') }}"
+               class="flex items-center justify-center gap-2 text-center bg-gold text-jungle py-4 rounded-lg font-semibold hover:bg-yellow-400 transition">
+                <!-- Heroicon Animal (Outline) -->
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none"
+                     viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round"
+                          d="M5 13l4 4L19 7"/>
+                </svg>
+                + Register Goat
+            </a>
+
+            <!-- Create Aggregation Batch -->
+            <a href="{{ url_for('main.add_aggregation_batch') }}"
+               class="flex items-center justify-center gap-2 text-center bg-gray-800 text-white py-4 rounded-lg font-semibold hover:bg-grayDark transition">
+                <!-- Heroicon Folder Plus -->
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none"
+                     viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round"
+                          d="M3 7h4l2 3h10v10H3V7zM12 11v6m3-3h-6"/>
+                </svg>
+                + Create Batch
+            </a>
+
+            <a href="{{ url_for('main.add_processing_batch') }}"
+   class="block text-center bg-gray-700 text-white py-4 rounded-lg font-semibold hover:bg-gray-600 transition">
+    + Process Batch
+</a>
+
+
+        </div>
+    </section>
+
+    <!-- GOAT STATUS PIPELINE -->
+    <section class="bg-white rounded-xl shadow p-6 mb-10">
+        <h2 class="text-xl font-semibold text-jungle mb-4">
+            Goat Status Pipeline
+        </h2>
+
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+
+            <!-- On Farm -->
+            <div class="bg-green-100 rounded-lg p-4 text-center">
+                <h3 class="text-gray-600 uppercase text-sm">On Farm</h3>
+                <p class="text-2xl font-bold text-green-700">{{ stats.goats_on_farm or 0 }}</p>
+            </div>
+
+            <!-- Aggregated -->
+            <div class="bg-blue-100 rounded-lg p-4 text-center">
+                <h3 class="text-gray-600 uppercase text-sm">Aggregated</h3>
+                <p class="text-2xl font-bold text-blue-700">{{ stats.goats_aggregated or 0 }}</p>
+            </div>
+
+            <!-- Processed -->
+            <div class="bg-yellow-100 rounded-lg p-4 text-center">
+                <h3 class="text-gray-600 uppercase text-sm">Processed</h3>
+                <p class="text-2xl font-bold text-yellow-700">{{ stats.goats_processed or 0 }}</p>
+            </div>
+
+            <!-- Sold -->
+            <div class="bg-red-100 rounded-lg p-4 text-center">
+                <h3 class="text-gray-600 uppercase text-sm">Sold</h3>
+                <p class="text-2xl font-bold text-red-700">{{ stats.goats_sold or 0 }}</p>
+            </div>
+
+        </div>
+    </section>
+
+    <!-- PLACEHOLDER SECTIONS -->
+    <section class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+        <!-- Recent Goats -->
+        <div class="bg-white rounded-xl shadow p-6">
+            <h2 class="text-lg font-semibold text-jungle mb-3">
+                Recent Goat Intakes
+            </h2>
+            <p class="text-gray-500 text-sm">
+                Table coming next (UUID, farmer, weight, status)
+            </p>
+        </div>
+
+        <!-- Compliance / Traceability -->
+        <div class="bg-white rounded-xl shadow p-6">
+            <h2 class="text-lg font-semibold text-jungle mb-3">
+                Traceability Status
+            </h2>
+            <p class="text-gray-500 text-sm">
+                Blockchain & export compliance indicators will appear here
+            </p>
+        </div>
+
+    </section>
+
+</main>
+
+<!-- FOOTER -->
+<footer class="text-center text-sm text-gray-500 py-6">
+    © {{ current_year or 2026 }} Rizara Meats Ltd — Ethical. Traceable. Halal.
+</footer>
+
+</body>
+</html>
+
