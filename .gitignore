@@ -20,3 +20,6 @@ env/
 
 # Secrets
 *.env
+# Ignore database backups
+*.dump
+*.sql
