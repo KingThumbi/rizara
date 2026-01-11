@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.db
+
+# Virtual environment
+venv/
+env/
+
+# Alembic / Migration artifacts
+*.pyc
+*.log
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+
+# Secrets
+*.env
