@@ -7,24 +7,6 @@ from .extensions import db
 
 main = Blueprint("main", __name__)
 
-# ======================
-# Dashboard / Index
-# ======================
-@main.route("/")
-@login_required
-def dashboard():
-    stats = {
-        "farmers": Farmer.query.count(),
-        "goats": Goat.query.count(),
-        "aggregation_batches": AggregationBatch.query.count(),
-        "processing_batches": ProcessingBatch.query.count(),
-        "goats_on_farm": Goat.query.filter_by(status="on_farm").count(),
-        "goats_aggregated": Goat.query.filter_by(status="aggregated").count(),
-        "goats_processed": Goat.query.filter_by(status="processed").count(),
-        "goats_sold": Goat.query.filter_by(status="sold").count(),
-    }
-    return render_template("dashboard.html", stats=stats)
-
 
 # ======================
 # Farmers
