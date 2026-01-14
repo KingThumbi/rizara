@@ -217,3 +217,155 @@ def list_processing_batches():
         ProcessingBatch.slaughter_date.desc()
     ).all()
     return render_template("processing/list.html", batches=batches)
+
+# ======================
+# Contact Form Submission
+# ======================
+from .models import ContactMessage, OrderRequest  # make sure models are imported
+
+@main.route("/submit-contact", methods=["POST"])
+def submit_contact():
+    # Honeypot check
+    if request.form.get("hp_field"):
+        return redirect("/contact.html")  # silently ignore bots
+
+    name = request.form.get("name")
+    email = request.form.get("email")
+    phone = request.form.get("phone")
+    message = request.form.get("message")
+
+    if not name or not email or not message:
+        flash("Please fill all required fields", "error")
+        return redirect("/contact.html")
+
+    contact = ContactMessage(
+        name=name,
+        email=email,
+        subject=f"From website contact form - {phone}",
+        message=message,
+        status="new"
+    )
+    db.session.add(contact)
+    db.session.commit()
+
+    flash("Your message has been sent. We will get back to you shortly.", "success")
+    return redirect("/contact.html")
+
+
+# ======================
+# Order Form Submission
+# ======================
+@main.route("/submit-order", methods=["POST"])
+def submit_order():
+    # Honeypot check
+    if request.form.get("hp_field"):
+        return redirect("/orders.html")  # silently ignore bots
+
+    buyer_name = request.form.get("buyerName")
+    company_name = request.form.get("companyName")
+    email = request.form.get("email")
+    phone = request.form.get("phone")
+    product = request.form.get("product")
+    quantity = request.form.get("quantity")
+    delivery_location = request.form.get("destination")
+    notes = request.form.get("message")  # optional
+
+    if not buyer_name or not email or not phone or not product or not quantity or not delivery_location:
+        flash("Please fill all required fields", "error")
+        return redirect("/orders.html")
+
+    order = OrderRequest(
+        buyer_name=buyer_name,
+        phone=phone,
+        email=email,
+        product=product,
+        quantity=int(quantity),
+        delivery_location=delivery_location,
+        status="new"
+    )
+    db.session.add(order)
+    db.session.commit()
+
+    flash("Your order request has been submitted. Our team will contact you shortly.", "success")
+    return redirect("/orders.html")
+
+# ======================
+# Admin: Contact Messages
+# ======================
+@main.route("/admin/contact-messages")
+@login_required
+def contact_messages():
+    messages = ContactMessage.query.order_by(ContactMessage.created_at.desc()).all()
+    return render_template("admin/contact_messages.html", messages=messages)
+
+
+@main.route("/admin/contact-messages/<int:msg_id>/update-status", methods=["POST"])
+@login_required
+def update_contact_status(msg_id):
+    new_status = request.form.get("status")
+    message = ContactMessage.query.get_or_404(msg_id)
+    if new_status in ["new", "reviewed", "closed"]:
+        message.status = new_status
+        db.session.commit()
+        flash("Message status updated.", "success")
+    else:
+        flash("Invalid status.", "error")
+    return redirect(url_for("main.contact_messages"))
+
+
+# ======================
+# Admin: Order Requests
+# ======================
+@main.route("/admin/order-requests")
+@login_required
+def order_requests():
+    orders = OrderRequest.query.order_by(OrderRequest.created_at.desc()).all()
+    return render_template("admin/order_requests.html", orders=orders)
+
+
+@main.route("/admin/order-requests/<int:order_id>/update-status", methods=["POST"])
+@login_required
+def update_order_status(order_id):
+    new_status = request.form.get("status")
+    order = OrderRequest.query.get_or_404(order_id)
+    if new_status in ["new", "reviewed", "approved", "rejected"]:
+        order.status = new_status
+        db.session.commit()
+        flash("Order status updated.", "success")
+    else:
+        flash("Invalid status.", "error")
+    return redirect(url_for("main.order_requests"))
+
+# ======================
+# Dashboard / Index
+# ======================
+@main.route("/")
+@login_required
+def dashboard():
+    # KPI counts
+    stats = {
+        "farmers": Farmer.query.count(),
+        "goats": Goat.query.count(),
+        "aggregation_batches": AggregationBatch.query.count(),
+        "processing_batches": ProcessingBatch.query.count(),
+        "goats_on_farm": Goat.query.filter_by(status="on_farm").count(),
+        "goats_aggregated": Goat.query.filter_by(status="aggregated").count(),
+        "goats_processed": Goat.query.filter_by(status="processed").count(),
+        "goats_sold": Goat.query.filter_by(status="sold").count(),
+    }
+
+    # Latest 5 contact messages
+    stats["latest_contacts"] = (
+        ContactMessage.query.order_by(ContactMessage.created_at.desc())
+        .limit(5)
+        .all()
+    )
+
+    # Latest 5 order requests
+    stats["latest_orders"] = (
+        OrderRequest.query.order_by(OrderRequest.created_at.desc())
+        .limit(5)
+        .all()
+    )
+
+    return render_template("dashboard.html", stats=stats, current_year=datetime.utcnow().year)

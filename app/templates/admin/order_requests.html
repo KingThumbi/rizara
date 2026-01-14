@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Admin - Order Requests | Rizara Meats</title>
+  <link rel="stylesheet" href="/assets/css/style.css" />
+
+  <style>
+    .table-container {
+      overflow-x: auto;
+      margin-top: 1rem;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    th, td {
+      padding: 0.5rem;
+      border: 1px solid #ddd;
+      text-align: left;
+      font-size: 0.9rem;
+    }
+    @media (max-width: 768px) {
+      th, td {
+        font-size: 0.8rem;
+      }
+    }
+    .btn-small {
+      padding: 0.25rem 0.5rem;
+      font-size: 0.8rem;
+    }
+    .flash {
+      margin-top: 1rem;
+      padding: 0.5rem;
+      border-radius: 0.25rem;
+    }
+    .flash.success { background-color: #d4edda; color: #155724; }
+    .flash.error { background-color: #f8d7da; color: #721c24; }
+  </style>
+</head>
+<body>
+
+<a href="{{ url_for('main.dashboard') }}" class="btn">← Back to Dashboard</a>
+
+<h1 class="hero-text mt-6">Order Requests</h1>
+
+{% with messages = get_flashed_messages(with_categories=true) %}
+  {% if messages %}
+    {% for category, msg in messages %}
+      <div class="flash {{ category }}">{{ msg }}</div>
+    {% endfor %}
+  {% endif %}
+{% endwith %}
+
+<div class="table-container">
+  <table>
+    <thead>
+      <tr>
+        <th>ID</th>
+        <th>Buyer Name</th>
+        <th>Company</th>
+        <th>Email / Phone</th>
+        <th>Product</th>
+        <th>Quantity</th>
+        <th>Destination</th>
+        <th>Status</th>
+        <th>Submitted At</th>
+        <th>Action</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for order in orders %}
+      <tr>
+        <td>{{ order.id }}</td>
+        <td>{{ order.buyer_name }}</td>
+        <td>{{ order.company_name or '-' }}</td>
+        <td>{{ order.email or '-' }} / {{ order.phone }}</td>
+        <td>{{ order.product }}</td>
+        <td>{{ order.quantity }}</td>
+        <td>{{ order.delivery_location }}</td>
+        <td>{{ order.status }}</td>
+        <td>{{ order.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+        <td>
+          <form action="{{ url_for('main.update_order_status', order_id=order.id) }}" method="POST">
+            <select name="status">
+              <option value="new" {% if order.status=='new' %}selected{% endif %}>New</option>
+              <option value="reviewed" {% if order.status=='reviewed' %}selected{% endif %}>Reviewed</option>
+              <option value="approved" {% if order.status=='approved' %}selected{% endif %}>Approved</option>
+              <option value="rejected" {% if order.status=='rejected' %}selected{% endif %}>Rejected</option>
+            </select>
+            <button type="submit" class="btn-small">Update</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+</body>
+</html>

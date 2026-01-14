@@ -191,3 +191,37 @@ class TraceabilityRecord(db.Model):
     public_url = db.Column(db.String(255), nullable=False)
 
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+# =========================================================
+# ContactMessage model (for Contact Us form submissions)
+# =========================================================
+class ContactMessage(db.Model):
+    __tablename__ = "contact_messages"
+
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(120), nullable=False)
+    email = db.Column(db.String(120), nullable=False)
+    subject = db.Column(db.String(200))
+    message = db.Column(db.Text, nullable=False)
+    status = db.Column(db.String(20), default="new")  # new, reviewed, closed
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+
+# =========================================================
+# OrderRequest model (for Place Order form submissions)
+# =========================================================
+class OrderRequest(db.Model):
+    __tablename__ = "order_requests"
+
+    id = db.Column(db.Integer, primary_key=True)
+    buyer_name = db.Column(db.String(120), nullable=False)
+    phone = db.Column(db.String(30), nullable=False)
+    email = db.Column(db.String(120))
+    product = db.Column(db.String(120), nullable=False)
+    quantity = db.Column(db.Integer, nullable=False)
+    delivery_location = db.Column(db.String(200), nullable=False)
+    status = db.Column(db.String(20), default="new")  # new, reviewed, approved, rejected
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+# =========================================================
+# End of models.py
+# =========================================================
