@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>{{ animal_type|capitalize }} – {{ status.replace('_',' ')|title }}</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            jungle: '#1f6f54',
+            gold: '#d4af37',
+            jungleLight: '#2f8f6b',
+            grayDark: '#1f2937'
+          }
+        }
+      }
+    }
+  </script>
+</head>
+
+<body class="bg-gray-100 min-h-screen">
+
+<div class="max-w-7xl mx-auto px-6 py-8">
+
+  <!-- Page Header -->
+  <div class="mb-6 flex flex-col md:flex-row md:justify-between md:items-center">
+    <div>
+      <h1 class="text-3xl font-bold text-jungle">
+        {{ animal_type|capitalize }} — {{ status.replace('_',' ')|title }}
+      </h1>
+      <p class="text-gray-600 mt-1">
+        Total: {{ animals|length }}
+      </p>
+    </div>
+    <div class="mt-4 md:mt-0">
+      <a href="{{ url_for('main.dashboard') }}"
+         class="bg-jungle text-white px-4 py-2 rounded hover:bg-jungleLight transition">
+        ← Back to Dashboard
+      </a>
+    </div>
+  </div>
+
+  <!-- Animals Table -->
+  <div class="bg-white rounded-xl shadow overflow-x-auto">
+    <table class="w-full text-sm">
+      <thead class="bg-gray-100">
+        <tr>
+          <th class="p-3 text-left font-medium">Rizara ID</th>
+          <th class="p-3 text-left font-medium">Farmer</th>
+          <th class="p-3 text-left font-medium">Breed</th>
+          <th class="p-3 text-left font-medium">Sex</th>
+          <th class="p-3 text-left font-medium">Status</th>
+          <th class="p-3 text-left font-medium">Registered</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for animal in animals %}
+        <tr class="border-b hover:bg-gray-50">
+          <td class="p-3 font-mono text-sm">{{ animal.rizara_id }}</td>
+          <td class="p-3">{{ animal.farmer.name }}</td>
+          <td class="p-3">{{ animal.breed or "-" }}</td>
+          <td class="p-3">{{ animal.sex or "-" }}</td>
+          <td class="p-3 capitalize">{{ animal.status.replace('_',' ') }}</td>
+          <td class="p-3">{{ animal.created_at.strftime('%Y-%m-%d') }}</td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="6" class="p-6 text-center text-gray-500">
+            No records found
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Optional: Quick Actions -->
+  <div class="mt-6 grid grid-cols-1 md:grid-cols-3 gap-4">
+    <a href="{{ url_for('main.add_{}_'.format(animal_type)) }}"
+       class="block bg-jungle text-white text-center py-2 rounded hover:bg-jungleLight transition">
+       + Add New {{ animal_type|capitalize }}
+    </a>
+    <a href="{{ url_for('main.dashboard') }}"
+       class="block bg-gray-200 text-gray-700 text-center py-2 rounded hover:bg-gray-300 transition">
+       Back to Dashboard
+    </a>
+  </div>
+
+</div>
+
+</body>
+</html>
