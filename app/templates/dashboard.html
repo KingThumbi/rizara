@@ -3,10 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <title>Rizara Dashboard</title>
-
     <!-- Tailwind CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
-
     <script>
         tailwind.config = {
             theme: {
@@ -22,7 +20,6 @@
         }
     </script>
 </head>
-
 <body class="bg-gray-100 min-h-screen">
 
 <!-- NAVBAR -->
@@ -49,7 +46,7 @@
     </div>
 
     <!-- KPI CARDS -->
-    <section class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-10">
+    <section class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-6 mb-10">
 
         <div class="bg-white rounded-xl shadow p-6 border-l-8 border-jungle">
             <h3 class="text-gray-500 text-sm uppercase">Farmers</h3>
@@ -62,17 +59,23 @@
         </div>
 
         <div class="bg-white rounded-xl shadow p-6 border-l-8 border-jungleLight">
-            <h3 class="text-gray-500 text-sm uppercase">Aggregation Batches</h3>
-            <p class="text-3xl font-bold text-jungle mt-2">
-                {{ stats.aggregation_batches or 0 }}
-            </p>
+            <h3 class="text-gray-500 text-sm uppercase">Sheep Tracked</h3>
+            <p class="text-3xl font-bold text-jungle mt-2">{{ stats.sheep or 0 }}</p>
         </div>
 
         <div class="bg-white rounded-xl shadow p-6 border-l-8 border-gray-400">
+            <h3 class="text-gray-500 text-sm uppercase">Cattle Tracked</h3>
+            <p class="text-3xl font-bold text-jungle mt-2">{{ stats.cattle or 0 }}</p>
+        </div>
+
+        <div class="bg-white rounded-xl shadow p-6 border-l-8 border-purple-500">
+            <h3 class="text-gray-500 text-sm uppercase">Aggregation Batches</h3>
+            <p class="text-3xl font-bold text-jungle mt-2">{{ stats.aggregation_batches or 0 }}</p>
+        </div>
+
+        <div class="bg-white rounded-xl shadow p-6 border-l-8 border-indigo-500">
             <h3 class="text-gray-500 text-sm uppercase">Processing Batches</h3>
-            <p class="text-3xl font-bold text-jungle mt-2">
-                {{ stats.processing_batches or 0 }}
-            </p>
+            <p class="text-3xl font-bold text-jungle mt-2">{{ stats.processing_batches or 0 }}</p>
         </div>
 
     </section>
@@ -80,7 +83,6 @@
     <!-- QUICK ACTIONS -->
     <section class="bg-white rounded-xl shadow p-6 mb-10">
         <h2 class="text-xl font-semibold text-jungle mb-4">Quick Actions</h2>
-
         <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
 
             <a href="{{ url_for('main.add_farmer') }}"
@@ -93,15 +95,14 @@
                 + Register Goat
             </a>
 
-            <a href="{{ url_for('main.add_aggregation_batch') }}"
-               class="flex justify-center items-center bg-gray-800 text-white py-4 rounded-lg font-semibold hover:bg-grayDark transition">
-                + Create Aggregation Batch
+            <a href="{{ url_for('main.add_sheep') }}"
+               class="flex justify-center items-center bg-purple-500 text-white py-4 rounded-lg font-semibold hover:bg-purple-400 transition">
+                + Register Sheep
             </a>
 
-            <!-- RESTORED -->
-            <a href="{{ url_for('main.add_processing_batch') }}"
-               class="flex justify-center items-center bg-gray-700 text-white py-4 rounded-lg font-semibold hover:bg-gray-600 transition">
-                + Process Batch
+            <a href="{{ url_for('main.add_cattle') }}"
+               class="flex justify-center items-center bg-indigo-500 text-white py-4 rounded-lg font-semibold hover:bg-indigo-400 transition">
+                + Register Cattle
             </a>
 
         </div>
@@ -110,7 +111,6 @@
     <!-- ADMIN SECTIONS -->
     <section class="bg-white rounded-xl shadow p-6 mb-10">
         <h2 class="text-xl font-semibold text-jungle mb-4">Admin Sections</h2>
-
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
 
             <a href="{{ url_for('main.contact_messages') }}"
@@ -126,51 +126,29 @@
         </div>
     </section>
 
-    <!-- GOAT STATUS PIPELINE -->
+    <!-- ANIMAL STATUS PIPELINE -->
+    {% for animal, pipeline in [('goat', goat_pipeline), ('sheep', sheep_pipeline), ('cattle', cattle_pipeline)] %}
     <section class="bg-white rounded-xl shadow p-6 mb-10">
-        <h2 class="text-xl font-semibold text-jungle mb-4">Goat Status Pipeline</h2>
-
+        <h2 class="text-xl font-semibold text-jungle mb-4">{{ animal.capitalize() }} Status Pipeline</h2>
         <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
 
-            <div class="bg-green-100 rounded-lg p-4 text-center">
-                <h3 class="text-sm text-gray-600 uppercase">On Farm</h3>
-                <p class="text-2xl font-bold text-green-700">
-                    {{ stats.goats_on_farm or 0 }}
-                </p>
-            </div>
-
-            <div class="bg-blue-100 rounded-lg p-4 text-center">
-                <h3 class="text-sm text-gray-600 uppercase">Aggregated</h3>
-                <p class="text-2xl font-bold text-blue-700">
-                    {{ stats.goats_aggregated or 0 }}
-                </p>
-            </div>
-
-            <div class="bg-yellow-100 rounded-lg p-4 text-center">
-                <h3 class="text-sm text-gray-600 uppercase">Processed</h3>
-                <p class="text-2xl font-bold text-yellow-700">
-                    {{ stats.goats_processed or 0 }}
-                </p>
-            </div>
-
-            <div class="bg-red-100 rounded-lg p-4 text-center">
-                <h3 class="text-sm text-gray-600 uppercase">Sold</h3>
-                <p class="text-2xl font-bold text-red-700">
-                    {{ stats.goats_sold or 0 }}
-                </p>
-            </div>
+            {% for status, color in [('on_farm','green'), ('aggregated','blue'), ('processed','yellow'), ('sold','red')] %}
+            <a href="{{ url_for('main.animal_pipeline_view', animal_type=animal, status=status) }}"
+               class="block bg-{{ color }}-100 rounded-lg p-4 text-center hover:bg-{{ color }}-200 transition">
+                <h3 class="text-sm text-gray-600 uppercase">{{ status.replace('_',' ').capitalize() }}</h3>
+                <p class="text-2xl font-bold text-{{ color }}-700">{{ pipeline[status] or 0 }}</p>
+            </a>
+            {% endfor %}
 
         </div>
     </section>
+    {% endfor %}
 
     <!-- RECENT CONTACTS & ORDERS -->
     <section class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-10">
 
         <div class="bg-white rounded-xl shadow p-6">
-            <h2 class="text-lg font-semibold text-jungle mb-3">
-                Recent Contact Messages
-            </h2>
-
+            <h2 class="text-lg font-semibold text-jungle mb-3">Recent Contact Messages</h2>
             {% if stats.latest_contacts %}
             <table class="w-full text-sm">
                 <thead>
@@ -196,10 +174,7 @@
         </div>
 
         <div class="bg-white rounded-xl shadow p-6">
-            <h2 class="text-lg font-semibold text-jungle mb-3">
-                Recent Order Requests
-            </h2>
-
+            <h2 class="text-lg font-semibold text-jungle mb-3">Recent Order Requests</h2>
             {% if stats.latest_orders %}
             <table class="w-full text-sm">
                 <thead>

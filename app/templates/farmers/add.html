@@ -6,77 +6,94 @@
   <title>Add Farmer</title>
   <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body class="bg-gray-100 min-h-screen flex items-center justify-center">
+<body class="bg-gray-100 min-h-screen flex items-center justify-center p-4">
 
-  <div class="bg-white p-8 rounded-2xl shadow-md w-full max-w-md">
+  <div class="bg-white p-8 rounded-2xl shadow-md w-full max-w-md sm:max-w-lg lg:max-w-xl">
     <h1 class="text-2xl font-bold text-green-800 mb-6">Add New Farmer</h1>
+
+    <!-- Flash Messages -->
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        <div class="space-y-2 mb-4">
+          {% for category, msg in messages %}
+            <div class="p-2 rounded {{ 'bg-green-200 text-green-800' if category=='success' else 'bg-red-200 text-red-800' }}">
+              {{ msg }}
+            </div>
+          {% endfor %}
+        </div>
+      {% endif %}
+    {% endwith %}
 
     <form action="" method="POST" class="space-y-4">
 
       <!-- Basic Info -->
       <div>
-        <label class="block mb-1 font-semibold text-gray-700">Name</label>
-        <input type="text" name="name" required
+        <label for="name" class="block mb-1 font-semibold text-gray-700">Name</label>
+        <input id="name" type="text" name="name" required placeholder="e.g., John Doe"
           class="w-full border border-gray-300 rounded px-3 py-2
                  focus:outline-none focus:ring-2 focus:ring-green-600">
       </div>
 
       <div>
-        <label class="block mb-1 font-semibold text-gray-700">Phone</label>
-        <input type="text" name="phone" required
+        <label for="phone" class="block mb-1 font-semibold text-gray-700">Phone</label>
+        <input id="phone" type="tel" name="phone" pattern="[0-9]{10,15}" required placeholder="e.g., 0712345678"
           class="w-full border border-gray-300 rounded px-3 py-2
                  focus:outline-none focus:ring-2 focus:ring-green-600">
       </div>
 
       <div>
-        <label class="block mb-1 font-semibold text-gray-700">County</label>
-        <input type="text" name="county" required
+        <label for="county" class="block mb-1 font-semibold text-gray-700">County</label>
+        <input id="county" type="text" name="county" required placeholder="e.g., Nairobi"
           class="w-full border border-gray-300 rounded px-3 py-2
                  focus:outline-none focus:ring-2 focus:ring-green-600">
       </div>
 
       <div>
-        <label class="block mb-1 font-semibold text-gray-700">Ward</label>
-        <input type="text" name="ward" required
+        <label for="ward" class="block mb-1 font-semibold text-gray-700">Ward</label>
+        <input id="ward" type="text" name="ward" required placeholder="e.g., Westlands"
           class="w-full border border-gray-300 rounded px-3 py-2
                  focus:outline-none focus:ring-2 focus:ring-green-600">
       </div>
 
       <!-- Location Info -->
-      <div>
-        <label class="block mb-1 font-semibold text-gray-700">Village / Area</label>
-        <input type="text" name="village"
-          class="w-full border border-gray-300 rounded px-3 py-2
-                 focus:outline-none focus:ring-2 focus:ring-green-600">
-      </div>
+      <fieldset class="border border-gray-200 p-4 rounded">
+        <legend class="font-semibold text-gray-700">Location Info</legend>
 
-      <div class="grid grid-cols-2 gap-4">
         <div>
-          <label class="block mb-1 font-semibold text-gray-700">Latitude</label>
-          <input type="number" step="any" name="latitude"
+          <label for="village" class="block mb-1 font-semibold text-gray-700">Village / Area</label>
+          <input id="village" type="text" name="village" placeholder="e.g., Kawangware"
             class="w-full border border-gray-300 rounded px-3 py-2
                    focus:outline-none focus:ring-2 focus:ring-green-600">
         </div>
 
-        <div>
-          <label class="block mb-1 font-semibold text-gray-700">Longitude</label>
-          <input type="number" step="any" name="longitude"
-            class="w-full border border-gray-300 rounded px-3 py-2
-                   focus:outline-none focus:ring-2 focus:ring-green-600">
-        </div>
-      </div>
+        <div class="grid grid-cols-2 gap-4 mt-2">
+          <div>
+            <label for="latitude" class="block mb-1 font-semibold text-gray-700">Latitude</label>
+            <input id="latitude" type="number" step="any" name="latitude" min="-90" max="90" placeholder="-1.2921"
+              class="w-full border border-gray-300 rounded px-3 py-2
+                     focus:outline-none focus:ring-2 focus:ring-green-600">
+          </div>
 
-      <div>
-        <label class="block mb-1 font-semibold text-gray-700">Location Notes</label>
-        <textarea name="location_notes" rows="2"
-          class="w-full border border-gray-300 rounded px-3 py-2
-                 focus:outline-none focus:ring-2 focus:ring-green-600"></textarea>
-      </div>
+          <div>
+            <label for="longitude" class="block mb-1 font-semibold text-gray-700">Longitude</label>
+            <input id="longitude" type="number" step="any" name="longitude" min="-180" max="180" placeholder="36.8219"
+              class="w-full border border-gray-300 rounded px-3 py-2
+                     focus:outline-none focus:ring-2 focus:ring-green-600">
+          </div>
+        </div>
+
+        <div class="mt-2">
+          <label for="location_notes" class="block mb-1 font-semibold text-gray-700">Location Notes</label>
+          <textarea id="location_notes" name="location_notes" rows="2" placeholder="Optional notes about the location"
+            class="w-full border border-gray-300 rounded px-3 py-2
+                   focus:outline-none focus:ring-2 focus:ring-green-600"></textarea>
+        </div>
+      </fieldset>
 
       <!-- Submit -->
       <button type="submit"
-        class="w-full bg-yellow-500 text-white font-bold py-2 px-4 rounded
-               hover:bg-yellow-600 transition">
+        class="w-full bg-green-600 text-white font-bold py-2 px-4 rounded
+               hover:bg-green-700 transition">
         Add Farmer
       </button>
     </form>
