@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Create User | Rizara</title>
+
+  <!-- Tailwind -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            jungle: '#1f6f54',
+            jungleLight: '#2f8f6b',
+            gold: '#d4af37',
+            grayDark: '#1f2937'
+          }
+        }
+      }
+    }
+  </script>
+</head>
+
+<body class="bg-gray-100 min-h-screen">
+
+  <!-- NAVBAR -->
+  <nav class="bg-jungle text-white px-6 py-4 flex justify-between items-center shadow">
+    <div class="text-xl font-bold tracking-wide">Rizara Meats</div>
+    <a href="{{ url_for('main.dashboard') }}"
+       class="bg-gold text-jungle font-semibold px-4 py-2 rounded hover:bg-yellow-400 transition">
+      ← Back to Dashboard
+    </a>
+  </nav>
+
+  <!-- MAIN -->
+  <main class="max-w-3xl mx-auto px-6 py-10">
+
+    <!-- TITLE -->
+    <div class="mb-8">
+      <h1 class="text-3xl font-bold text-jungle">Create New User</h1>
+      <p class="text-gray-600 mt-1">
+        Create system users and assign roles based on permissions.
+      </p>
+    </div>
+
+    <!-- FLASH MESSAGES -->
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        <div class="mb-6 space-y-3">
+          {% for category, message in messages %}
+            <div class="px-4 py-3 rounded-lg
+              {% if category == 'success' %}
+                bg-green-100 text-green-800
+              {% elif category == 'danger' or category == 'error' %}
+                bg-red-100 text-red-800
+              {% else %}
+                bg-gray-100 text-gray-800
+              {% endif %}
+            ">
+              {{ message }}
+            </div>
+          {% endfor %}
+        </div>
+      {% endif %}
+    {% endwith %}
+
+    <!-- FORM CARD -->
+    <div class="bg-white rounded-xl shadow p-8">
+
+      <form method="POST" action="{{ url_for('admin.create_user_submit') }}" class="space-y-6">
+
+        <!-- NAME -->
+        <div>
+          <label class="block text-sm font-semibold text-gray-700 mb-1">
+            Full Name
+          </label>
+          <input
+            type="text"
+            name="name"
+            required
+            class="w-full border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-jungle"
+          />
+        </div>
+
+        <!-- EMAIL -->
+        <div>
+          <label class="block text-sm font-semibold text-gray-700 mb-1">
+            Email Address
+          </label>
+          <input
+            type="email"
+            name="email"
+            required
+            class="w-full border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-jungle"
+          />
+        </div>
+
+        <!-- PHONE -->
+        <div>
+          <label class="block text-sm font-semibold text-gray-700 mb-1">
+            Phone Number <span class="text-gray-400">(optional)</span>
+          </label>
+          <input
+            type="text"
+            name="phone"
+            class="w-full border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-jungle"
+          />
+        </div>
+
+        <!-- PASSWORD -->
+        <div>
+          <label class="block text-sm font-semibold text-gray-700 mb-1">
+            Password
+          </label>
+          <input
+            type="password"
+            name="password"
+            required
+            class="w-full border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-jungle"
+          />
+        </div>
+
+        <!-- ROLE -->
+        <div>
+          <label class="block text-sm font-semibold text-gray-700 mb-1">
+            Role
+          </label>
+          <select
+            name="role"
+            required
+            class="w-full border border-gray-300 rounded-lg px-4 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-jungle"
+          >
+            <option value="">-- Select role --</option>
+            {% for r in role_options %}
+              <option value="{{ r.key }}">{{ r.label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <!-- ACTIONS -->
+        <div class="flex justify-end gap-4 pt-4">
+          <a href="{{ url_for('main.dashboard') }}"
+             class="px-5 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-100 transition">
+            Cancel
+          </a>
+          <button
+            type="submit"
+            class="px-6 py-2 rounded-lg bg-jungle text-white font-semibold hover:bg-jungleLight transition"
+          >
+            Create User
+          </button>
+        </div>
+
+      </form>
+    </div>
+
+  </main>
+
+  <!-- FOOTER -->
+  <footer class="text-center text-sm text-gray-500 py-6">
+    © {{ current_year or 2026 }} Rizara Meats Ltd — Secure • Traceable • Halal
+  </footer>
+
+</body>
+</html>

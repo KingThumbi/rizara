@@ -1,214 +1,252 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>Rizara Dashboard</title>
-    <!-- Tailwind CDN -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script>
-        tailwind.config = {
-            theme: {
-                extend: {
-                    colors: {
-                        jungle: '#1f6f54',
-                        gold: '#d4af37',
-                        jungleLight: '#2f8f6b',
-                        grayDark: '#1f2937'
-                    }
-                }
-            }
-        }
-    </script>
-</head>
-<body class="bg-gray-100 min-h-screen">
+{% extends "layouts/base.html" %}
 
-<!-- NAVBAR -->
-<nav class="bg-jungle text-white px-6 py-4 flex justify-between items-center shadow">
+{% block title %}Rizara Dashboard{% endblock %}
+
+{% block body %}
+
+  <!-- NAVBAR -->
+  <nav class="bg-jungle text-white px-6 py-4 flex justify-between items-center shadow">
     <div class="text-2xl font-bold tracking-wide">Rizara Meats</div>
     <div class="flex items-center gap-6">
-        <span class="text-sm opacity-90">Operations Dashboard</span>
-        <a href="{{ url_for('auth.logout') }}"
-           class="bg-gold text-jungle font-semibold px-4 py-2 rounded hover:bg-yellow-400 transition">
-            Logout
-        </a>
+      <span class="text-sm opacity-90">Operations Dashboard</span>
+      <a href="{{ url_for('auth.logout') }}"
+         class="bg-gold text-jungle font-semibold px-4 py-2 rounded hover:bg-yellow-400 transition">
+        Logout
+      </a>
     </div>
-</nav>
+  </nav>
 
-<!-- MAIN -->
-<main class="max-w-7xl mx-auto px-6 py-8">
+  <!-- MAIN -->
+  <main class="max-w-7xl mx-auto px-6 py-8">
 
     <!-- PAGE TITLE -->
     <div class="mb-8">
-        <h1 class="text-3xl font-bold text-jungle">Operations Dashboard</h1>
-        <p class="text-gray-600 mt-1">
-            Livestock aggregation & processing overview
-        </p>
+      <h1 class="text-3xl font-bold text-jungle">Operations Dashboard</h1>
+      <p class="text-gray-600 mt-1">Livestock aggregation & processing overview</p>
     </div>
+
+    <!-- Flash messages -->
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        <div class="mb-6 space-y-3">
+          {% for category, message in messages %}
+            <div class="px-4 py-3 rounded-lg
+              {% if category == 'success' %}
+                bg-green-100 text-green-800
+              {% elif category in ['danger', 'error'] %}
+                bg-red-100 text-red-800
+              {% else %}
+                bg-gray-100 text-gray-800
+              {% endif %}
+            ">
+              {{ message }}
+            </div>
+          {% endfor %}
+        </div>
+      {% endif %}
+    {% endwith %}
 
     <!-- KPI CARDS -->
     <section class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-6 mb-10">
 
-        <div class="bg-white rounded-xl shadow p-6 border-l-8 border-jungle">
-            <h3 class="text-gray-500 text-sm uppercase">Farmers</h3>
-            <p class="text-3xl font-bold text-jungle mt-2">{{ stats.farmers or 0 }}</p>
-        </div>
+      <div class="bg-white rounded-xl shadow p-6 border-l-8 border-jungle">
+        <h3 class="text-gray-500 text-sm uppercase">Farmers</h3>
+        <p class="text-3xl font-bold text-jungle mt-2">{{ stats.farmers or 0 }}</p>
+      </div>
 
-        <div class="bg-white rounded-xl shadow p-6 border-l-8 border-gold">
-            <h3 class="text-gray-500 text-sm uppercase">Goats Tracked</h3>
-            <p class="text-3xl font-bold text-jungle mt-2">{{ stats.goats or 0 }}</p>
-        </div>
+      <div class="bg-white rounded-xl shadow p-6 border-l-8 border-gold">
+        <h3 class="text-gray-500 text-sm uppercase">Goats Tracked</h3>
+        <p class="text-3xl font-bold text-jungle mt-2">{{ stats.goats or 0 }}</p>
+      </div>
 
-        <div class="bg-white rounded-xl shadow p-6 border-l-8 border-jungleLight">
-            <h3 class="text-gray-500 text-sm uppercase">Sheep Tracked</h3>
-            <p class="text-3xl font-bold text-jungle mt-2">{{ stats.sheep or 0 }}</p>
-        </div>
+      <div class="bg-white rounded-xl shadow p-6 border-l-8 border-jungleLight">
+        <h3 class="text-gray-500 text-sm uppercase">Sheep Tracked</h3>
+        <p class="text-3xl font-bold text-jungle mt-2">{{ stats.sheep or 0 }}</p>
+      </div>
 
-        <div class="bg-white rounded-xl shadow p-6 border-l-8 border-gray-400">
-            <h3 class="text-gray-500 text-sm uppercase">Cattle Tracked</h3>
-            <p class="text-3xl font-bold text-jungle mt-2">{{ stats.cattle or 0 }}</p>
-        </div>
+      <div class="bg-white rounded-xl shadow p-6 border-l-8 border-gray-400">
+        <h3 class="text-gray-500 text-sm uppercase">Cattle Tracked</h3>
+        <p class="text-3xl font-bold text-jungle mt-2">{{ stats.cattle or 0 }}</p>
+      </div>
 
-        <div class="bg-white rounded-xl shadow p-6 border-l-8 border-purple-500">
-            <h3 class="text-gray-500 text-sm uppercase">Aggregation Batches</h3>
-            <p class="text-3xl font-bold text-jungle mt-2">{{ stats.aggregation_batches or 0 }}</p>
-        </div>
+      <div class="bg-white rounded-xl shadow p-6 border-l-8 border-purple-500">
+        <h3 class="text-gray-500 text-sm uppercase">Aggregation Batches</h3>
+        <p class="text-3xl font-bold text-jungle mt-2">{{ stats.aggregation_batches or 0 }}</p>
+      </div>
 
-        <div class="bg-white rounded-xl shadow p-6 border-l-8 border-indigo-500">
-            <h3 class="text-gray-500 text-sm uppercase">Processing Batches</h3>
-            <p class="text-3xl font-bold text-jungle mt-2">{{ stats.processing_batches or 0 }}</p>
-        </div>
+      <div class="bg-white rounded-xl shadow p-6 border-l-8 border-indigo-500">
+        <h3 class="text-gray-500 text-sm uppercase">Processing Batches</h3>
+        <p class="text-3xl font-bold text-jungle mt-2">{{ stats.processing_batches or 0 }}</p>
+      </div>
 
     </section>
 
     <!-- QUICK ACTIONS -->
     <section class="bg-white rounded-xl shadow p-6 mb-10">
-        <h2 class="text-xl font-semibold text-jungle mb-4">Quick Actions</h2>
-        <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <h2 class="text-xl font-semibold text-jungle mb-4">Quick Actions</h2>
 
-            <a href="{{ url_for('main.add_farmer') }}"
-               class="flex justify-center items-center bg-jungle text-white py-4 rounded-lg font-semibold hover:bg-jungleLight transition">
-                + Add Farmer
-            </a>
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
 
-            <a href="{{ url_for('main.add_goat') }}"
-               class="flex justify-center items-center bg-gold text-jungle py-4 rounded-lg font-semibold hover:bg-yellow-400 transition">
-                + Register Goat
-            </a>
+        <a href="{{ url_for('main.add_farmer') }}"
+           class="flex justify-center items-center bg-jungle text-white py-4 rounded-lg font-semibold hover:bg-jungleLight transition">
+          + Add Farmer
+        </a>
 
-            <a href="{{ url_for('main.add_sheep') }}"
-               class="flex justify-center items-center bg-purple-500 text-white py-4 rounded-lg font-semibold hover:bg-purple-400 transition">
-                + Register Sheep
-            </a>
+        <a href="{{ url_for('main.add_goat') }}"
+           class="flex justify-center items-center bg-gold text-jungle py-4 rounded-lg font-semibold hover:bg-yellow-400 transition">
+          + Register Goat
+        </a>
 
-            <a href="{{ url_for('main.add_cattle') }}"
-               class="flex justify-center items-center bg-indigo-500 text-white py-4 rounded-lg font-semibold hover:bg-indigo-400 transition">
-                + Register Cattle
-            </a>
+        <a href="{{ url_for('main.add_sheep') }}"
+           class="flex justify-center items-center bg-purple-500 text-white py-4 rounded-lg font-semibold hover:bg-purple-400 transition">
+          + Register Sheep
+        </a>
 
-        </div>
+        <a href="{{ url_for('main.add_cattle') }}"
+           class="flex justify-center items-center bg-indigo-500 text-white py-4 rounded-lg font-semibold hover:bg-indigo-400 transition">
+          + Register Cattle
+        </a>
+
+        <!-- Aggregation -->
+        <a href="{{ url_for('main.add_goat_aggregation') }}"
+           class="flex justify-center items-center bg-blue-600 text-white py-4 rounded-lg font-semibold hover:bg-blue-500 transition">
+          + Goat Aggregation Batch
+        </a>
+
+        <a href="{{ url_for('main.add_sheep_aggregation') }}"
+           class="flex justify-center items-center bg-blue-600 text-white py-4 rounded-lg font-semibold hover:bg-blue-500 transition">
+          + Sheep Aggregation Batch
+        </a>
+
+        <a href="{{ url_for('main.add_cattle_aggregation') }}"
+           class="flex justify-center items-center bg-blue-600 text-white py-4 rounded-lg font-semibold hover:bg-blue-500 transition">
+          + Cattle Aggregation Batch
+        </a>
+
+        <!-- Processing -->
+        <a href="{{ url_for('main.add_goat_processing') }}"
+           class="flex justify-center items-center bg-orange-600 text-white py-4 rounded-lg font-semibold hover:bg-orange-500 transition">
+          + Goat Processing Batch
+        </a>
+
+        <a href="{{ url_for('main.add_sheep_processing') }}"
+           class="flex justify-center items-center bg-orange-600 text-white py-4 rounded-lg font-semibold hover:bg-orange-500 transition">
+          + Sheep Processing Batch
+        </a>
+
+        <a href="{{ url_for('main.add_cattle_processing') }}"
+           class="flex justify-center items-center bg-orange-600 text-white py-4 rounded-lg font-semibold hover:bg-orange-500 transition">
+          + Cattle Processing Batch
+        </a>
+
+        <!-- Users -->
+        <a href="{{ url_for('admin.create_user_page') }}"
+           class="flex justify-center items-center bg-gray-900 text-white py-4 rounded-lg font-semibold hover:bg-gray-700 transition">
+          + Create Users
+        </a>
+
+      </div>
     </section>
 
     <!-- ADMIN SECTIONS -->
     <section class="bg-white rounded-xl shadow p-6 mb-10">
-        <h2 class="text-xl font-semibold text-jungle mb-4">Admin Sections</h2>
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <h2 class="text-xl font-semibold text-jungle mb-4">Admin Sections</h2>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
 
-            <a href="{{ url_for('main.contact_messages') }}"
-               class="flex justify-center items-center bg-blue-600 text-white py-4 rounded-lg font-semibold hover:bg-blue-500 transition">
-                Contact Messages
-            </a>
+        <a href="{{ url_for('main.contact_messages') }}"
+           class="flex justify-center items-center bg-blue-600 text-white py-4 rounded-lg font-semibold hover:bg-blue-500 transition">
+          Contact Messages
+        </a>
 
-            <a href="{{ url_for('main.order_requests') }}"
-               class="flex justify-center items-center bg-green-600 text-white py-4 rounded-lg font-semibold hover:bg-green-500 transition">
-                Order Requests
-            </a>
+        <a href="{{ url_for('main.order_requests') }}"
+           class="flex justify-center items-center bg-green-600 text-white py-4 rounded-lg font-semibold hover:bg-green-500 transition">
+          Order Requests
+        </a>
 
-        </div>
+      </div>
     </section>
 
     <!-- ANIMAL STATUS PIPELINE -->
     {% for animal, pipeline in [('goat', goat_pipeline), ('sheep', sheep_pipeline), ('cattle', cattle_pipeline)] %}
     <section class="bg-white rounded-xl shadow p-6 mb-10">
-        <h2 class="text-xl font-semibold text-jungle mb-4">{{ animal.capitalize() }} Status Pipeline</h2>
-        <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <h2 class="text-xl font-semibold text-jungle mb-4">{{ animal.capitalize() }} Status Pipeline</h2>
 
-            {% for status, color in [('on_farm','green'), ('aggregated','blue'), ('processed','yellow'), ('sold','red')] %}
-            <a href="{{ url_for('main.animal_pipeline_view', animal_type=animal, status=status) }}"
-               class="block bg-{{ color }}-100 rounded-lg p-4 text-center hover:bg-{{ color }}-200 transition">
-                <h3 class="text-sm text-gray-600 uppercase">{{ status.replace('_',' ').capitalize() }}</h3>
-                <p class="text-2xl font-bold text-{{ color }}-700">{{ pipeline[status] or 0 }}</p>
-            </a>
-            {% endfor %}
-
-        </div>
+      <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+        {% for status, color in [('on_farm','green'), ('aggregated','blue'), ('processed','yellow'), ('sold','red')] %}
+        <a href="{{ url_for('main.animal_pipeline_view', animal_type=animal, status=status) }}"
+           class="block bg-{{ color }}-100 rounded-lg p-4 text-center hover:bg-{{ color }}-200 transition">
+          <h3 class="text-sm text-gray-600 uppercase">{{ status.replace('_',' ').capitalize() }}</h3>
+          <p class="text-2xl font-bold text-{{ color }}-700">{{ pipeline[status] or 0 }}</p>
+        </a>
+        {% endfor %}
+      </div>
     </section>
     {% endfor %}
 
     <!-- RECENT CONTACTS & ORDERS -->
     <section class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-10">
 
-        <div class="bg-white rounded-xl shadow p-6">
-            <h2 class="text-lg font-semibold text-jungle mb-3">Recent Contact Messages</h2>
-            {% if stats.latest_contacts %}
-            <table class="w-full text-sm">
-                <thead>
-                    <tr class="border-b">
-                        <th class="py-2 text-left">Name</th>
-                        <th>Email</th>
-                        <th>Received</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for msg in stats.latest_contacts %}
-                    <tr class="border-b hover:bg-gray-50">
-                        <td>{{ msg.name }}</td>
-                        <td>{{ msg.email }}</td>
-                        <td>{{ msg.created_at.strftime('%Y-%m-%d') }}</td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-            {% else %}
-            <p class="text-gray-500 text-sm">No contact messages yet.</p>
-            {% endif %}
-        </div>
+      <div class="bg-white rounded-xl shadow p-6">
+        <h2 class="text-lg font-semibold text-jungle mb-3">Recent Contact Messages</h2>
+        {% if stats.latest_contacts %}
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="border-b">
+              <th class="py-2 text-left">Name</th>
+              <th class="text-left">Email</th>
+              <th class="text-left">Received</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for msg in stats.latest_contacts %}
+            <tr class="border-b hover:bg-gray-50">
+              <td class="py-2">{{ msg.name }}</td>
+              <td>{{ msg.email }}</td>
+              <td>{{ msg.created_at.strftime('%Y-%m-%d') }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        <p class="text-gray-500 text-sm">No contact messages yet.</p>
+        {% endif %}
+      </div>
 
-        <div class="bg-white rounded-xl shadow p-6">
-            <h2 class="text-lg font-semibold text-jungle mb-3">Recent Order Requests</h2>
-            {% if stats.latest_orders %}
-            <table class="w-full text-sm">
-                <thead>
-                    <tr class="border-b">
-                        <th class="py-2 text-left">Buyer</th>
-                        <th>Product</th>
-                        <th>Qty (kg)</th>
-                        <th>Received</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for order in stats.latest_orders %}
-                    <tr class="border-b hover:bg-gray-50">
-                        <td>{{ order.buyer_name }}</td>
-                        <td>{{ order.product }}</td>
-                        <td>{{ order.quantity }}</td>
-                        <td>{{ order.created_at.strftime('%Y-%m-%d') }}</td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-            {% else %}
-            <p class="text-gray-500 text-sm">No order requests yet.</p>
-            {% endif %}
-        </div>
+      <div class="bg-white rounded-xl shadow p-6">
+        <h2 class="text-lg font-semibold text-jungle mb-3">Recent Order Requests</h2>
+        {% if stats.latest_orders %}
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="border-b">
+              <th class="py-2 text-left">Buyer</th>
+              <th class="text-left">Product</th>
+              <th class="text-left">Qty</th>
+              <th class="text-left">Received</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for order in stats.latest_orders %}
+            <tr class="border-b hover:bg-gray-50">
+              <td class="py-2">{{ order.buyer_name }}</td>
+              <td>{{ order.product }}</td>
+              <td>{{ order.quantity }}</td>
+              <td>{{ order.created_at.strftime('%Y-%m-%d') }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        <p class="text-gray-500 text-sm">No order requests yet.</p>
+        {% endif %}
+      </div>
 
     </section>
 
-</main>
+  </main>
 
-<!-- FOOTER -->
-<footer class="text-center text-sm text-gray-500 py-6">
+  <!-- FOOTER -->
+  <footer class="text-center text-sm text-gray-500 py-6">
     © {{ current_year or 2026 }} Rizara Meats Ltd — Ethical • Traceable • Halal
-</footer>
+  </footer>
 
-</body>
-</html>
+{% endblock %}

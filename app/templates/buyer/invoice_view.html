@@ -1,0 +1,106 @@
+{% extends "layouts/base.html" %}
+
+{% block title %}Invoice {{ invoice.invoice_number }} | Buyer Portal{% endblock %}
+
+{% block body %}
+
+<nav class="bg-jungle text-white px-6 py-4 flex justify-between items-center shadow">
+  <div class="text-xl font-bold tracking-wide">Rizara Meats</div>
+  <div class="flex items-center gap-3">
+    <a href="{{ url_for('main.buyer_dashboard') }}"
+       class="bg-gold text-jungle font-semibold px-4 py-2 rounded hover:bg-yellow-400 transition">
+      ← Back to Dashboard
+    </a>
+    <a href="{{ url_for('auth.logout') }}"
+       class="bg-white/10 text-white font-semibold px-4 py-2 rounded hover:bg-white/20 transition">
+      Logout
+    </a>
+  </div>
+</nav>
+
+<main class="max-w-4xl mx-auto px-6 py-10">
+
+  <div class="mb-8">
+    <h1 class="text-3xl font-bold text-jungle">Invoice {{ invoice.invoice_number }}</h1>
+    <p class="text-gray-600 mt-1">
+      Status:
+      <span class="font-semibold">{{ invoice_status_value or invoice.status }}</span>
+      • Issue Date: <b>{{ invoice.issue_date }}</b>
+    </p>
+  </div>
+
+  <div class="flex flex-wrap gap-3 mb-8">
+    <a href="{{ url_for('main.buyer_invoice_pdf', invoice_id=invoice.id) }}"
+       target="_blank" rel="noopener"
+       class="inline-flex items-center px-4 py-2 rounded-lg bg-jungle text-white font-semibold hover:bg-jungleLight transition">
+      Open Invoice PDF
+    </a>
+  </div>
+
+  <div class="grid grid-cols-1 gap-6">
+
+    <div class="bg-white rounded-xl shadow p-6">
+      <h2 class="text-lg font-bold text-gray-900 mb-2">Buyer</h2>
+      <p class="text-gray-700">
+        {{ buyer.name }}<br/>
+        {% if buyer.phone %}{{ buyer.phone }}<br/>{% endif %}
+        {% if buyer.email %}{{ buyer.email }}<br/>{% endif %}
+        {% if buyer.address %}{{ buyer.address }}<br/>{% endif %}
+      </p>
+    </div>
+
+    <div class="bg-white rounded-xl shadow p-6">
+      <h2 class="text-lg font-bold text-gray-900 mb-2">Batch</h2>
+      <p class="text-gray-700">
+        Processing Batch #{{ batch.id }} — {{ batch.animal_type|capitalize }} — Facility: <b>{{ batch.facility }}</b><br/>
+        {% if yield_record %}
+          Carcass Weight: {{ yield_record.total_carcass_weight_kg }} kg<br/>
+          {% if yield_record.parts_notes %}Parts: {{ yield_record.parts_notes }}{% endif %}
+        {% endif %}
+      </p>
+    </div>
+
+    <div class="bg-white rounded-xl shadow p-6">
+      <h2 class="text-lg font-bold text-gray-900 mb-3">Items</h2>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm border border-gray-200">
+          <thead class="bg-gray-50">
+            <tr>
+              <th class="p-3 text-left font-semibold text-gray-700">Description</th>
+              <th class="p-3 text-left font-semibold text-gray-700">Qty</th>
+              <th class="p-3 text-left font-semibold text-gray-700">Unit Price</th>
+              <th class="p-3 text-left font-semibold text-gray-700">Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for it in items %}
+            <tr class="border-t">
+              <td class="p-3">{{ it.description }}</td>
+              <td class="p-3">{{ it.quantity }}</td>
+              <td class="p-3">{{ it.unit_price }}</td>
+              <td class="p-3">{{ it.line_total }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="bg-white rounded-xl shadow p-6">
+      <h2 class="text-lg font-bold text-gray-900 mb-2">Totals</h2>
+      <p class="text-gray-700">
+        Subtotal: {{ invoice.subtotal }} |
+        Tax: {{ invoice.tax }} |
+        Total: <strong>{{ invoice.total }}</strong>
+      </p>
+    </div>
+
+  </div>
+
+</main>
+
+<footer class="text-center text-sm text-gray-500 py-6">
+  © {{ current_year or 2026 }} Rizara Meats Ltd — Secure • Traceable • Halal
+</footer>
+
+{% endblock %}

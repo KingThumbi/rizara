@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <title>{% block title %}Rizara{% endblock %}</title>
+
+  <!-- Favicon -->
+  <link rel="icon" href="{{ url_for('static', filename='favicon.ico') }}">
+
+  <!-- Tailwind + Rizara theme (available to all templates) -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            jungle: '#1f6f54',
+            jungleLight: '#2f8f6b',
+            gold: '#d4af37',
+            grayDark: '#1f2937'
+          }
+        }
+      }
+    }
+  </script>
+
+  {% block head %}{% endblock %}
+</head>
+
+<body class="bg-gray-100 min-h-screen">
+  {% block body %}{% endblock %}
+</body>
+</html>

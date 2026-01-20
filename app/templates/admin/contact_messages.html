@@ -3,95 +3,184 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Admin - Contact Messages | Rizara Meats</title>
-  <link rel="stylesheet" href="/assets/css/style.css" />
+  <title>Contact Messages | Rizara</title>
 
-  <style>
-    .table-container {
-      overflow-x: auto;
-      margin-top: 1rem;
-    }
-    table {
-      width: 100%;
-      border-collapse: collapse;
-    }
-    th, td {
-      padding: 0.5rem;
-      border: 1px solid #ddd;
-      text-align: left;
-      font-size: 0.9rem;
-    }
-    @media (max-width: 768px) {
-      th, td {
-        font-size: 0.8rem;
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            jungle: '#1f6f54',
+            jungleLight: '#2f8f6b',
+            gold: '#d4af37',
+            grayDark: '#1f2937'
+          }
+        }
       }
     }
-    .btn-small {
-      padding: 0.25rem 0.5rem;
-      font-size: 0.8rem;
-    }
-    .flash {
-      margin-top: 1rem;
-      padding: 0.5rem;
-      border-radius: 0.25rem;
-    }
-    .flash.success { background-color: #d4edda; color: #155724; }
-    .flash.error { background-color: #f8d7da; color: #721c24; }
-  </style>
+  </script>
 </head>
-<body>
 
-<a href="{{ url_for('main.dashboard') }}" class="btn">← Back to Dashboard</a>
+<body class="bg-gray-100 min-h-screen">
 
-<h1 class="hero-text mt-6">Contact Messages</h1>
+  <!-- NAVBAR -->
+  <nav class="bg-jungle text-white px-6 py-4 flex justify-between items-center shadow">
+    <div class="text-xl font-bold tracking-wide">Rizara Meats</div>
+    <div class="flex items-center gap-3">
+      <a href="{{ url_for('main.dashboard') }}"
+         class="bg-gold text-jungle font-semibold px-4 py-2 rounded hover:bg-yellow-400 transition">
+        ← Back to Dashboard
+      </a>
+      <a href="{{ url_for('auth.logout') }}"
+         class="bg-white/10 text-white font-semibold px-4 py-2 rounded hover:bg-white/20 transition">
+        Logout
+      </a>
+    </div>
+  </nav>
 
-{% with messages = get_flashed_messages(with_categories=true) %}
-  {% if messages %}
-    {% for category, msg in messages %}
-      <div class="flash {{ category }}">{{ msg }}</div>
-    {% endfor %}
-  {% endif %}
-{% endwith %}
+  <!-- MAIN -->
+  <main class="max-w-6xl mx-auto px-6 py-10">
 
-<div class="table-container">
-  <table>
-    <thead>
-      <tr>
-        <th>ID</th>
-        <th>Name</th>
-        <th>Email / Phone</th>
-        <th>Subject</th>
-        <th>Message</th>
-        <th>Status</th>
-        <th>Submitted At</th>
-        <th>Action</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for msg in messages %}
-      <tr>
-        <td>{{ msg.id }}</td>
-        <td>{{ msg.name }}</td>
-        <td>{{ msg.email }} / {{ msg.subject.split('-')[-1].strip() }}</td>
-        <td>{{ msg.subject }}</td>
-        <td>{{ msg.message }}</td>
-        <td>{{ msg.status }}</td>
-        <td>{{ msg.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
-        <td>
-          <form action="{{ url_for('main.update_contact_status', msg_id=msg.id) }}" method="POST">
-            <select name="status">
-              <option value="new" {% if msg.status=='new' %}selected{% endif %}>New</option>
-              <option value="reviewed" {% if msg.status=='reviewed' %}selected{% endif %}>Reviewed</option>
-              <option value="closed" {% if msg.status=='closed' %}selected{% endif %}>Closed</option>
-            </select>
-            <button type="submit" class="btn-small">Update</button>
-          </form>
-        </td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-</div>
+    <!-- TITLE -->
+    <div class="mb-8">
+      <h1 class="text-3xl font-bold text-jungle">Contact Messages</h1>
+      <p class="text-gray-600 mt-1">
+        Review enquiries submitted from the website contact form.
+      </p>
+    </div>
+
+    <!-- FLASH MESSAGES -->
+    {% with flashes = get_flashed_messages(with_categories=true) %}
+      {% if flashes %}
+        <div class="mb-6 space-y-3">
+          {% for category, message in flashes %}
+            <div class="px-4 py-3 rounded-lg
+              {% if category == 'success' %}
+                bg-green-100 text-green-800
+              {% elif category == 'danger' or category == 'error' %}
+                bg-red-100 text-red-800
+              {% else %}
+                bg-gray-100 text-gray-800
+              {% endif %}
+            ">
+              {{ message }}
+            </div>
+          {% endfor %}
+        </div>
+      {% endif %}
+    {% endwith %}
+
+    <!-- CONTENT -->
+    <section class="bg-white rounded-xl shadow overflow-hidden">
+      <div class="p-6 flex flex-col md:flex-row md:items-center md:justify-between gap-3 border-b bg-gray-50">
+        <div>
+          <h2 class="text-lg font-semibold text-grayDark">Inbox</h2>
+          <p class="text-sm text-gray-600">
+            Total messages:
+            <span class="font-semibold text-jungle">{{ messages|length }}</span>
+          </p>
+        </div>
+      </div>
+
+      {% if not messages %}
+        <div class="p-6">
+          <div class="bg-gray-100 text-gray-700 px-4 py-3 rounded-lg">
+            No contact messages yet.
+          </div>
+        </div>
+      {% else %}
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead class="bg-gray-50">
+              <tr class="text-left">
+                <th class="p-4">Received</th>
+                <th class="p-4">Name</th>
+                <th class="p-4">Email</th>
+                <th class="p-4">Subject & Message</th>
+                <th class="p-4">Status</th>
+                <th class="p-4">Update</th>
+              </tr>
+            </thead>
+
+            <tbody>
+              {% for msg in messages %}
+                {% set st = (msg.status or 'new') %}
+                <tr class="border-t hover:bg-gray-50 align-top">
+
+                  <td class="p-4 text-gray-700 whitespace-nowrap">
+                    {% if msg.created_at %}
+                      {{ msg.created_at.strftime('%Y-%m-%d') }}
+                    {% else %}
+                      -
+                    {% endif %}
+                  </td>
+
+                  <td class="p-4 text-gray-900 font-semibold">
+                    {{ msg.name }}
+                  </td>
+
+                  <td class="p-4 text-gray-700">
+                    {{ msg.email }}
+                  </td>
+
+                  <td class="p-4 text-gray-700">
+                    <div class="font-semibold text-gray-900">
+                      {{ msg.subject or 'Website Contact' }}
+                    </div>
+                    <div class="text-xs text-gray-600 mt-1 whitespace-pre-line">
+                      {{ msg.message }}
+                    </div>
+                  </td>
+
+                  <td class="p-4">
+                    <span class="inline-flex px-2 py-1 rounded text-xs font-semibold
+                      {% if st == 'new' %}
+                        bg-blue-100 text-blue-800
+                      {% elif st == 'reviewed' %}
+                        bg-yellow-100 text-yellow-800
+                      {% else %}
+                        bg-green-100 text-green-800
+                      {% endif %}
+                    ">
+                      {{ st }}
+                    </span>
+                  </td>
+
+                  <td class="p-4">
+                    <form method="POST"
+                          action="{{ url_for('main.update_contact_status', msg_id=msg.id) }}"
+                          class="flex flex-col gap-2">
+
+                      <select name="status"
+                              class="border border-gray-300 rounded-lg px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-jungle">
+                        <option value="new" {% if st == 'new' %}selected{% endif %}>new</option>
+                        <option value="reviewed" {% if st == 'reviewed' %}selected{% endif %}>reviewed</option>
+                        <option value="closed" {% if st == 'closed' %}selected{% endif %}>closed</option>
+                      </select>
+
+                      <button type="submit"
+                              class="px-4 py-2 rounded-lg bg-jungle text-white font-semibold hover:bg-jungleLight transition">
+                        Update
+                      </button>
+
+                    </form>
+                  </td>
+
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% endif %}
+    </section>
+
+  </main>
+
+  <!-- FOOTER -->
+  <footer class="text-center text-sm text-gray-500 py-6">
+    © {{ current_year or 2026 }} Rizara Meats Ltd — Secure • Traceable • Halal
+  </footer>
 
 </body>
 </html>

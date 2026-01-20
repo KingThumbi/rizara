@@ -1,0 +1,168 @@
+{# /home/thumbi/rizara/app/templates/processing/batch_overview.html #}
+{% extends "layouts/base.html" %}
+
+{% block title %}Processing Batch Overview | Rizara{% endblock %}
+
+{% block body %}
+
+  <nav class="bg-jungle text-white px-6 py-4 flex justify-between items-center shadow">
+    <div class="text-xl font-bold tracking-wide">Rizara Meats</div>
+    <div class="flex items-center gap-3">
+      <a href="{{ url_for('main.dashboard') }}"
+         class="bg-gold text-jungle font-semibold px-4 py-2 rounded hover:bg-yellow-400 transition">
+        ← Back to Dashboard
+      </a>
+      <a href="{{ url_for('auth.logout') }}"
+         class="bg-white/10 text-white font-semibold px-4 py-2 rounded hover:bg-white/20 transition">
+        Logout
+      </a>
+    </div>
+  </nav>
+
+  <main class="max-w-4xl mx-auto px-6 py-10">
+
+    <div class="mb-8">
+      <h1 class="text-3xl font-bold text-jungle">Processing Batch #{{ batch.id }}</h1>
+      <p class="text-gray-600 mt-1">
+        {{ batch.animal_type|capitalize }} • Facility: <b>{{ batch.facility }}</b>
+        {% if batch.slaughter_date %} • Slaughter Date: <b>{{ batch.slaughter_date }}</b>{% endif %}
+        {% if batch.halal_cert_ref %} • Halal Ref: <b>{{ batch.halal_cert_ref }}</b>{% endif %}
+      </p>
+    </div>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        <div class="mb-6 space-y-3">
+          {% for category, message in messages %}
+            <div class="px-4 py-3 rounded-lg
+              {% if category == 'success' %}
+                bg-green-100 text-green-800
+              {% elif category == 'danger' or category == 'error' %}
+                bg-red-100 text-red-800
+              {% else %}
+                bg-gray-100 text-gray-800
+              {% endif %}
+            ">
+              {{ message }}
+            </div>
+          {% endfor %}
+        </div>
+      {% endif %}
+    {% endwith %}
+
+    <div class="bg-white rounded-xl shadow p-8 space-y-6">
+
+      <!-- Step 1: Yield -->
+      <div class="border border-gray-200 rounded-lg p-5">
+        <div class="flex items-center justify-between gap-4">
+          <div>
+            <h2 class="text-lg font-bold text-gray-900">Step 1 — Record Yield</h2>
+            <p class="text-sm text-gray-600">Capture total carcass weight and parts handling.</p>
+          </div>
+
+          {% if yield_record %}
+            <span class="px-3 py-1 rounded-full bg-green-100 text-green-800 text-sm font-semibold">
+              Done
+            </span>
+          {% else %}
+            <a href="{{ url_for('main.record_processing_yield', batch_id=batch.id) }}"
+               class="px-4 py-2 rounded-lg bg-jungle text-white font-semibold hover:bg-jungleLight transition">
+              Record Yield
+            </a>
+          {% endif %}
+        </div>
+
+        {% if yield_record %}
+          <div class="mt-4 text-sm text-gray-700 space-y-1">
+            <p><b>Total carcass:</b> {{ yield_record.total_carcass_weight_kg }} kg</p>
+            <p><b>Parts included:</b> {{ 'Yes' if yield_record.parts_included_in_batch_sale else 'No' }}</p>
+            <p><b>Parts sold separately:</b> {{ 'Yes' if yield_record.parts_sold_separately else 'No' }}</p>
+            {% if yield_record.parts_notes %}
+              <p><b>Notes:</b> {{ yield_record.parts_notes }}</p>
+            {% endif %}
+          </div>
+        {% endif %}
+      </div>
+
+      <!-- Step 2: Sale -->
+      <div class="border border-gray-200 rounded-lg p-5">
+        <div class="flex items-center justify-between gap-4">
+          <div>
+            <h2 class="text-lg font-bold text-gray-900">Step 2 — Record Batch Sale</h2>
+            <p class="text-sm text-gray-600">Record total sale price (batch sold as one unit).</p>
+          </div>
+
+          {% if sale %}
+            <span class="inline-block px-4 py-2 bg-gray-200 text-gray-600 rounded-lg font-semibold">
+              Sale completed
+            </span>
+          {% else %}
+            {% if yield_record %}
+              <a href="{{ url_for('main.record_processing_batch_sale', batch_id=batch.id) }}"
+                 class="inline-flex items-center px-4 py-2 rounded-lg bg-jungle text-white font-semibold hover:bg-jungleLight transition">
+                Record Sale
+              </a>
+            {% else %}
+              <span class="inline-block px-4 py-2 bg-gray-200 text-gray-600 rounded-lg font-semibold">
+                Record yield first
+              </span>
+            {% endif %}
+          {% endif %}
+        </div>
+
+        {% if sale %}
+          <div class="mt-4 text-sm text-gray-700 space-y-1">
+            <p><b>Buyer ID:</b> {{ sale.buyer_id }}</p>
+            <p><b>Sale date:</b> {{ sale.sale_date }}</p>
+            <p><b>Total sale price:</b> {{ sale.total_sale_price }} {{ sale.currency or 'KES' }}</p>
+            {% if sale.notes %}<p><b>Notes:</b> {{ sale.notes }}</p>{% endif %}
+          </div>
+        {% endif %}
+      </div>
+
+      <!-- Step 3: Invoice -->
+      <div class="border border-gray-200 rounded-lg p-5">
+        <div class="flex items-center justify-between gap-4">
+          <div>
+            <h2 class="text-lg font-bold text-gray-900">Step 3 — Generate Invoice</h2>
+            <p class="text-sm text-gray-600">One click invoice from the recorded sale.</p>
+          </div>
+
+          {% if invoice %}
+            <a href="{{ url_for('main.view_invoice', invoice_id=invoice.id) }}"
+               class="px-4 py-2 rounded-lg bg-gold text-jungle font-semibold hover:bg-yellow-400 transition">
+              View Invoice
+            </a>
+          {% else %}
+            {% if sale %}
+              <a href="{{ url_for('main.generate_invoice_from_sale', sale_id=sale.id) }}"
+                 class="px-4 py-2 rounded-lg bg-gold text-jungle font-semibold hover:bg-yellow-400 transition">
+                Generate Invoice
+              </a>
+            {% else %}
+              <span class="px-3 py-1 rounded-full bg-gray-100 text-gray-700 text-sm font-semibold">
+                Record sale first
+              </span>
+            {% endif %}
+          {% endif %}
+        </div>
+
+        {% if invoice %}
+          <div class="mt-4 text-sm text-gray-700 space-y-1">
+            <p><b>Invoice #:</b> {{ invoice.invoice_number }}</p>
+            <p><b>Status:</b> {{ invoice.status }}</p>
+            <p><b>Issue date:</b> {{ invoice.issue_date }}</p>
+            <p><b>Total:</b> {{ invoice.total }}</p>
+          </div>
+        {% endif %}
+      </div>
+
+    </div>
+
+  </main>
+
+  <footer class="text-center text-sm text-gray-500 py-6">
+    © {{ current_year or 2026 }} Rizara Meats Ltd — Secure • Traceable • Halal
+  </footer>
+
+{% endblock %}

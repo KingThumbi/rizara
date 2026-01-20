@@ -1,59 +1,153 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <title>Create Processing Batch - Cattle</title>
+{# app/templates/processing/cattle_add.html #}
+{% extends "layouts/base.html" %}
+
+{% block title %}Create Cattle Processing Batch | Rizara{% endblock %}
+
+{% block head %}
   <script src="https://cdn.tailwindcss.com"></script>
-</head>
-<body class="bg-gray-100 min-h-screen flex items-center justify-center">
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            jungle: '#1f6f54',
+            jungleLight: '#2f8f6b',
+            gold: '#d4af37',
+            grayDark: '#1f2937'
+          }
+        }
+      }
+    }
+  </script>
+{% endblock %}
 
-<div class="bg-white p-8 rounded-2xl shadow-md w-full max-w-lg">
-  <h1 class="text-2xl font-bold text-jungle mb-6">Create Cattle Processing Batch</h1>
+{% block body %}
 
-  <form method="POST" class="space-y-4">
+  <nav class="bg-jungle text-white px-6 py-4 flex justify-between items-center shadow">
+    <div class="text-xl font-bold tracking-wide">Rizara Meats</div>
+    <div class="flex items-center gap-3">
+      <a href="{{ url_for('main.dashboard') }}"
+         class="bg-gold text-jungle font-semibold px-4 py-2 rounded hover:bg-yellow-400 transition">
+        ← Back to Dashboard
+      </a>
+      <a href="{{ url_for('auth.logout') }}"
+         class="bg-white/10 text-white font-semibold px-4 py-2 rounded hover:bg-white/20 transition">
+        Logout
+      </a>
+    </div>
+  </nav>
 
-    <div>
-      <label class="block mb-1 font-semibold text-gray-700">Facility Name</label>
-      <input type="text" name="facility" required
-             class="w-full border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-jungle">
+  <main class="max-w-4xl mx-auto px-6 py-10">
+    <div class="mb-8">
+      <h1 class="text-3xl font-bold text-jungle">Create Cattle Processing Batch</h1>
+      <p class="text-gray-600 mt-1">Move cattle from <b>Aggregated</b> to <b>Processing</b>.</p>
     </div>
 
-    <div>
-      <label class="block mb-1 font-semibold text-gray-700">Slaughter Date</label>
-      <input type="date" name="slaughter_date" required
-             class="w-full border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-jungle">
-    </div>
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        <div class="mb-6 space-y-3">
+          {% for category, message in messages %}
+            <div class="px-4 py-3 rounded-lg
+              {% if category == 'success' %}
+                bg-green-100 text-green-800
+              {% elif category == 'danger' or category == 'error' %}
+                bg-red-100 text-red-800
+              {% else %}
+                bg-gray-100 text-gray-800
+              {% endif %}
+            ">
+              {{ message }}
+            </div>
+          {% endfor %}
+        </div>
+      {% endif %}
+    {% endwith %}
 
-    <div>
-      <label class="block mb-1 font-semibold text-gray-700">Halal Certificate Reference</label>
-      <input type="text" name="halal_cert_ref"
-             class="w-full border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-jungle">
-    </div>
+    <div class="bg-white rounded-xl shadow p-8">
+      <form method="POST" class="space-y-6">
 
-    <div>
-      <label class="block mb-1 font-semibold text-gray-700">Select Cattle (Aggregated)</label>
-      <div class="max-h-48 overflow-y-auto border rounded p-3 space-y-2">
-        {% for cattle in animals %}
-          <label class="flex items-center gap-2">
-            <input type="checkbox" name="animal_ids" value="{{ cattle.id }}">
-            {{ cattle.rizara_id }} — {{ cattle.farmer.name }}
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+          <div>
+            <label class="block text-sm font-semibold text-gray-700 mb-1">Processing Facility</label>
+            <input type="text" name="facility" required
+                   class="w-full border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-jungle" />
+          </div>
+
+          <div>
+            <label class="block text-sm font-semibold text-gray-700 mb-1">
+              Slaughter Date <span class="text-gray-400">(optional)</span>
+            </label>
+            <input type="date" name="slaughter_date" value="{{ date.today().isoformat() }}"
+                   class="w-full border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-jungle" />
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-sm font-semibold text-gray-700 mb-1">
+            Halal Certificate Reference <span class="text-gray-400">(optional)</span>
           </label>
-        {% endfor %}
-      </div>
+          <input type="text" name="halal_cert_ref"
+                 class="w-full border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-jungle" />
+        </div>
+
+        <div>
+          <label class="block text-sm font-semibold text-gray-700 mb-2">Select Cattle (Aggregated)</label>
+
+          {% if not animals %}
+            <div class="bg-gray-100 text-gray-700 px-4 py-3 rounded-lg">
+              No cattle available in <b>Aggregated</b> status.
+            </div>
+          {% else %}
+            <div class="border border-gray-200 rounded-lg overflow-hidden">
+              <div class="max-h-80 overflow-auto">
+                <table class="w-full text-sm">
+                  <thead class="bg-gray-50 sticky top-0">
+                    <tr class="text-left">
+                      <th class="p-3 w-12">Pick</th>
+                      <th class="p-3">Rizara ID</th>
+                      <th class="p-3">Farmer</th>
+                      <th class="p-3">Sex</th>
+                      <th class="p-3">Breed</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {% for a in animals %}
+                      <tr class="border-t hover:bg-gray-50">
+                        <td class="p-3">
+                          <input type="checkbox" name="animal_ids" value="{{ a.id }}"
+                                 class="h-4 w-4 accent-jungle" />
+                        </td>
+                        <td class="p-3 font-medium text-gray-900">{{ a.rizara_id }}</td>
+                        <td class="p-3 text-gray-700">{{ a.farmer_tag }}</td>
+                        <td class="p-3 text-gray-700">{{ a.sex or "-" }}</td>
+                        <td class="p-3 text-gray-700">{{ a.breed or "-" }}</td>
+                      </tr>
+                    {% endfor %}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            <p class="text-xs text-gray-500 mt-2">Selected cattle will be marked as <b>processing</b>.</p>
+          {% endif %}
+        </div>
+
+        <div class="flex justify-end gap-4 pt-2">
+          <a href="{{ url_for('main.dashboard') }}"
+             class="px-5 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-100 transition">
+            Cancel
+          </a>
+          <button type="submit"
+                  class="px-6 py-2 rounded-lg bg-jungle text-white font-semibold hover:bg-jungleLight transition">
+            Create Batch
+          </button>
+        </div>
+
+      </form>
     </div>
+  </main>
 
-    <button type="submit"
-            class="w-full bg-jungle text-white font-bold py-2 px-4 rounded hover:bg-jungleLight transition">
-      Create Processing Batch
-    </button>
+  <footer class="text-center text-sm text-gray-500 py-6">
+    © {{ current_year or 2026 }} Rizara Meats Ltd — Secure • Traceable • Halal
+  </footer>
 
-  </form>
-
-  <a href="{{ url_for('main.dashboard') }}"
-     class="block mt-4 text-center text-jungle hover:underline">
-    ← Back to Dashboard
-  </a>
-</div>
-
-</body>
-</html>
+{% endblock %}

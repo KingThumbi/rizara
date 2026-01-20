@@ -1,102 +1,227 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Admin - Order Requests | Rizara Meats</title>
-  <link rel="stylesheet" href="/assets/css/style.css" />
+{# app/templates/admin/order_requests.html #}
+{% extends "layouts/base.html" %}
 
-  <style>
-    .table-container {
-      overflow-x: auto;
-      margin-top: 1rem;
-    }
-    table {
-      width: 100%;
-      border-collapse: collapse;
-    }
-    th, td {
-      padding: 0.5rem;
-      border: 1px solid #ddd;
-      text-align: left;
-      font-size: 0.9rem;
-    }
-    @media (max-width: 768px) {
-      th, td {
-        font-size: 0.8rem;
-      }
-    }
-    .btn-small {
-      padding: 0.25rem 0.5rem;
-      font-size: 0.8rem;
-    }
-    .flash {
-      margin-top: 1rem;
-      padding: 0.5rem;
-      border-radius: 0.25rem;
-    }
-    .flash.success { background-color: #d4edda; color: #155724; }
-    .flash.error { background-color: #f8d7da; color: #721c24; }
-  </style>
-</head>
-<body>
+{% block title %}Order Requests | Rizara{% endblock %}
 
-<a href="{{ url_for('main.dashboard') }}" class="btn">← Back to Dashboard</a>
+{% block body %}
 
-<h1 class="hero-text mt-6">Order Requests</h1>
+  <!-- NAVBAR -->
+  <nav class="bg-jungle text-white px-6 py-4 flex justify-between items-center shadow">
+    <div class="text-xl font-bold tracking-wide">Rizara Meats</div>
+    <div class="flex items-center gap-3">
+      <a href="{{ url_for('main.dashboard') }}"
+         class="bg-gold text-jungle font-semibold px-4 py-2 rounded hover:bg-yellow-400 transition">
+        ← Back to Dashboard
+      </a>
+      <a href="{{ url_for('auth.logout') }}"
+         class="bg-white/10 text-white font-semibold px-4 py-2 rounded hover:bg-white/20 transition">
+        Logout
+      </a>
+    </div>
+  </nav>
 
-{% with messages = get_flashed_messages(with_categories=true) %}
-  {% if messages %}
-    {% for category, msg in messages %}
-      <div class="flash {{ category }}">{{ msg }}</div>
-    {% endfor %}
-  {% endif %}
-{% endwith %}
+  <main class="max-w-6xl mx-auto px-6 py-10">
 
-<div class="table-container">
-  <table>
-    <thead>
-      <tr>
-        <th>ID</th>
-        <th>Buyer Name</th>
-        <th>Company</th>
-        <th>Email / Phone</th>
-        <th>Product</th>
-        <th>Quantity</th>
-        <th>Destination</th>
-        <th>Status</th>
-        <th>Submitted At</th>
-        <th>Action</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for order in orders %}
-      <tr>
-        <td>{{ order.id }}</td>
-        <td>{{ order.buyer_name }}</td>
-        <td>{{ order.company_name or '-' }}</td>
-        <td>{{ order.email or '-' }} / {{ order.phone }}</td>
-        <td>{{ order.product }}</td>
-        <td>{{ order.quantity }}</td>
-        <td>{{ order.delivery_location }}</td>
-        <td>{{ order.status }}</td>
-        <td>{{ order.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
-        <td>
-          <form action="{{ url_for('main.update_order_status', order_id=order.id) }}" method="POST">
-            <select name="status">
-              <option value="new" {% if order.status=='new' %}selected{% endif %}>New</option>
-              <option value="reviewed" {% if order.status=='reviewed' %}selected{% endif %}>Reviewed</option>
-              <option value="approved" {% if order.status=='approved' %}selected{% endif %}>Approved</option>
-              <option value="rejected" {% if order.status=='rejected' %}selected{% endif %}>Rejected</option>
-            </select>
-            <button type="submit" class="btn-small">Update</button>
-          </form>
-        </td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-</div>
+    <!-- TITLE -->
+    <div class="mb-8">
+      <h1 class="text-3xl font-bold text-jungle">Order Requests</h1>
+      <p class="text-gray-600 mt-1">
+        Review incoming buyer requests submitted via the website order form (and buyer portal repeat orders).
+      </p>
+    </div>
 
-</body>
-</html>
+    <!-- FLASH MESSAGES -->
+    {% with flashes = get_flashed_messages(with_categories=true) %}
+      {% if flashes %}
+        <div class="mb-6 space-y-3">
+          {% for category, message in flashes %}
+            <div class="px-4 py-3 rounded-lg
+              {% if category == 'success' %}
+                bg-green-100 text-green-800
+              {% elif category in ['danger', 'error'] %}
+                bg-red-100 text-red-800
+              {% else %}
+                bg-gray-100 text-gray-800
+              {% endif %}
+            ">
+              {{ message }}
+            </div>
+          {% endfor %}
+        </div>
+      {% endif %}
+    {% endwith %}
+
+    <section class="bg-white rounded-xl shadow overflow-hidden border border-gray-100">
+
+      <!-- Header + Filters -->
+      <div class="p-6 flex flex-col md:flex-row md:items-center md:justify-between gap-4 border-b bg-gray-50">
+        <div>
+          <h2 class="text-lg font-semibold text-grayDark">Requests</h2>
+          <p class="text-sm text-gray-600">
+            Showing:
+            <span class="font-semibold text-jungle">{{ orders|length }}</span>
+            request{{ '' if orders|length == 1 else 's' }}
+          </p>
+        </div>
+
+        <!-- Filter (uses query string ?status=...) -->
+        <form method="GET" class="flex items-center gap-3">
+          {% set qst = (request.args.get('status') or '')|lower %}
+          <label class="text-sm font-semibold text-gray-700">Filter</label>
+          <select name="status"
+                  class="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-jungle">
+            <option value="" {% if not qst %}selected{% endif %}>All</option>
+            <option value="new" {% if qst == 'new' %}selected{% endif %}>New</option>
+            <option value="reviewed" {% if qst == 'reviewed' %}selected{% endif %}>Reviewed</option>
+            <option value="approved" {% if qst == 'approved' %}selected{% endif %}>Approved</option>
+            <option value="rejected" {% if qst == 'rejected' %}selected{% endif %}>Rejected</option>
+          </select>
+          <button type="submit"
+                  class="px-4 py-2 rounded-lg bg-jungle text-white font-semibold hover:bg-jungleLight transition">
+            Apply
+          </button>
+
+          {% if qst %}
+            <a href="{{ url_for('main.order_requests') }}"
+               class="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-100 transition">
+              Clear
+            </a>
+          {% endif %}
+        </form>
+      </div>
+
+      {% if not orders %}
+        <div class="p-6">
+          <div class="bg-gray-100 text-gray-700 px-4 py-3 rounded-lg">
+            No order requests found{% if qst %} for filter: <b>{{ qst }}</b>{% endif %}.
+          </div>
+        </div>
+      {% else %}
+
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead class="bg-gray-50">
+              <tr class="text-left">
+                <th class="p-4">Received</th>
+                <th class="p-4">Buyer</th>
+                <th class="p-4">Phone</th>
+                <th class="p-4">Email</th>
+                <th class="p-4">Product</th>
+                <th class="p-4">Qty</th>
+                <th class="p-4">Destination</th>
+                <th class="p-4">Notes</th>
+                <th class="p-4">Status</th>
+                <th class="p-4">Actions</th>
+              </tr>
+            </thead>
+
+            <tbody>
+              {% for o in orders %}
+                {% set st = ((o.status or 'new')|lower) %}
+                <tr class="border-t hover:bg-gray-50 align-top">
+
+                  <td class="p-4 text-gray-700 whitespace-nowrap">
+                    {% if o.created_at %}
+                      {{ o.created_at.strftime('%Y-%m-%d') }}
+                    {% else %}
+                      -
+                    {% endif %}
+                  </td>
+
+                  <td class="p-4 text-gray-900 font-semibold">
+                    {{ o.buyer_name }}
+                    {% if o.buyer_id %}
+                      <div class="text-xs text-gray-500 mt-1">Buyer ID: {{ o.buyer_id }}</div>
+                    {% endif %}
+                  </td>
+
+                  <td class="p-4 text-gray-700">
+                    {{ o.phone or '-' }}
+                  </td>
+
+                  <td class="p-4 text-gray-700">
+                    {{ o.email or '-' }}
+                  </td>
+
+                  <td class="p-4 text-gray-700">
+                    {{ o.product }}
+                  </td>
+
+                  <td class="p-4 text-gray-700 whitespace-nowrap">
+                    {{ o.quantity }}
+                  </td>
+
+                  <td class="p-4 text-gray-700">
+                    {{ o.delivery_location }}
+                  </td>
+
+                  <td class="p-4 text-gray-700 whitespace-pre-line">
+                    {{ o.notes or '-' }}
+                  </td>
+
+                  <td class="p-4">
+                    <span class="inline-flex px-2 py-1 rounded text-xs font-semibold
+                      {% if st == 'new' %}
+                        bg-blue-100 text-blue-800
+                      {% elif st == 'reviewed' %}
+                        bg-yellow-100 text-yellow-800
+                      {% elif st == 'approved' %}
+                        bg-green-100 text-green-800
+                      {% elif st == 'rejected' %}
+                        bg-red-100 text-red-800
+                      {% else %}
+                        bg-gray-100 text-gray-800
+                      {% endif %}
+                    ">
+                      {{ st }}
+                    </span>
+                  </td>
+
+                  <!-- Actions -->
+                  <td class="p-4">
+                    <form method="POST"
+                          action="{{ url_for('main.order_request_set_status', order_id=o.id) }}"
+
+                          class="flex flex-wrap gap-2">
+                      <input type="hidden" name="next" value="{{ request.full_path }}"/>
+
+                      <button name="status" value="reviewed" type="submit"
+                              class="px-3 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-100 transition
+                                     {% if st == 'reviewed' %} opacity-50 pointer-events-none {% endif %}">
+                        Mark Reviewed
+                      </button>
+
+                      <button name="status" value="approved" type="submit"
+                              class="px-3 py-2 rounded-lg bg-jungle text-white font-semibold hover:bg-jungleLight transition
+                                     {% if st == 'approved' %} opacity-50 pointer-events-none {% endif %}">
+                        Approve
+                      </button>
+
+                      <button name="status" value="rejected" type="submit"
+                              class="px-3 py-2 rounded-lg bg-red-600 text-white font-semibold hover:bg-red-500 transition
+                                     {% if st == 'rejected' %} opacity-50 pointer-events-none {% endif %}">
+                        Reject
+                      </button>
+                    </form>
+
+                    <div class="text-xs text-gray-500 mt-2">
+                      Tip: Mark reviewed once contacted. Approve when confirmed. Reject if not feasible.
+                    </div>
+                  </td>
+
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+
+      {% endif %}
+    </section>
+
+  </main>
+
+  <footer class="text-center text-sm text-gray-500 py-6">
+    © {{ current_year or 2026 }} Rizara Meats Ltd — Secure • Traceable • Halal
+  </footer>
+
+{% endblock %}

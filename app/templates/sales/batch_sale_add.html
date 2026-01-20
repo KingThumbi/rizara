@@ -1,0 +1,160 @@
+{# /home/thumbi/rizara/app/templates/sales/batch_sale_add.html #}
+{% extends "layouts/base.html" %}
+
+{% block title %}Record Batch Sale | Rizara{% endblock %}
+
+{% block body %}
+
+<nav class="bg-jungle text-white px-6 py-4 flex justify-between items-center shadow">
+  <div class="text-xl font-bold tracking-wide">Rizara Meats</div>
+  <div class="flex items-center gap-3">
+    <a href="{{ url_for('main.view_invoiceable_batch', batch_id=batch.id) }}"
+       class="bg-gold text-jungle font-semibold px-4 py-2 rounded hover:bg-yellow-400 transition">
+      ← Back to Batch
+    </a>
+    <a href="{{ url_for('auth.logout') }}"
+       class="bg-white/10 text-white font-semibold px-4 py-2 rounded hover:bg-white/20 transition">
+      Logout
+    </a>
+  </div>
+</nav>
+
+<main class="max-w-4xl mx-auto px-6 py-10">
+
+  <div class="mb-8">
+    <h1 class="text-3xl font-bold text-jungle">Record Processing Batch Sale</h1>
+    <p class="text-gray-600 mt-1">
+      Batch #{{ batch.id }} • {{ batch.animal_type|capitalize }}
+      {% if batch.facility %} • Facility: <b>{{ batch.facility }}</b>{% endif %}
+      {% if yield_record %} • Carcass Weight: <b>{{ yield_record.total_carcass_weight_kg }} kg</b>{% endif %}
+    </p>
+  </div>
+
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      <div class="mb-6 space-y-3">
+        {% for category, message in messages %}
+          <div class="px-4 py-3 rounded-lg
+            {% if category == 'success' %}
+              bg-green-100 text-green-800
+            {% elif category in ['danger', 'error'] %}
+              bg-red-100 text-red-800
+            {% else %}
+              bg-gray-100 text-gray-800
+            {% endif %}
+          ">
+            {{ message }}
+          </div>
+        {% endfor %}
+      </div>
+    {% endif %}
+  {% endwith %}
+
+  <div class="bg-white rounded-xl shadow p-8">
+    <form method="POST" class="space-y-7">
+
+      <div class="border border-gray-200 rounded-xl p-5">
+        <h2 class="text-lg font-bold text-gray-900">Select Existing Buyer (Optional)</h2>
+        <p class="text-sm text-gray-600 mt-1">
+          If the buyer already exists, select them here. Otherwise, create a new buyer below.
+        </p>
+
+        <div class="mt-4">
+          <label class="block text-sm font-semibold text-gray-700 mb-1">Buyer</label>
+          <select name="buyer_id"
+                  class="w-full border border-gray-300 rounded-lg px-4 py-2
+                         focus:outline-none focus:ring-2 focus:ring-jungle">
+            <option value="">-- Select Buyer --</option>
+            {% for b in buyers %}
+              <option value="{{ b.id }}">
+                {{ b.name }}{% if b.phone %} ({{ b.phone }}){% endif %}
+              </option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+
+      <div class="border border-gray-200 rounded-xl p-5">
+        <h2 class="text-lg font-bold text-gray-900">Or Create New Buyer</h2>
+        <p class="text-sm text-gray-600 mt-1">
+          Fill this only if you did not select an existing buyer above.
+        </p>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-5 mt-4">
+          <div class="md:col-span-2">
+            <label class="block text-sm font-semibold text-gray-700 mb-1">Buyer Name</label>
+            <input name="buyer_name" type="text" placeholder="Buyer name"
+                   class="w-full border border-gray-300 rounded-lg px-4 py-2
+                          focus:outline-none focus:ring-2 focus:ring-jungle" />
+          </div>
+
+          <div>
+            <label class="block text-sm font-semibold text-gray-700 mb-1">Phone</label>
+            <input name="buyer_phone" type="text" placeholder="Phone"
+                   class="w-full border border-gray-300 rounded-lg px-4 py-2
+                          focus:outline-none focus:ring-2 focus:ring-jungle" />
+          </div>
+
+          <div>
+            <label class="block text-sm font-semibold text-gray-700 mb-1">Email</label>
+            <input name="buyer_email" type="email" placeholder="Email"
+                   class="w-full border border-gray-300 rounded-lg px-4 py-2
+                          focus:outline-none focus:ring-2 focus:ring-jungle" />
+          </div>
+        </div>
+      </div>
+
+      <div class="border border-gray-200 rounded-xl p-5">
+        <h2 class="text-lg font-bold text-gray-900">Sale Details</h2>
+        <p class="text-sm text-gray-600 mt-1">
+          Record the total sale price for this processing batch.
+        </p>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-5 mt-4">
+          <div>
+            <label class="block text-sm font-semibold text-gray-700 mb-1">Total Sale Price</label>
+            <input name="total_sale_price" type="number" step="0.01" required
+                   class="w-full border border-gray-300 rounded-lg px-4 py-2
+                          focus:outline-none focus:ring-2 focus:ring-jungle" />
+          </div>
+
+          <div>
+            <label class="block text-sm font-semibold text-gray-700 mb-1">
+              Sale Date <span class="text-gray-400">(optional)</span>
+            </label>
+            <input name="sale_date" type="date"
+                   class="w-full border border-gray-300 rounded-lg px-4 py-2
+                          focus:outline-none focus:ring-2 focus:ring-jungle" />
+          </div>
+
+          <div class="md:col-span-2">
+            <label class="block text-sm font-semibold text-gray-700 mb-1">
+              Notes <span class="text-gray-400">(optional)</span>
+            </label>
+            <textarea name="notes" rows="4"
+                      class="w-full border border-gray-300 rounded-lg px-4 py-2
+                             focus:outline-none focus:ring-2 focus:ring-jungle"></textarea>
+          </div>
+        </div>
+      </div>
+
+      <div class="flex justify-end gap-4 pt-2">
+        <a href="{{ url_for('main.view_invoiceable_batch', batch_id=batch.id) }}"
+           class="px-5 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-100 transition">
+          Cancel
+        </a>
+        <button type="submit"
+                class="px-6 py-2 rounded-lg bg-jungle text-white font-semibold hover:bg-jungleLight transition">
+          Save Sale
+        </button>
+      </div>
+
+    </form>
+  </div>
+</main>
+
+<footer class="text-center text-sm text-gray-500 py-6">
+  © {{ current_year or 2026 }} Rizara Meats Ltd — Secure • Traceable • Halal
+</footer>
+
+{% endblock %}
