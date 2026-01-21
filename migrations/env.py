@@ -1,8 +1,17 @@
 import os
+import sys
 import logging
 from logging.config import fileConfig
 
 from alembic import context
+
+# -----------------------------------------------------------------------------
+# Ensure project root is on sys.path so "import app" works everywhere
+# This file lives at: <project_root>/migrations/env.py
+# -----------------------------------------------------------------------------
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
 
 # Alembic Config object (reads whichever .ini you invoked Alembic with)
 config = context.config
@@ -19,7 +28,7 @@ logger = logging.getLogger("alembic.env")
 # 1) If DATABASE_URL is set (Render), use it and import db.metadata directly.
 # 2) Otherwise (local Flask-Migrate workflow), use current_app + Flask-Migrate.
 # -----------------------------------------------------------------------------
-DB_URL = os.getenv("DATABASE_URL")
+DB_URL = os.getenv("DATABASE_URL") or os.getenv("RENDER_DB_URL")
 
 USING_FLASK_MIGRATE = False
 target_db = None
@@ -39,6 +48,9 @@ def _import_app_db_metadata():
     """
     from app.extensions import db  # noqa: WPS433 (runtime import is intentional)
 
+    # Flask-SQLAlchemy can expose metadatas in some setups
+    if hasattr(db, "metadatas") and db.metadatas:
+        return db.metadatas.get(None) or db.metadata
     return db.metadata
 
 
@@ -51,7 +63,7 @@ else:
         from flask import current_app  # noqa: WPS433
     except Exception as exc:  # pragma: no cover
         raise RuntimeError(
-            "DATABASE_URL is not set, and Flask is not available. "
+            "DATABASE_URL (or RENDER_DB_URL) is not set, and Flask is not available. "
             "Set DATABASE_URL for non-Flask environments."
         ) from exc
 
@@ -107,6 +119,7 @@ def run_migrations_offline():
         target_metadata=get_metadata(),
         literal_binds=True,
         compare_type=True,
+        compare_server_default=True,
     )
 
     with context.begin_transaction():
@@ -148,9 +161,7 @@ def run_migrations_online():
 
     url = config.get_main_option("sqlalchemy.url")
     if not url:
-        raise RuntimeError(
-            "No sqlalchemy.url configured. Set DATABASE_URL on Render."
-        )
+        raise RuntimeError("No sqlalchemy.url configured. Set DATABASE_URL on Render.")
 
     engine = create_engine(url)
 
@@ -160,6 +171,7 @@ def run_migrations_online():
             target_metadata=get_metadata(),
             process_revision_directives=process_revision_directives,
             compare_type=True,
+            compare_server_default=True,
         )
 
         with context.begin_transaction():
