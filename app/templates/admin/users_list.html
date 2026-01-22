@@ -1,0 +1,284 @@
+<!-- app/templates/admin/users_list.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Users | Rizara Admin</title>
+
+  <!-- Tailwind -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            jungle: '#1f6f54',
+            jungleLight: '#2f8f6b',
+            gold: '#d4af37',
+            grayDark: '#1f2937'
+          }
+        }
+      }
+    }
+  </script>
+</head>
+
+<body class="bg-gray-100 min-h-screen">
+
+  <!-- NAVBAR -->
+  <nav class="bg-jungle text-white px-6 py-4 flex justify-between items-center shadow">
+    <div class="text-xl font-bold tracking-wide">Rizara Meats</div>
+
+    <div class="flex items-center gap-3">
+      <a href="{{ url_for('main.dashboard') }}"
+         class="bg-gold text-jungle font-semibold px-4 py-2 rounded hover:bg-yellow-400 transition">
+        ← Dashboard
+      </a>
+      <a href="{{ url_for('auth.admin_create_user') }}"
+         class="border border-white/25 px-4 py-2 rounded hover:bg-white/10 transition">
+        + New User
+      </a>
+      <a href="{{ url_for('auth.logout') }}"
+         class="border border-white/25 px-4 py-2 rounded hover:bg-white/10 transition">
+        Logout
+      </a>
+    </div>
+  </nav>
+
+  <!-- MAIN -->
+  <main class="max-w-7xl mx-auto px-6 py-10">
+
+    <!-- TITLE -->
+    <div class="mb-8">
+      <h1 class="text-3xl font-bold text-jungle">Users</h1>
+      <p class="text-gray-600 mt-1">Search, filter, and review accounts in the system.</p>
+    </div>
+
+    <!-- FLASH MESSAGES -->
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        <div class="mb-6 space-y-3">
+          {% for category, message in messages %}
+            <div class="px-4 py-3 rounded-lg
+              {% if category == 'success' %}
+                bg-green-100 text-green-800
+              {% elif category == 'danger' or category == 'error' %}
+                bg-red-100 text-red-800
+              {% else %}
+                bg-gray-100 text-gray-800
+              {% endif %}
+            ">
+              {{ message }}
+            </div>
+          {% endfor %}
+        </div>
+      {% endif %}
+    {% endwith %}
+
+    <!-- FILTER CARD -->
+    <section class="bg-white rounded-xl shadow p-6 mb-6">
+      <form method="GET" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+
+        <!-- Search -->
+        <div>
+          <label class="block text-sm font-semibold text-gray-700 mb-1">Search</label>
+          <input
+            type="text"
+            name="q"
+            value="{{ q or '' }}"
+            placeholder="Name, email, phone..."
+            class="w-full border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-jungle"
+          />
+        </div>
+
+        <!-- Role -->
+        <div>
+          <label class="block text-sm font-semibold text-gray-700 mb-1">Role</label>
+          <input
+            type="text"
+            name="role"
+            value="{{ role or '' }}"
+            placeholder="admin, buyer, farmer..."
+            class="w-full border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-jungle"
+          />
+        </div>
+
+        <!-- Status -->
+        <div>
+          <label class="block text-sm font-semibold text-gray-700 mb-1">Status</label>
+          <select
+            name="status"
+            class="w-full border border-gray-300 rounded-lg px-4 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-jungle"
+          >
+            <option value="" {% if not status %}selected{% endif %}>All</option>
+            <option value="active" {% if status=='active' %}selected{% endif %}>Active</option>
+            <option value="inactive" {% if status=='inactive' %}selected{% endif %}>Inactive</option>
+          </select>
+          <p class="text-xs text-gray-500 mt-1">
+            Status works when <code class="bg-gray-100 px-1 rounded">is_active</code> exists on User.
+          </p>
+        </div>
+
+        <!-- Per page -->
+        <div>
+          <label class="block text-sm font-semibold text-gray-700 mb-1">Per page</label>
+          <select
+            name="per_page"
+            class="w-full border border-gray-300 rounded-lg px-4 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-jungle"
+          >
+            {% for n in [10,20,50,100] %}
+              <option value="{{ n }}" {% if per_page==n %}selected{% endif %}>{{ n }}</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <!-- Actions -->
+        <div class="md:col-span-2 lg:col-span-4 flex flex-wrap gap-3 pt-2">
+          <button
+            type="submit"
+            class="px-5 py-2 rounded-lg bg-jungle text-white font-semibold hover:bg-jungleLight transition"
+          >
+            Filter
+          </button>
+
+          <a
+            href="{{ url_for('auth.admin_list_users') }}"
+            class="px-5 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-100 transition"
+          >
+            Reset
+          </a>
+
+          <a
+            href="{{ url_for('auth.admin_create_user') }}"
+            class="px-5 py-2 rounded-lg bg-gold text-jungle font-semibold hover:bg-yellow-400 transition"
+          >
+            + New User
+          </a>
+        </div>
+
+      </form>
+    </section>
+
+    <!-- TABLE CARD -->
+    <section class="bg-white rounded-xl shadow overflow-hidden">
+      <div class="overflow-x-auto">
+        <table class="min-w-full text-sm">
+          <thead class="bg-gray-50 border-b">
+            <tr class="text-left text-gray-700">
+              <th class="px-5 py-3 font-semibold">ID</th>
+              <th class="px-5 py-3 font-semibold">Name</th>
+              <th class="px-5 py-3 font-semibold">Email</th>
+              <th class="px-5 py-3 font-semibold">Phone</th>
+              <th class="px-5 py-3 font-semibold">Role</th>
+              <th class="px-5 py-3 font-semibold">Admin</th>
+              <th class="px-5 py-3 font-semibold">Created</th>
+              <th class="px-5 py-3 font-semibold">Last Login</th>
+              <th class="px-5 py-3 font-semibold">Status</th>
+            </tr>
+          </thead>
+
+          <tbody class="divide-y">
+            {% if users %}
+              {% for u in users %}
+                <tr class="hover:bg-gray-50">
+                  <td class="px-5 py-3 text-gray-700">{{ u.id }}</td>
+
+                  <td class="px-5 py-3">
+                    <div class="font-semibold text-gray-900">{{ u.name }}</div>
+                    <div class="text-xs text-gray-500">
+                      {{ u.role or '—' }}
+                      {% if u.must_change_password %}
+                        • <span class="text-amber-700 font-semibold">Must change password</span>
+                      {% endif %}
+                    </div>
+                  </td>
+
+                  <td class="px-5 py-3 text-gray-700">{{ u.email }}</td>
+                  <td class="px-5 py-3 text-gray-700">{{ u.phone or '-' }}</td>
+
+                  <td class="px-5 py-3">
+                    <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold bg-gray-100 text-gray-800">
+                      {{ u.role }}
+                    </span>
+                  </td>
+
+                  <td class="px-5 py-3 text-gray-700">{{ 'Yes' if u.is_admin else 'No' }}</td>
+
+                  <td class="px-5 py-3 text-gray-700">
+                    {{ u.created_at.strftime('%Y-%m-%d') if u.created_at else '-' }}
+                  </td>
+
+                  <td class="px-5 py-3 text-gray-700">
+                    {{ u.last_login_at.strftime('%Y-%m-%d %H:%M') if u.last_login_at else '-' }}
+                  </td>
+
+                  <td class="px-5 py-3">
+                    {% if u.is_active is defined %}
+                      {% if u.is_active %}
+                        <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold bg-green-100 text-green-800">
+                          Active
+                        </span>
+                      {% else %}
+                        <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold bg-red-100 text-red-800">
+                          Inactive
+                        </span>
+                      {% endif %}
+                    {% else %}
+                      <span class="text-gray-400">—</span>
+                    {% endif %}
+                  </td>
+                </tr>
+              {% endfor %}
+            {% else %}
+              <tr>
+                <td colspan="9" class="px-5 py-10 text-center text-gray-500">
+                  No users found. Try adjusting your filters.
+                </td>
+              </tr>
+            {% endif %}
+          </tbody>
+        </table>
+      </div>
+
+      <!-- PAGINATION -->
+      {% if pagination %}
+        <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3 px-6 py-4 border-t bg-white">
+          <div class="text-sm text-gray-600">
+            Page <span class="font-semibold text-gray-900">{{ pagination.page }}</span>
+            of <span class="font-semibold text-gray-900">{{ pagination.pages }}</span>
+            — <span class="font-semibold text-gray-900">{{ pagination.total }}</span> total
+          </div>
+
+          <div class="flex items-center gap-2">
+            {% if pagination.has_prev %}
+              <a
+                class="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-100 transition"
+                href="{{ url_for('auth.admin_list_users', page=pagination.prev_num, q=q, role=role, status=status, per_page=per_page) }}"
+              >
+                Prev
+              </a>
+            {% endif %}
+
+            {% if pagination.has_next %}
+              <a
+                class="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-100 transition"
+                href="{{ url_for('auth.admin_list_users', page=pagination.next_num, q=q, role=role, status=status, per_page=per_page) }}"
+              >
+                Next
+              </a>
+            {% endif %}
+          </div>
+        </div>
+      {% endif %}
+    </section>
+
+  </main>
+
+  <!-- FOOTER -->
+  <footer class="text-center text-sm text-gray-500 py-6">
+    © {{ current_year or 2026 }} Rizara Meats Ltd — Secure • Traceable • Halal
+  </footer>
+
+</body>
+</html>

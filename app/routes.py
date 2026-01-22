@@ -57,15 +57,16 @@ def buyer_required(view):
             flash("Access denied.", "danger")
             return redirect(url_for("main.dashboard"))
         return view(*args, **kwargs)
+
     return wrapped
 
 
-def _get_buyer_for_current_user_or_404():
+def _get_buyer_for_current_user_or_redirect():
     buyer = Buyer.query.filter_by(user_id=current_user.id).first()
     if not buyer:
         flash("Buyer profile not linked to this account. Contact Rizara support/admin.", "danger")
-        return redirect(url_for("auth.logout"))
-    return buyer
+        return None, redirect(url_for("auth.logout"))
+    return buyer, None
 
 
 # ======================
@@ -143,14 +144,23 @@ def _safe_enum_value(v):
 
 
 # ======================
-# reCAPTCHA Verification
+# reCAPTCHA Verification (SECURE)
 # ======================
 def verify_recaptcha(response_token: str) -> bool:
-    secret = (
-        current_app.config.get("RECAPTCHA_SECRET_KEY") if current_app else None
-    ) or os.getenv("RECAPTCHA_SECRET_KEY") or "6Lc1hEksAAAAAJjGH2S0KcW6kyOye7bs927dN_hW"
+    """
+    Used to prevent spam in public forms (contact + order).
+    IMPORTANT:
+    - Do NOT hardcode the secret key in code.
+    - Set RECAPTCHA_SECRET_KEY in environment variables (Render + local).
+    """
+    secret = (current_app.config.get("RECAPTCHA_SECRET_KEY") if current_app else None) or os.getenv(
+        "RECAPTCHA_SECRET_KEY"
+    )
 
-    if not response_token:
+    # Fail closed if not configured
+    if not secret or not response_token:
+        if current_app:
+            current_app.logger.warning("reCAPTCHA secret/token missing; rejecting request.")
         return False
 
     try:
@@ -160,8 +170,9 @@ def verify_recaptcha(response_token: str) -> bool:
             timeout=5,
         )
         return bool(r.json().get("success", False))
-    except Exception as e:
-        print("reCAPTCHA verification failed:", e)
+    except Exception:
+        if current_app:
+            current_app.logger.exception("reCAPTCHA verification failed.")
         return False
 
 
@@ -205,9 +216,7 @@ def dashboard():
     stats["latest_contacts"] = (
         ContactMessage.query.order_by(ContactMessage.created_at.desc()).limit(5).all()
     )
-    stats["latest_orders"] = (
-        OrderRequest.query.order_by(OrderRequest.created_at.desc()).limit(5).all()
-    )
+    stats["latest_orders"] = OrderRequest.query.order_by(OrderRequest.created_at.desc()).limit(5).all()
 
     return render_template(
         "dashboard.html",
@@ -534,11 +543,12 @@ processing_route("cattle", "processing/cattle_add.html")
 @main.route("/submit-contact", methods=["POST"])
 @limiter.limit("5 per minute")
 def submit_contact():
+    # Honeypot
     if request.form.get("hp_field"):
         return jsonify({"success": False}), 200
 
     if not verify_recaptcha(request.form.get("g-recaptcha-response")):
-        return jsonify({"success": False}), 403
+        return jsonify({"success": False, "error": "recaptcha_failed"}), 403
 
     name = request.form.get("name")
     email = request.form.get("email")
@@ -563,11 +573,12 @@ def submit_contact():
 @main.route("/submit-order", methods=["POST"])
 @limiter.limit("3 per minute")
 def submit_order():
+    # Honeypot
     if request.form.get("hp_field"):
         return jsonify({"success": False}), 200
 
     if not verify_recaptcha(request.form.get("g-recaptcha-response")):
-        return jsonify({"success": False}), 403
+        return jsonify({"success": False, "error": "recaptcha_failed"}), 403
 
     buyer_name = request.form.get("buyerName")
     email = request.form.get("email")
@@ -621,9 +632,10 @@ def update_contact_status(msg_id):
         db.session.commit()
         flash("Message status updated.", "success")
     else:
-        flash("Invalid status.", "error")
+        flash("Invalid status.", "danger")
 
     return redirect(url_for("main.contact_messages"))
+
 
 # ======================
 # Admin: Order Requests (ADMIN ONLY)
@@ -631,7 +643,6 @@ def update_contact_status(msg_id):
 @main.route("/admin/order-requests", endpoint="order_requests")
 @admin_required
 def admin_order_requests():
-    # Optional filter: /admin/order-requests?status=new
     qst = (request.args.get("status") or "").strip().lower()
     allowed = {"new", "reviewed", "approved", "rejected"}
 
@@ -648,11 +659,7 @@ def admin_order_requests():
     )
 
 
-@main.route(
-    "/admin/order-requests/<int:order_id>/status",
-    methods=["POST"],
-    endpoint="order_request_set_status",
-)
+@main.route("/admin/order-requests/<int:order_id>/status", methods=["POST"], endpoint="order_request_set_status")
 @admin_required
 def order_request_set_status(order_id):
     order = OrderRequest.query.get_or_404(order_id)
@@ -794,7 +801,6 @@ def record_processing_batch_sale(batch_id):
     buyers = Buyer.query.order_by(Buyer.name.asc()).all()
 
     if request.method == "POST":
-        # back-button / double-submit protection
         existing_sale = ProcessingBatchSale.query.filter_by(processing_batch_id=batch.id).first()
         if existing_sale:
             flash("Sale already recorded for this batch. You can view the invoice.", "info")
@@ -884,8 +890,8 @@ def generate_invoice_from_sale(sale_id):
         buyer_id=sale.buyer_id,
         processing_batch_sale_id=sale.id,
         issue_date=date.today(),
-        status=InvoiceStatus.ISSUED,       # ✅ Enum (NO strings)
-        issued_at=datetime.utcnow(),       # ✅ timestamp
+        status=InvoiceStatus.ISSUED,  # ✅ Enum
+        issued_at=datetime.utcnow(),
         subtotal=float(sale.total_sale_price),
         tax=0.0,
         total=float(sale.total_sale_price),
@@ -987,10 +993,9 @@ def view_invoiceable_batch(batch_id):
 @main.route("/buyer/dashboard")
 @buyer_required
 def buyer_dashboard():
-    buyer = Buyer.query.filter_by(user_id=current_user.id).first()
-    if not buyer:
-        flash("Buyer profile not linked to this account. Please contact Rizara support.", "danger")
-        return redirect(url_for("auth.logout"))
+    buyer, resp = _get_buyer_for_current_user_or_redirect()
+    if resp:
+        return resp
 
     sales = (
         ProcessingBatchSale.query.filter_by(buyer_id=buyer.id)
@@ -1016,10 +1021,9 @@ def buyer_dashboard():
 @main.route("/buyer/invoices/<int:invoice_id>")
 @buyer_required
 def buyer_view_invoice(invoice_id):
-    buyer = Buyer.query.filter_by(user_id=current_user.id).first()
-    if not buyer:
-        flash("Buyer profile not linked to this account.", "danger")
-        return redirect(url_for("auth.logout"))
+    buyer, resp = _get_buyer_for_current_user_or_redirect()
+    if resp:
+        return resp
 
     inv = Invoice.query.get_or_404(invoice_id)
     if inv.buyer_id != buyer.id:
@@ -1047,10 +1051,9 @@ def buyer_view_invoice(invoice_id):
 @main.route("/buyer/invoices/<int:invoice_id>/pdf", methods=["GET"])
 @buyer_required
 def buyer_invoice_pdf(invoice_id):
-    buyer = Buyer.query.filter_by(user_id=current_user.id).first()
-    if not buyer:
-        flash("Buyer profile not linked to this account.", "danger")
-        return redirect(url_for("auth.logout"))
+    buyer, resp = _get_buyer_for_current_user_or_redirect()
+    if resp:
+        return resp
 
     inv = Invoice.query.get_or_404(invoice_id)
     if inv.buyer_id != buyer.id:
@@ -1070,10 +1073,9 @@ def buyer_invoice_pdf(invoice_id):
 @main.route("/buyer/orders/new", methods=["GET", "POST"])
 @buyer_required
 def buyer_new_order():
-    buyer = Buyer.query.filter_by(user_id=current_user.id).first()
-    if not buyer:
-        flash("Buyer profile not linked to this account.", "danger")
-        return redirect(url_for("auth.logout"))
+    buyer, resp = _get_buyer_for_current_user_or_redirect()
+    if resp:
+        return resp
 
     if request.method == "POST":
         product = (request.form.get("product") or "").strip()
@@ -1094,8 +1096,6 @@ def buyer_new_order():
             delivery_location=delivery_location,
             notes=notes,
             status="new",
-            # If you later add OrderRequest.buyer_id in models.py, set it:
-            # buyer_id=buyer.id,
         )
         db.session.add(order)
         db.session.commit()

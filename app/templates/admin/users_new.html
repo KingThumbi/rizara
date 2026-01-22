@@ -1,9 +1,10 @@
+<!-- app/templates/users_new.html -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Create User | Rizara</title>
+  <title>Create User | Rizara Admin</title>
 
   <!-- Tailwind -->
   <script src="https://cdn.tailwindcss.com"></script>
@@ -28,10 +29,21 @@
   <!-- NAVBAR -->
   <nav class="bg-jungle text-white px-6 py-4 flex justify-between items-center shadow">
     <div class="text-xl font-bold tracking-wide">Rizara Meats</div>
-    <a href="{{ url_for('main.dashboard') }}"
-       class="bg-gold text-jungle font-semibold px-4 py-2 rounded hover:bg-yellow-400 transition">
-      ← Back to Dashboard
-    </a>
+
+    <div class="flex items-center gap-3">
+      <a href="{{ url_for('auth.admin_list_users') }}"
+         class="bg-white/10 border border-white/20 text-white font-semibold px-4 py-2 rounded hover:bg-white/15 transition">
+        ← Users
+      </a>
+      <a href="{{ url_for('main.dashboard') }}"
+         class="bg-gold text-jungle font-semibold px-4 py-2 rounded hover:bg-yellow-400 transition">
+        Dashboard
+      </a>
+      <a href="{{ url_for('auth.logout') }}"
+         class="border border-white/25 px-4 py-2 rounded hover:bg-white/10 transition">
+        Logout
+      </a>
+    </div>
   </nav>
 
   <!-- MAIN -->
@@ -41,7 +53,7 @@
     <div class="mb-8">
       <h1 class="text-3xl font-bold text-jungle">Create New User</h1>
       <p class="text-gray-600 mt-1">
-        Create system users and assign roles based on permissions.
+        Create a user account and assign an allowed role.
       </p>
     </div>
 
@@ -67,9 +79,9 @@
     {% endwith %}
 
     <!-- FORM CARD -->
-    <div class="bg-white rounded-xl shadow p-8">
+    <section class="bg-white rounded-xl shadow p-8">
 
-      <form method="POST" action="{{ url_for('admin.create_user_submit') }}" class="space-y-6">
+      <form method="POST" action="{{ url_for('auth.admin_create_user') }}" class="space-y-6">
 
         <!-- NAME -->
         <div>
@@ -79,8 +91,11 @@
           <input
             type="text"
             name="name"
+            value="{{ request.form.get('name','') if request.method == 'POST' else '' }}"
             required
+            autocomplete="name"
             class="w-full border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-jungle"
+            placeholder="e.g. Michael Thumbi"
           />
         </div>
 
@@ -92,9 +107,15 @@
           <input
             type="email"
             name="email"
+            value="{{ request.form.get('email','') if request.method == 'POST' else '' }}"
             required
+            autocomplete="email"
             class="w-full border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-jungle"
+            placeholder="e.g. admin@rizara.co.ke"
           />
+          <p class="text-xs text-gray-500 mt-1">
+            Email must be unique.
+          </p>
         </div>
 
         <!-- PHONE -->
@@ -105,21 +126,14 @@
           <input
             type="text"
             name="phone"
+            value="{{ request.form.get('phone','') if request.method == 'POST' else '' }}"
+            autocomplete="tel"
             class="w-full border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-jungle"
+            placeholder="e.g. 0700912362"
           />
-        </div>
-
-        <!-- PASSWORD -->
-        <div>
-          <label class="block text-sm font-semibold text-gray-700 mb-1">
-            Password
-          </label>
-          <input
-            type="password"
-            name="password"
-            required
-            class="w-full border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-jungle"
-          />
+          <p class="text-xs text-gray-500 mt-1">
+            Phone must be unique if provided.
+          </p>
         </div>
 
         <!-- ROLE -->
@@ -133,18 +147,93 @@
             class="w-full border border-gray-300 rounded-lg px-4 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-jungle"
           >
             <option value="">-- Select role --</option>
-            {% for r in role_options %}
-              <option value="{{ r.key }}">{{ r.label }}</option>
+
+            {# Your auth.py sends "roles" (list[str]). We'll render those. #}
+            {% for r in roles %}
+              <option
+                value="{{ r }}"
+                {% if request.form.get('role') == r %}selected{% endif %}
+              >
+                {{ r|replace('-', ' ')|title }}
+              </option>
             {% endfor %}
           </select>
+          <p class="text-xs text-gray-500 mt-1">
+            Only roles you’re allowed to create appear here.
+          </p>
+        </div>
+
+        <!-- PASSWORD -->
+        <div>
+          <label class="block text-sm font-semibold text-gray-700 mb-1">
+            Temporary Password
+          </label>
+          <input
+            type="password"
+            name="password"
+            required
+            autocomplete="new-password"
+            class="w-full border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-jungle"
+            placeholder="Set a strong password"
+          />
+          <p class="text-xs text-gray-500 mt-1">
+            Use a strong password (12+ chars recommended). The system enforces password rules.
+          </p>
+        </div>
+
+        <!-- OPTIONAL SECURITY FLAGS (safe defaults) -->
+        <div class="border-t pt-6">
+          <h2 class="text-lg font-bold text-gray-900">Security Options</h2>
+          <p class="text-sm text-gray-600 mt-1">
+            Recommended settings for safer onboarding.
+          </p>
+
+          <div class="mt-4 space-y-3">
+
+            <!-- Must change password -->
+            <label class="flex items-start gap-3">
+              <input
+                type="checkbox"
+                name="must_change_password"
+                value="1"
+                {% if request.form.get('must_change_password') %}checked{% endif %}
+                class="mt-1 h-4 w-4"
+              />
+              <span>
+                <span class="font-semibold text-gray-800">Require password change on first login</span>
+                <span class="block text-sm text-gray-600">
+                  Strongly recommended for accounts created by admins.
+                </span>
+              </span>
+            </label>
+
+            <!-- Active -->
+            <label class="flex items-start gap-3">
+              <input
+                type="checkbox"
+                name="is_active"
+                value="1"
+                {% if request.method == 'GET' or request.form.get('is_active') %}checked{% endif %}
+                class="mt-1 h-4 w-4"
+              />
+              <span>
+                <span class="font-semibold text-gray-800">Account is active</span>
+                <span class="block text-sm text-gray-600">
+                  Disable later if needed from the users list.
+                </span>
+              </span>
+            </label>
+
+          </div>
         </div>
 
         <!-- ACTIONS -->
         <div class="flex justify-end gap-4 pt-4">
-          <a href="{{ url_for('main.dashboard') }}"
+          <a href="{{ url_for('auth.admin_list_users') }}"
              class="px-5 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-100 transition">
             Cancel
           </a>
+
           <button
             type="submit"
             class="px-6 py-2 rounded-lg bg-jungle text-white font-semibold hover:bg-jungleLight transition"
@@ -154,7 +243,7 @@
         </div>
 
       </form>
-    </div>
+    </section>
 
   </main>
 

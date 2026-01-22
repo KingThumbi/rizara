@@ -18,7 +18,14 @@ config = context.config
 
 # Setup Python logging from the config file
 if config.config_file_name:
-    fileConfig(config.config_file_name)
+    try:
+        fileConfig(config.config_file_name, disable_existing_loggers=False)
+    except KeyError:
+        # Some alembic.ini files don't define logging sections (formatters/handlers/loggers).
+        # That's OK; we can proceed without fileConfig.
+        pass
+
+
 
 logger = logging.getLogger("alembic.env")
 

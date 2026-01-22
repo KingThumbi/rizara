@@ -20,7 +20,6 @@ class User(UserMixin, db.Model):
 
     name = db.Column(db.String(120), nullable=False)
     email = db.Column(db.String(120), unique=True, nullable=False)
-
     phone = db.Column(db.String(30), unique=True, nullable=True)
 
     password_hash = db.Column(db.String(255), nullable=False)
@@ -29,7 +28,24 @@ class User(UserMixin, db.Model):
     role = db.Column(db.String(30), nullable=False, default="buyer")
     is_admin = db.Column(db.Boolean, default=False)
 
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    # ✅ Security + lifecycle
+    is_active = db.Column(db.Boolean, default=True, nullable=False)
+
+    failed_login_attempts = db.Column(db.Integer, default=0, nullable=False)
+    locked_until = db.Column(db.DateTime, nullable=True)
+
+    must_change_password = db.Column(db.Boolean, default=False, nullable=False)
+    password_changed_at = db.Column(db.DateTime, nullable=True)
+
+    last_login_at = db.Column(db.DateTime, nullable=True)
+
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = db.Column(
+        db.DateTime,
+        default=datetime.utcnow,
+        onupdate=datetime.utcnow,
+        nullable=False,
+    )
 
     def __repr__(self):
         return f"<User {self.id} {self.email}>"
@@ -141,10 +157,11 @@ class Cattle(BaseAnimal):
     aggregation_batch = db.relationship("AggregationBatch", back_populates="cattle")
 
     processing_batches = db.relationship(
-        "ProcessingBatch",
-        secondary="processing_cattle",
-        back_populates="cattle",
-    )
+    "ProcessingBatch",
+    secondary="processing_cattle",
+    back_populates="cattle",
+)
+
 
     def __repr__(self):
         return f"<Cattle {self.id} {self.rizara_id} {self.status}>"
@@ -469,7 +486,6 @@ class Invoice(db.Model):
         default=InvoiceStatus.ISSUED,
     )
 
-
     # Lifecycle timestamps
     issued_at = db.Column(db.DateTime, nullable=True)
     paid_at = db.Column(db.DateTime, nullable=True)
@@ -605,5 +621,5 @@ class AssetMaintenance(db.Model):
     notes = db.Column(db.Text)
     attachment_url = db.Column(db.String(255))
 
-created_by_user_id = db.Column(db.Integer, db.ForeignKey("user.id"))
-created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    created_by_user_id = db.Column(db.Integer, db.ForeignKey("user.id"))
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
