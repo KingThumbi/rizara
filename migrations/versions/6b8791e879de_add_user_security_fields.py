@@ -3,15 +3,13 @@
 Revision ID: 6b8791e879de
 Revises: ca0a3f3f842f
 Create Date: 2026-01-22 15:27:13.501197
-
 """
 from alembic import op
 import sqlalchemy as sa
-from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
-revision = '6b8791e879de'
-down_revision = 'ca0a3f3f842f'
+revision = "6b8791e879de"
+down_revision = "ca0a3f3f842f"
 branch_labels = None
 depends_on = None
 
@@ -24,7 +22,7 @@ def upgrade():
     )
     op.add_column(
         "user",
-        sa.Column("failed_login_attempts", sa.Integer(), nullable=False, server_default="0"),
+        sa.Column("failed_login_attempts", sa.Integer(), nullable=False, server_default=sa.text("0")),
     )
     op.add_column("user", sa.Column("locked_until", sa.DateTime(), nullable=True))
     op.add_column(
@@ -54,5 +52,3 @@ def downgrade():
     op.drop_column("user", "locked_until")
     op.drop_column("user", "failed_login_attempts")
     op.drop_column("user", "is_active")
-
-

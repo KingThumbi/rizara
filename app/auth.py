@@ -6,7 +6,7 @@ from datetime import datetime
 from urllib.parse import urlparse, urljoin
 
 from flask import Blueprint, request, redirect, url_for, render_template, flash
-from flask_login import login_user, logout_user, current_user, login_required
+from flask_login import login_user, logout_user, current_user
 from werkzeug.security import check_password_hash, generate_password_hash
 from sqlalchemy import or_
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
@@ -33,15 +33,25 @@ def load_user(user_id: str):
 # Helpers
 # =========================================================
 def _is_safe_next(target: str) -> bool:
+    """
+    Allow only same-host redirects AND block redirect loops into /login or /logout.
+    """
     if not target:
         return False
+
+    # Block obvious loop targets (these cause "login -> logout -> login" loops)
+    blocked = ("/login", "/logout")
+    if target.startswith(blocked):
+        return False
+
+    # Resolve relative URLs safely then confirm same host
     ref = urlparse(request.host_url)
     test = urlparse(urljoin(request.host_url, target))
     return test.scheme in ("http", "https") and ref.netloc == test.netloc
 
 
 def _next_or_dashboard() -> str:
-    nxt = request.args.get("next") or request.form.get("next")
+    nxt = request.args.get("next") or request.form.get("next") or ""
     if nxt and _is_safe_next(nxt):
         return nxt
     return url_for("main.dashboard")
@@ -55,24 +65,26 @@ def login():
     if getattr(current_user, "is_authenticated", False):
         return redirect(url_for("main.dashboard"))
 
+    next_url = request.args.get("next") or request.form.get("next") or ""
+
     if request.method == "POST":
         email = (request.form.get("email") or "").strip().lower()
         password = request.form.get("password") or ""
 
         if not email or not password:
             flash("Email and password are required.", "danger")
-            return redirect(request.url)
+            return render_template("login.html", next=next_url)
 
         user = User.query.filter(db.func.lower(User.email) == email).first()
 
         # If your model has is_active, enforce it
         if user and hasattr(user, "is_active") and user.is_active is False:
             flash("This account is inactive. Contact an admin.", "danger")
-            return redirect(request.url)
+            return render_template("login.html", next=next_url)
 
         if not user or not check_password_hash(user.password_hash, password):
             flash("Invalid email or password.", "danger")
-            return redirect(request.url)
+            return render_template("login.html", next=next_url)
 
         login_user(user)
 
@@ -86,12 +98,15 @@ def login():
 
         return redirect(_next_or_dashboard())
 
-    return render_template("login.html", next=request.args.get("next"))
+    return render_template("login.html", next=next_url)
 
 
 @auth.route("/logout")
-@login_required
 def logout():
+    """
+    IMPORTANT: logout must NOT be login_required, otherwise Flask-Login redirects to
+    /login?next=/logout and you get a loop after successful login.
+    """
     logout_user()
     flash("You have been logged out.", "success")
     return redirect(url_for("auth.login"))
@@ -151,9 +166,9 @@ def admin_list_users():
 def admin_create_user():
     """
     Renders the create-user form.
-    Template expected: templates/users_new.html
+    Template expected: templates/admin/users_new.html
     """
-    return render_template("users_new.html", current_year=datetime.utcnow().year)
+    return render_template("admin/users_new.html", current_year=datetime.utcnow().year)
 
 
 # =========================================================
@@ -162,9 +177,6 @@ def admin_create_user():
 @auth.route("/admin/users/new", methods=["POST"])
 @admin_required
 def admin_create_user_submit():
-    """
-    Handles form submit for creating users.
-    """
     name = (request.form.get("name") or "").strip()
     email = (request.form.get("email") or "").strip().lower()
     phone = (request.form.get("phone") or "").strip() or None
@@ -185,7 +197,7 @@ def admin_create_user_submit():
     )
 
     # If your model has is_active, default it safely
-    if hasattr(User, "is_active") and user.is_active is None:
+    if hasattr(User, "is_active") and getattr(user, "is_active", None) is None:
         user.is_active = True
 
     db.session.add(user)
