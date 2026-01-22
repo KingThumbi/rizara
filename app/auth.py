@@ -1,12 +1,11 @@
 # app/auth.py
-
 from __future__ import annotations
 
 from datetime import datetime
 from urllib.parse import urlparse, urljoin
 
 from flask import Blueprint, request, redirect, url_for, render_template, flash
-from flask_login import login_user, logout_user, current_user
+from flask_login import login_user, logout_user, current_user, login_required
 from werkzeug.security import check_password_hash, generate_password_hash
 from sqlalchemy import or_
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
@@ -39,12 +38,10 @@ def _is_safe_next(target: str) -> bool:
     if not target:
         return False
 
-    # Block obvious loop targets (these cause "login -> logout -> login" loops)
     blocked = ("/login", "/logout")
     if target.startswith(blocked):
         return False
 
-    # Resolve relative URLs safely then confirm same host
     ref = urlparse(request.host_url)
     test = urlparse(urljoin(request.host_url, target))
     return test.scheme in ("http", "https") and ref.netloc == test.netloc
@@ -55,6 +52,46 @@ def _next_or_dashboard() -> str:
     if nxt and _is_safe_next(nxt):
         return nxt
     return url_for("main.dashboard")
+
+
+# =========================================================
+# Change Password (Logged-in users)
+# =========================================================
+@auth.route("/change-password", methods=["GET", "POST"])
+@login_required
+def change_password():
+    if request.method == "POST":
+        current_password = (request.form.get("current_password") or "").strip()
+        new_password = (request.form.get("new_password") or "").strip()
+        confirm_password = (request.form.get("confirm_password") or "").strip()
+
+        if not current_password or not new_password or not confirm_password:
+            flash("All fields are required.", "danger")
+            return render_template("auth/change_password.html")
+
+        if not check_password_hash(current_user.password_hash, current_password):
+            flash("Current password is incorrect.", "danger")
+            return render_template("auth/change_password.html")
+
+        if len(new_password) < 10:
+            flash("New password must be at least 10 characters.", "danger")
+            return render_template("auth/change_password.html")
+
+        if new_password != confirm_password:
+            flash("New password and confirmation do not match.", "danger")
+            return render_template("auth/change_password.html")
+
+        if check_password_hash(current_user.password_hash, new_password):
+            flash("New password must be different from the current password.", "danger")
+            return render_template("auth/change_password.html")
+
+        current_user.password_hash = generate_password_hash(new_password)
+        db.session.commit()
+
+        flash("Password updated successfully.", "success")
+        return redirect(url_for("main.dashboard"))
+
+    return render_template("auth/change_password.html")
 
 
 # =========================================================

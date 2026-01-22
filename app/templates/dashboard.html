@@ -20,6 +20,17 @@
     </div>
 
     <div class="flex items-center gap-3">
+      <!-- Logged in as + Change Password -->
+      <div class="hidden lg:flex items-center gap-2 bg-white/10 border border-white/20 rounded px-3 py-2">
+        <span class="text-sm opacity-90">Logged in as</span>
+        <span class="text-sm font-semibold">{{ current_user.email }}</span>
+        <span class="opacity-60">|</span>
+        <a href="{{ url_for('auth.change_password') }}"
+           class="text-sm font-semibold underline underline-offset-2 hover:opacity-90 transition">
+          Change Password
+        </a>
+      </div>
+
       <!-- Users -->
       <a href="{{ url_for('auth.admin_list_users') }}"
          class="bg-white/10 border border-white/20 text-white font-semibold px-4 py-2 rounded hover:bg-white/15 transition">
@@ -47,6 +58,17 @@
     <div class="mb-8">
       <h1 class="text-3xl font-bold text-jungle">Operations Dashboard</h1>
       <p class="text-gray-600 mt-1">All admin tools and operational overview in one place.</p>
+
+      <!-- Mobile / Small screen: Logged in as + Change Password -->
+      <div class="mt-3 lg:hidden flex flex-wrap items-center gap-2 text-sm">
+        <span class="text-gray-600">Logged in as</span>
+        <span class="font-semibold text-gray-900">{{ current_user.email }}</span>
+        <span class="text-gray-400">|</span>
+        <a href="{{ url_for('auth.change_password') }}"
+           class="font-semibold text-jungle hover:underline">
+          Change Password
+        </a>
+      </div>
     </div>
 
     <!-- FLASH MESSAGES -->
