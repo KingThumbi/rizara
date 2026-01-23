@@ -18,24 +18,25 @@ class User(UserMixin, db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
 
+    # Identity
     name = db.Column(db.String(120), nullable=False)
     email = db.Column(db.String(120), unique=True, nullable=False)
     phone = db.Column(db.String(30), unique=True, nullable=True)
 
+    # Auth
     password_hash = db.Column(db.String(255), nullable=False)
 
-    # roles: super-admin/admin/staff/buyer/farmer/transporter etc (future)
+    # Roles (super-admin/admin/staff/buyer/farmer/transporter/service)
     role = db.Column(db.String(30), nullable=False, default="buyer")
-    is_admin = db.Column(db.Boolean, default=False)
+    is_admin = db.Column(db.Boolean, default=False, nullable=False)
 
-    # ✅ Security + lifecycle
-    is_active = db.Column(db.Boolean, default=True, nullable=False)
+    # Account lifecycle / security
+    is_active = db.Column(db.Boolean, nullable=False, default=True)
+    must_change_password = db.Column(db.Boolean, nullable=False, default=False)
+    password_changed_at = db.Column(db.DateTime, nullable=True)
 
     failed_login_attempts = db.Column(db.Integer, default=0, nullable=False)
     locked_until = db.Column(db.DateTime, nullable=True)
-
-    must_change_password = db.Column(db.Boolean, default=False, nullable=False)
-    password_changed_at = db.Column(db.DateTime, nullable=True)
 
     last_login_at = db.Column(db.DateTime, nullable=True)
 
@@ -68,9 +69,15 @@ class Farmer(db.Model):
     location_notes = db.Column(db.String(255))
     onboarded_at = db.Column(db.DateTime, default=datetime.utcnow)
 
-    goats = db.relationship("Goat", backref="farmer", lazy=True, cascade="all, delete-orphan")
-    sheep = db.relationship("Sheep", backref="farmer", lazy=True, cascade="all, delete-orphan")
-    cattle = db.relationship("Cattle", backref="farmer", lazy=True, cascade="all, delete-orphan")
+    goats = db.relationship(
+        "Goat", backref="farmer", lazy=True, cascade="all, delete-orphan"
+    )
+    sheep = db.relationship(
+        "Sheep", backref="farmer", lazy=True, cascade="all, delete-orphan"
+    )
+    cattle = db.relationship(
+        "Cattle", backref="farmer", lazy=True, cascade="all, delete-orphan"
+    )
 
     def __repr__(self):
         return f"<Farmer {self.id} {self.name}>"
@@ -97,10 +104,10 @@ class BaseAnimal(db.Model):
 
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
-    # --- Operational flags ---
+    # Operational flags
     is_active = db.Column(db.Boolean, default=True, nullable=False)
 
-    # --- Aggregation snapshot (purchase point) ---
+    # Aggregation snapshot (purchase point)
     aggregated_at = db.Column(db.DateTime)
     aggregated_by_user_id = db.Column(db.Integer, db.ForeignKey("user.id"))
     live_weight_kg = db.Column(db.Float)
@@ -115,7 +122,9 @@ class BaseAnimal(db.Model):
 class Goat(BaseAnimal):
     __tablename__ = "goat"
 
-    aggregation_batch_id = db.Column(db.Integer, db.ForeignKey("aggregation_batch.id"), nullable=True)
+    aggregation_batch_id = db.Column(
+        db.Integer, db.ForeignKey("aggregation_batch.id"), nullable=True
+    )
     aggregation_batch = db.relationship("AggregationBatch", back_populates="goats")
 
     processing_batches = db.relationship(
@@ -134,7 +143,9 @@ class Goat(BaseAnimal):
 class Sheep(BaseAnimal):
     __tablename__ = "sheep"
 
-    aggregation_batch_id = db.Column(db.Integer, db.ForeignKey("aggregation_batch.id"), nullable=True)
+    aggregation_batch_id = db.Column(
+        db.Integer, db.ForeignKey("aggregation_batch.id"), nullable=True
+    )
     aggregation_batch = db.relationship("AggregationBatch", back_populates="sheep")
 
     processing_batches = db.relationship(
@@ -153,15 +164,16 @@ class Sheep(BaseAnimal):
 class Cattle(BaseAnimal):
     __tablename__ = "cattle"
 
-    aggregation_batch_id = db.Column(db.Integer, db.ForeignKey("aggregation_batch.id"), nullable=True)
+    aggregation_batch_id = db.Column(
+        db.Integer, db.ForeignKey("aggregation_batch.id"), nullable=True
+    )
     aggregation_batch = db.relationship("AggregationBatch", back_populates="cattle")
 
     processing_batches = db.relationship(
-    "ProcessingBatch",
-    secondary="processing_cattle",
-    back_populates="cattle",
-)
-
+        "ProcessingBatch",
+        secondary="processing_cattle",
+        back_populates="cattle",
+    )
 
     def __repr__(self):
         return f"<Cattle {self.id} {self.rizara_id} {self.status}>"
@@ -199,20 +211,39 @@ class AggregationBatch(db.Model):
 # =========================================================
 processing_goats = db.Table(
     "processing_goats",
-    db.Column("processing_batch_id", db.Integer, db.ForeignKey("processing_batch.id"), primary_key=True),
+    db.Column(
+        "processing_batch_id",
+        db.Integer,
+        db.ForeignKey("processing_batch.id"),
+        primary_key=True,
+    ),
     db.Column("goat_id", db.UUID(as_uuid=True), db.ForeignKey("goat.id"), primary_key=True),
 )
 
 processing_sheep = db.Table(
     "processing_sheep",
-    db.Column("processing_batch_id", db.Integer, db.ForeignKey("processing_batch.id"), primary_key=True),
-    db.Column("sheep_id", db.UUID(as_uuid=True), db.ForeignKey("sheep.id"), primary_key=True),
+    db.Column(
+        "processing_batch_id",
+        db.Integer,
+        db.ForeignKey("processing_batch.id"),
+        primary_key=True,
+    ),
+    db.Column(
+        "sheep_id", db.UUID(as_uuid=True), db.ForeignKey("sheep.id"), primary_key=True
+    ),
 )
 
 processing_cattle = db.Table(
     "processing_cattle",
-    db.Column("processing_batch_id", db.Integer, db.ForeignKey("processing_batch.id"), primary_key=True),
-    db.Column("cattle_id", db.UUID(as_uuid=True), db.ForeignKey("cattle.id"), primary_key=True),
+    db.Column(
+        "processing_batch_id",
+        db.Integer,
+        db.ForeignKey("processing_batch.id"),
+        primary_key=True,
+    ),
+    db.Column(
+        "cattle_id", db.UUID(as_uuid=True), db.ForeignKey("cattle.id"), primary_key=True
+    ),
 )
 
 
@@ -281,7 +312,6 @@ class Buyer(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
 
-    # Optional: link this Buyer to a login user account
     user_id = db.Column(db.Integer, db.ForeignKey("user.id"), unique=True, nullable=True)
     user = db.relationship("User", foreign_keys=[user_id], lazy="joined")
 
@@ -298,14 +328,13 @@ class Buyer(db.Model):
 
 
 # =========================================================
-# OrderRequest (PUBLIC + Buyer Portal repeat orders)
+# OrderRequest
 # =========================================================
 class OrderRequest(db.Model):
     __tablename__ = "order_requests"
 
     id = db.Column(db.Integer, primary_key=True)
 
-    # Optional: if order came from a logged-in buyer
     buyer_id = db.Column(db.Integer, db.ForeignKey("buyer.id"), nullable=True)
     buyer = db.relationship("Buyer", foreign_keys=[buyer_id], lazy="joined")
 
@@ -480,13 +509,12 @@ class Invoice(db.Model):
             InvoiceStatus,
             name="invoice_status",
             values_callable=lambda enum_cls: [e.value for e in enum_cls],
-            native_enum=False,  # uses CHECK constraint (portable & safe)
+            native_enum=False,
         ),
         nullable=False,
         default=InvoiceStatus.ISSUED,
     )
 
-    # Lifecycle timestamps
     issued_at = db.Column(db.DateTime, nullable=True)
     paid_at = db.Column(db.DateTime, nullable=True)
     voided_at = db.Column(db.DateTime, nullable=True)
