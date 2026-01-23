@@ -17,17 +17,25 @@ depends_on = None
 
 
 def upgrade():
-    op.add_column(
-        "user",
-        sa.Column("accepted_terms", sa.Boolean(), nullable=False, server_default=sa.text("false")),
-    )
-    op.add_column("user", sa.Column("accepted_terms_at", sa.DateTime(), nullable=True))
-    op.add_column("user", sa.Column("terms_version", sa.String(length=20), nullable=True))
+    # Postgres-safe: won't crash if columns already exist
+    op.execute(sa.text(
+        'ALTER TABLE "user" ADD COLUMN IF NOT EXISTS accepted_terms BOOLEAN DEFAULT false NOT NULL;'
+    ))
+    op.execute(sa.text(
+        'ALTER TABLE "user" ADD COLUMN IF NOT EXISTS accepted_terms_at TIMESTAMP;'
+    ))
+    op.execute(sa.text(
+        'ALTER TABLE "user" ADD COLUMN IF NOT EXISTS terms_version VARCHAR(20);'
+    ))
 
-    op.alter_column("user", "accepted_terms", server_default=None)
+    # Optional: remove default so future inserts rely on app logic (matches original intent)
+    op.execute(sa.text(
+        'ALTER TABLE "user" ALTER COLUMN accepted_terms DROP DEFAULT;'
+    ))
 
 
 def downgrade():
-    op.drop_column("user", "terms_version")
-    op.drop_column("user", "accepted_terms_at")
-    op.drop_column("user", "accepted_terms")
+    # Safe downgrade
+    op.execute(sa.text('ALTER TABLE "user" DROP COLUMN IF EXISTS terms_version;'))
+    op.execute(sa.text('ALTER TABLE "user" DROP COLUMN IF EXISTS accepted_terms_at;'))
+    op.execute(sa.text('ALTER TABLE "user" DROP COLUMN IF EXISTS accepted_terms;'))
