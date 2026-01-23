@@ -55,7 +55,7 @@ def buyer_required(view):
             return redirect(url_for("auth.login"))
         if (getattr(current_user, "role", "") or "").lower() != "buyer":
             flash("Access denied.", "danger")
-            return redirect(url_for("main.dashboard"))
+            return redirect(url_for("main.dashboard"))  # role-safe router now
         return view(*args, **kwargs)
 
     return wrapped
@@ -67,6 +67,18 @@ def _get_buyer_for_current_user_or_redirect():
         flash("Buyer profile not linked to this account. Contact Rizara support/admin.", "danger")
         return None, redirect(url_for("auth.logout"))
     return buyer, None
+
+
+# ======================
+# Role Helpers
+# ======================
+def _role() -> str:
+    return (getattr(current_user, "role", "") or "").strip().lower()
+
+
+def _is_admin() -> bool:
+    role = _role()
+    return bool(getattr(current_user, "is_admin", False)) or role in ("admin", "super_admin", "superadmin")
 
 
 # ======================
@@ -176,12 +188,47 @@ def verify_recaptcha(response_token: str) -> bool:
         return False
 
 
-# ======================
-# Dashboard (ADMIN ONLY)
-# ======================
+# =========================================================
+# Dashboard Router (ROLE-SAFE LANDING)
+# =========================================================
 @main.route("/dashboard")
-@admin_required
+@login_required
 def dashboard():
+    """
+    Role-safe landing endpoint.
+    Newly created users must never get a 403 here — they are routed to a permitted dashboard.
+    """
+    role = _role()
+
+    # Admins -> Operations Dashboard
+    if _is_admin():
+        return redirect(url_for("main.admin_dashboard"))
+
+    # Buyers -> Buyer Portal
+    if role == "buyer":
+        return redirect(url_for("main.buyer_dashboard"))
+
+    # Other supported roles -> their dashboards
+    if role == "farmer":
+        return redirect(url_for("main.farmer_dashboard"))
+    if role in ("staff", "rizara_staff", "operations"):
+        return redirect(url_for("main.staff_dashboard"))
+    if role == "transporter":
+        return redirect(url_for("main.transporter_dashboard"))
+    if role in ("service_provider", "veterinary", "agronomist", "feed_specialist"):
+        return redirect(url_for("main.service_provider_dashboard"))
+
+    # Unknown role -> safe default (buyer portal)
+    return redirect(url_for("main.buyer_dashboard"))
+
+
+# =========================================================
+# Admin Operations Dashboard (ADMIN ONLY)
+# (Your original /dashboard content moved here unchanged)
+# =========================================================
+@main.route("/admin/dashboard")
+@admin_required
+def admin_dashboard():
     stats = {
         "farmers": Farmer.query.count(),
         "goats": Goat.query.count(),
@@ -219,13 +266,52 @@ def dashboard():
     stats["latest_orders"] = OrderRequest.query.order_by(OrderRequest.created_at.desc()).limit(5).all()
 
     return render_template(
-        "dashboard.html",
+        "admin/dashboard.html",
         stats=stats,
         goat_pipeline=stats.get("goat_pipeline", {}),
         sheep_pipeline=stats.get("sheep_pipeline", {}),
         cattle_pipeline=stats.get("cattle_pipeline", {}),
         current_year=datetime.utcnow().year,
     )
+
+
+# =========================================================
+# Role Dashboards (NON-ADMIN)
+# =========================================================
+@main.route("/farmer/dashboard")
+@login_required
+def farmer_dashboard():
+    if _role() != "farmer":
+        flash("Access denied.", "danger")
+        return redirect(url_for("main.dashboard"))
+    return render_template("farmers/dashboard.html", current_year=datetime.utcnow().year)
+
+
+@main.route("/staff/dashboard")
+@login_required
+def staff_dashboard():
+    if _role() not in ("staff", "rizara_staff", "operations"):
+        flash("Access denied.", "danger")
+        return redirect(url_for("main.dashboard"))
+    return render_template("staff/dashboard.html", current_year=datetime.utcnow().year)
+
+
+@main.route("/transporter/dashboard")
+@login_required
+def transporter_dashboard():
+    if _role() != "transporter":
+        flash("Access denied.", "danger")
+        return redirect(url_for("main.dashboard"))
+    return render_template("transporter/dashboard.html", current_year=datetime.utcnow().year)
+
+
+@main.route("/service-provider/dashboard")
+@login_required
+def service_provider_dashboard():
+    if _role() not in ("service_provider", "veterinary", "agronomist", "feed_specialist"):
+        flash("Access denied.", "danger")
+        return redirect(url_for("main.dashboard"))
+    return render_template("service_provider/dashboard.html", current_year=datetime.utcnow().year)
 
 
 # ======================

@@ -1,0 +1,125 @@
+{% extends "layouts/base.html" %}
+{% block title %}Staff Dashboard{% endblock %}
+
+{% block body %}
+
+  <div class="bg-jungle text-white px-6 py-4 flex justify-between items-center shadow">
+    <div class="flex items-center gap-4">
+      <div class="text-2xl font-bold tracking-wide">Rizara Meats</div>
+      <span class="hidden md:inline text-sm opacity-90">Staff Dashboard</span>
+    </div>
+
+    <div class="flex items-center gap-3">
+      <a href="{{ url_for('auth.change_password') }}"
+         class="bg-white/10 border border-white/20 text-white font-semibold px-4 py-2 rounded hover:bg-white/15 transition">
+        Change Password
+      </a>
+      <a href="{{ url_for('auth.logout') }}"
+         class="bg-white text-jungle font-semibold px-4 py-2 rounded hover:bg-gray-100 transition">
+        Logout
+      </a>
+    </div>
+  </div>
+
+  <main class="max-w-7xl mx-auto px-6 py-8">
+
+    <div class="mb-8">
+      <h1 class="text-3xl font-bold text-jungle">Welcome, {{ current_user.name or "Staff" }}</h1>
+      <p class="text-gray-600 mt-1">
+        Monitor operational tasks, approvals, and assigned workstreams.
+      </p>
+    </div>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        <div class="mb-6 space-y-3">
+          {% for category, message in messages %}
+            <div class="px-4 py-3 rounded-lg
+              {% if category == 'success' %}
+                bg-green-100 text-green-800
+              {% elif category in ['danger', 'error'] %}
+                bg-red-100 text-red-800
+              {% elif category == 'warning' %}
+                bg-yellow-100 text-yellow-800
+              {% else %}
+                bg-gray-100 text-gray-800
+              {% endif %}
+            ">
+              {{ message }}
+            </div>
+          {% endfor %}
+        </div>
+      {% endif %}
+    {% endwith %}
+
+    <section class="bg-white rounded-xl shadow p-6 mb-8">
+      <h2 class="text-xl font-semibold text-jungle mb-4">My Account</h2>
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div class="rounded-lg border border-gray-200 p-4">
+          <div class="text-xs uppercase text-gray-500">Name</div>
+          <div class="font-semibold text-gray-900 mt-1">{{ current_user.name }}</div>
+        </div>
+        <div class="rounded-lg border border-gray-200 p-4">
+          <div class="text-xs uppercase text-gray-500">Email</div>
+          <div class="font-semibold text-gray-900 mt-1">{{ current_user.email }}</div>
+        </div>
+        <div class="rounded-lg border border-gray-200 p-4">
+          <div class="text-xs uppercase text-gray-500">Role</div>
+          <div class="font-semibold text-gray-900 mt-1">{{ current_user.role|replace('_',' ')|title }}</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+
+      <div class="bg-white rounded-xl shadow p-6">
+        <h2 class="text-lg font-semibold text-jungle mb-2">Assigned Tasks</h2>
+        <p class="text-sm text-gray-600 mb-4">
+          Tasks will appear here once staff task assignment is enabled.
+        </p>
+        <div class="rounded-lg border border-dashed border-gray-300 p-6 text-center">
+          <div class="font-semibold text-gray-900">No tasks assigned</div>
+          <div class="text-sm text-gray-600 mt-1">You’re all caught up.</div>
+        </div>
+      </div>
+
+      <div class="bg-white rounded-xl shadow p-6">
+        <h2 class="text-lg font-semibold text-jungle mb-2">Operational Inbox</h2>
+        <p class="text-sm text-gray-600 mb-4">
+          Contact & order triage can be exposed here (role-based) if needed.
+        </p>
+        <div class="rounded-lg border border-dashed border-gray-300 p-6 text-center">
+          <div class="font-semibold text-gray-900">Inbox not enabled</div>
+          <div class="text-sm text-gray-600 mt-1">Ask an admin to grant access.</div>
+        </div>
+      </div>
+
+      <div class="bg-white rounded-xl shadow p-6">
+        <h2 class="text-lg font-semibold text-jungle mb-2">Reports</h2>
+        <p class="text-sm text-gray-600 mb-4">
+          Exports and activity reports will live here.
+        </p>
+        <div class="rounded-lg border border-dashed border-gray-300 p-6 text-center">
+          <div class="font-semibold text-gray-900">Reports coming soon</div>
+          <div class="text-sm text-gray-600 mt-1">CSV/PDF exports will be added.</div>
+        </div>
+      </div>
+
+    </section>
+
+    <section class="bg-white rounded-xl shadow p-6">
+      <h2 class="text-lg font-semibold text-jungle mb-2">Guidelines</h2>
+      <ul class="list-disc pl-6 text-sm text-gray-700 space-y-2">
+        <li>Keep credentials secure; change password regularly.</li>
+        <li>Escalate unusual buyer requests to an admin for verification.</li>
+        <li>Record notes clearly to support audits and traceability.</li>
+      </ul>
+    </section>
+
+  </main>
+
+  <footer class="text-center text-sm text-gray-500 py-6">
+    © {{ current_year or 2026 }} Rizara Meats Ltd — Ethical • Traceable • Halal
+  </footer>
+
+{% endblock %}

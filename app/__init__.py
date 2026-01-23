@@ -1,8 +1,14 @@
-from flask import Flask, render_template
+# app/__init__.py
+from __future__ import annotations
+
+from flask import Flask, render_template, redirect, url_for, request
+from flask_login import current_user
+
 from .extensions import db, migrate, login_manager, limiter
 from .config import Config
 
-def create_app():
+
+def create_app() -> Flask:
     app = Flask(__name__)
     app.config.from_object(Config)
 
@@ -31,6 +37,38 @@ def create_app():
     app.register_blueprint(admin_bp)
 
     # ======================
+    # Global Terms Enforcement (External users only)
+    # ======================
+    from .utils.guards import requires_terms
+
+    @app.before_request
+    def enforce_terms_acceptance():
+        # Only enforce for logged-in users
+        if not getattr(current_user, "is_authenticated", False):
+            return None
+
+        # If user is exempt OR already accepted terms, allow
+        if not requires_terms(current_user) or getattr(current_user, "accepted_terms", False):
+            return None
+
+        # Allow static files + auth endpoints to prevent loops
+        endpoint = request.endpoint or ""
+        if endpoint.startswith("static"):
+            return None
+
+        allowed_endpoints = {
+            "auth.accept_terms",  # terms page + submit
+            "auth.logout",        # always allow logout
+            "auth.login",         # allow login page (rarely hit here, but safe)
+        }
+        if endpoint in allowed_endpoints:
+            return None
+
+        # Preserve intended destination for redirect-back after acceptance
+        next_path = request.full_path or request.path or "/"
+        return redirect(url_for("auth.accept_terms", next=next_path))
+
+    # ======================
     # Rate limit error handler
     # ======================
     @app.errorhandler(429)
@@ -43,5 +81,12 @@ def create_app():
     @app.errorhandler(403)
     def forbidden(e):
         return render_template("403.html"), 403
+
+    # ======================
+    # Not found handler (optional but nice)
+    # ======================
+    @app.errorhandler(404)
+    def not_found(e):
+        return render_template("404.html"), 404
 
     return app

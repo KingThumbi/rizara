@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Accept Terms & Conditions | Rizara Meats</title>
+
+  <style>
+    body {
+      font-family: Arial, Helvetica, sans-serif;
+      background: #fafafa;
+      color: #222;
+      line-height: 1.6;
+    }
+    .container {
+      max-width: 960px;
+      margin: 40px auto;
+      background: #ffffff;
+      padding: 28px;
+      border: 1px solid #e0e0e0;
+    }
+    h2 {
+      margin-top: 0;
+    }
+    .fine-print {
+      font-size: 13px;
+      color: #444;
+    }
+    .terms-box {
+      border: 1px solid #ddd;
+      padding: 16px;
+      margin-top: 16px;
+      background: #fcfcfc;
+    }
+    .terms-box ol {
+      padding-left: 18px;
+    }
+    .terms-box li {
+      margin-bottom: 10px;
+    }
+    .actions {
+      margin-top: 24px;
+    }
+    button {
+      padding: 10px 18px;
+      font-size: 15px;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <h2>Terms & Conditions <span class="fine-print">({{ terms_version }})</span></h2>
+
+  <p class="fine-print">
+    These Terms & Conditions are designed to ensure transparency, operational efficiency,
+    and a professional working relationship between Rizara Meats Ltd and all platform users.
+  </p>
+
+  <div class="terms-box fine-print">
+    <p><strong>TERMS AND CONDITIONS – RIZARA MEATS LTD</strong></p>
+
+    <ol>
+      <li>
+        <strong>Binding Agreement</strong><br>
+        By accessing, registering, or transacting on the Rizara Meats platform, the user
+        acknowledges that these Terms & Conditions constitute a legally binding agreement
+        between the user and Rizara Meats Ltd.
+      </li>
+
+      <li>
+        <strong>Scope of Services</strong><br>
+        Rizara Meats provides a digital platform for livestock aggregation, processing,
+        logistics coordination, invoicing, and related commercial activities.
+        Services may evolve over time without prior notice.
+      </li>
+
+      <li>
+        <strong>Product Availability & Substitution</strong><br>
+        All livestock, meat products, and services are subject to availability.
+        Rizara Meats reserves the right to make reasonable substitutions of equivalent
+        quality and value where necessary.
+      </li>
+
+      <li>
+        <strong>Pricing & Payment Terms</strong><br>
+        Prices are as quoted at the time of confirmation.
+        All invoices are payable strictly in accordance with the stated payment terms.
+        Rizara Meats reserves the right to suspend deliveries, services, or account access
+        in the event of delayed or failed payment.
+      </li>
+
+      <li>
+        <strong>Transfer of Risk & Title</strong><br>
+        Unless expressly agreed otherwise in writing, ownership and risk pass to the buyer
+        upon dispatch of goods from Rizara Meats’ custody.
+        Rizara Meats is not responsible for events occurring after handover to logistics providers.
+      </li>
+
+      <li>
+        <strong>Quality, Compliance & Certification</strong><br>
+        All products comply with applicable halal, veterinary, and regulatory standards
+        at the point of dispatch.
+        Due to the nature of agricultural products, minor variations in weight or appearance
+        may occur and shall not constitute a defect.
+      </li>
+
+      <li>
+        <strong>Limitation of Liability</strong><br>
+        To the maximum extent permitted by law, Rizara Meats shall not be liable for
+        indirect, incidental, or consequential losses, including loss of profit, delays,
+        customs clearance issues, or third-party logistics failures.
+      </li>
+
+      <li>
+        <strong>Force Majeure</strong><br>
+        Rizara Meats shall not be held liable for delays or failures caused by events beyond
+        reasonable control, including but not limited to weather conditions, disease outbreaks,
+        regulatory actions, or transport disruptions.
+      </li>
+
+      <li>
+        <strong>Platform Access & Account Management</strong><br>
+        Rizara Meats reserves the right to suspend, restrict, or terminate user accounts
+        to protect platform integrity, comply with legal obligations, or manage operational risk.
+      </li>
+
+      <li>
+        <strong>Data Accuracy & User Responsibility</strong><br>
+        Users are responsible for ensuring that all information provided is accurate,
+        complete, and up to date. Rizara Meats is not liable for errors arising from
+        incorrect user-supplied data.
+      </li>
+
+      <li>
+        <strong>Confidentiality</strong><br>
+        Commercial information, pricing, and operational data shared via the platform
+        shall be treated as confidential unless disclosure is required by law.
+      </li>
+
+      <li>
+        <strong>Amendments</strong><br>
+        Rizara Meats may update these Terms & Conditions periodically.
+        Continued use of the platform constitutes acceptance of the latest version.
+      </li>
+
+      <li>
+        <strong>Governing Law</strong><br>
+        These Terms & Conditions are governed by the laws of the Republic of Kenya.
+      </li>
+
+      <li>
+        <strong>Jurisdiction</strong><br>
+        All disputes shall be resolved exclusively in the courts of Kenya.
+      </li>
+    </ol>
+  </div>
+
+  <form method="POST" class="actions">
+    <input type="hidden" name="next" value="{{ next }}" />
+
+    <label class="fine-print">
+      <input type="checkbox" name="accept_terms" value="yes" />
+      I confirm that I have read, understood, and agree to the Terms & Conditions of Rizara Meats Ltd.
+    </label>
+
+    <div style="margin-top:16px;">
+      <button type="submit">Accept and Continue</button>
+    </div>
+  </form>
+
+  <p class="fine-print" style="margin-top:24px;">
+    For questions regarding these terms, please contact
+    <strong>sales@rizara.co.ke</strong>.
+  </p>
+</div>
+
+</body>
+</html>

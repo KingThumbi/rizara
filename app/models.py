@@ -40,6 +40,11 @@ class User(UserMixin, db.Model):
 
     last_login_at = db.Column(db.DateTime, nullable=True)
 
+    # Terms & Conditions acceptance (external users)
+    accepted_terms = db.Column(db.Boolean, nullable=False, default=False)
+    accepted_terms_at = db.Column(db.DateTime, nullable=True)
+    terms_version = db.Column(db.String(20), nullable=True)
+
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
     updated_at = db.Column(
         db.DateTime,
