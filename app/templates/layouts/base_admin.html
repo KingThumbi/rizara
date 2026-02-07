@@ -1,17 +1,14 @@
 {# app/templates/layouts/base_admin.html #}
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>{% block title %}Rizara Admin{% endblock %}</title>
+{% extends "layouts/base.html" %}
 
-  <link rel="icon" href="{{ url_for('static', filename='favicon.ico') }}">
+{% block title %}{% block page_title %}Rizara Admin{% endblock %}{% endblock %}
 
-  {% block head %}{% endblock %}
-</head>
+{% block body %}
+  {# Admin chrome (nav/sidebar/topbar) #}
+  {% include "partials/admin_chrome.html" %}
 
-<body class="bg-gray-100 min-h-screen">
-  {% block body %}{% endblock %}
-</body>
-</html>
+  {# Main admin page container (centers content) #}
+  <main class="max-w-7xl mx-auto px-6 py-8">
+    {% block content %}{% endblock %}
+  </main>
+{% endblock %}

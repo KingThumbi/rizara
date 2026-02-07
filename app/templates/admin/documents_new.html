@@ -1,0 +1,97 @@
+{% extends "layouts/base_admin.html" %}
+{% block page_title %}New Document · Rizara Admin{% endblock %}
+
+{% block content %}
+  <div class="max-w-4xl mx-auto">
+    <div class="flex items-start justify-between gap-4 mb-6">
+      <div>
+        <h1 class="text-3xl font-bold text-jungle">New Document</h1>
+        <p class="text-gray-600 mt-1">Create a document for a buyer (draft by default).</p>
+      </div>
+
+      <a href="{{ url_for('admin.documents_list') }}"
+         class="bg-white border border-gray-200 text-gray-800 font-semibold px-4 py-2 rounded hover:bg-gray-50 transition">
+        ← Back
+      </a>
+    </div>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        <div class="mb-6 space-y-3">
+          {% for category, message in messages %}
+            <div class="px-4 py-3 rounded-lg
+              {% if category == 'success' %}
+                bg-green-100 text-green-800
+              {% elif category in ['danger', 'error'] %}
+                bg-red-100 text-red-800
+              {% elif category == 'warning' %}
+                bg-yellow-100 text-yellow-800
+              {% else %}
+                bg-gray-100 text-gray-800
+              {% endif %}
+            ">
+              {{ message }}
+            </div>
+          {% endfor %}
+        </div>
+      {% endif %}
+    {% endwith %}
+
+    <form method="POST" class="bg-white rounded-xl shadow p-6 space-y-4">
+      <div>
+        <label class="block text-sm font-semibold text-gray-700 mb-1">Buyer</label>
+        <select name="buyer_id" required
+                class="w-full border border-gray-200 rounded-lg px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-jungle/30">
+          <option value="" selected disabled>Select buyer…</option>
+          {% for b in (buyers or []) %}
+            <option value="{{ b.id }}">{{ b.name }}{% if b.email %} — {{ b.email }}{% endif %}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div>
+        <label class="block text-sm font-semibold text-gray-700 mb-1">Title</label>
+        <input name="title" required maxlength="200"
+               class="w-full border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-jungle/30"
+               placeholder="e.g. Rizara Supply Agreement (Feb 2026)" />
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div>
+          <label class="block text-sm font-semibold text-gray-700 mb-1">Document type</label>
+          <input name="doc_type" required maxlength="50"
+                 class="w-full border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-jungle/30"
+                 placeholder="e.g. contract" />
+        </div>
+
+        <div>
+          <label class="block text-sm font-semibold text-gray-700 mb-1">Version</label>
+          <input name="version" type="number" min="1" value="1"
+                 class="w-full border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-jungle/30" />
+        </div>
+      </div>
+
+      <div>
+        <label class="block text-sm font-semibold text-gray-700 mb-1">Status</label>
+        <select name="status"
+                class="w-full border border-gray-200 rounded-lg px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-jungle/30">
+          {% set statuses = (doc_statuses or ['draft','buyer_signed','executed','expired','void']) %}
+          {% for s in statuses %}
+            <option value="{{ s }}" {% if s == 'draft' %}selected{% endif %}>{{ s }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="flex justify-end gap-3 pt-2">
+        <a href="{{ url_for('admin.documents_list') }}"
+           class="bg-white border border-gray-200 text-gray-800 font-semibold px-4 py-2 rounded hover:bg-gray-50 transition">
+          Cancel
+        </a>
+        <button type="submit"
+                class="bg-jungle text-white font-semibold px-4 py-2 rounded hover:bg-jungleLight transition">
+          Create document
+        </button>
+      </div>
+    </form>
+  </div>
+{% endblock %}

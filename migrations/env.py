@@ -1,3 +1,6 @@
+# migrations/env.py
+from __future__ import annotations
+
 import os
 import sys
 import logging
@@ -16,29 +19,27 @@ if PROJECT_ROOT not in sys.path:
 # Alembic Config object (reads whichever .ini you invoked Alembic with)
 config = context.config
 
-# Setup Python logging from the config file
+# Setup Python logging from the config file (if present and valid)
 if config.config_file_name:
     try:
         fileConfig(config.config_file_name, disable_existing_loggers=False)
     except KeyError:
-        # Some alembic.ini files don't define logging sections (formatters/handlers/loggers).
-        # That's OK; we can proceed without fileConfig.
+        # Some alembic.ini files don't define logging sections; proceed without it.
         pass
-
-
 
 logger = logging.getLogger("alembic.env")
 
 # -----------------------------------------------------------------------------
 # URL + metadata resolution strategy (Render-safe)
 #
-# 1) If DATABASE_URL is set (Render), use it and import db.metadata directly.
-# 2) Otherwise (local Flask-Migrate workflow), use current_app + Flask-Migrate.
+# - If DATABASE_URL (or RENDER_DB_URL) is set: run without Flask app context.
+# - Otherwise: assume local Flask-Migrate workflow and use current_app engine/db.
 # -----------------------------------------------------------------------------
 DB_URL = os.getenv("DATABASE_URL") or os.getenv("RENDER_DB_URL")
 
 USING_FLASK_MIGRATE = False
 target_db = None
+current_app = None  # only set in Flask-Migrate path
 
 
 def _set_sqlalchemy_url(url: str) -> None:
@@ -53,26 +54,28 @@ def _import_app_db_metadata():
     Import db.metadata without requiring a Flask app context.
     Adjust this import ONLY if your db object is defined elsewhere.
     """
-    from app.extensions import db  # noqa: WPS433 (runtime import is intentional)
+    from app.extensions import db  # runtime import is intentional
 
-    # Flask-SQLAlchemy can expose metadatas in some setups
-    if hasattr(db, "metadatas") and db.metadatas:
+    if hasattr(db, "metadatas") and getattr(db, "metadatas"):
         return db.metadatas.get(None) or db.metadata
     return db.metadata
 
 
-if DB_URL:
-    # Render / CI / non-Flask context
-    _set_sqlalchemy_url(DB_URL)
-else:
-    # Local Flask-Migrate context (requires app context)
+def _bootstrap_flask_migrate():
+    """Initialize Flask-Migrate context helpers (engine/url/metadata) when no DB_URL is set."""
+    global USING_FLASK_MIGRATE, target_db, current_app  # noqa: PLW0603
+
     try:
-        from flask import current_app  # noqa: WPS433
+        from flask import current_app as flask_current_app  # runtime import
     except Exception as exc:  # pragma: no cover
         raise RuntimeError(
             "DATABASE_URL (or RENDER_DB_URL) is not set, and Flask is not available. "
             "Set DATABASE_URL for non-Flask environments."
         ) from exc
+
+    current_app = flask_current_app
+    USING_FLASK_MIGRATE = True
+    target_db = current_app.extensions["migrate"].db
 
     def get_engine():
         try:
@@ -84,24 +87,43 @@ else:
 
     def get_engine_url():
         try:
-            return (
-                get_engine()
-                .url.render_as_string(hide_password=False)
-                .replace("%", "%%")
-            )
+            return get_engine().url.render_as_string(hide_password=False).replace("%", "%%")
         except AttributeError:
             return str(get_engine().url).replace("%", "%%")
 
-    USING_FLASK_MIGRATE = True
+    return get_engine, get_engine_url
+
+
+# -----------------------------------------------------------------------------
+# Legacy tables that may exist in the database but are not managed by Rizara.
+# We explicitly IGNORE them so Alembic never autogenerates DROP/ALTER for them.
+# -----------------------------------------------------------------------------
+LEGACY_TABLES = {"customers", "subscriptions", "packages", "transactions"}
+
+
+def include_object(object_, name, type_, reflected, compare_to):
+    # Ignore legacy tables entirely.
+    if type_ == "table" and name in LEGACY_TABLES:
+        return False
+    return True
+
+
+# -----------------------------------------------------------------------------
+# Configure sqlalchemy.url
+# -----------------------------------------------------------------------------
+if DB_URL:
+    _set_sqlalchemy_url(DB_URL)
+    get_engine = None
+else:
+    get_engine, get_engine_url = _bootstrap_flask_migrate()
     _set_sqlalchemy_url(get_engine_url())
-    target_db = current_app.extensions["migrate"].db
 
 
 def get_metadata():
     """
     Return SQLAlchemy MetaData for autogenerate.
 
-    - Render/non-Flask: import db.metadata directly.
+    - Non-Flask (Render/CI): import db.metadata directly.
     - Flask-Migrate: use migrate extension db metadata.
     """
     if not USING_FLASK_MIGRATE:
@@ -110,6 +132,18 @@ def get_metadata():
     if hasattr(target_db, "metadatas"):
         return target_db.metadatas[None]
     return target_db.metadata
+
+
+# -----------------------------------------------------------------------------
+# Prevent empty autogenerate migrations (keeps history clean)
+# -----------------------------------------------------------------------------
+def process_revision_directives(ctx, revision, directives):
+    cmd_opts = getattr(config, "cmd_opts", None)
+    if cmd_opts and getattr(cmd_opts, "autogenerate", False):
+        script = directives[0]
+        if script.upgrade_ops.is_empty():
+            directives[:] = []
+            logger.info("No changes in schema detected.")
 
 
 def run_migrations_offline():
@@ -125,8 +159,10 @@ def run_migrations_offline():
         url=url,
         target_metadata=get_metadata(),
         literal_binds=True,
+        include_object=include_object,
         compare_type=True,
         compare_server_default=True,
+        process_revision_directives=process_revision_directives,
     )
 
     with context.begin_transaction():
@@ -135,40 +171,31 @@ def run_migrations_offline():
 
 def run_migrations_online():
     """Run migrations in 'online' mode."""
-    # Prevent empty autogenerate migrations (keeps your history clean)
-    def process_revision_directives(ctx, revision, directives):
-        cmd_opts = getattr(config, "cmd_opts", None)
-        if cmd_opts and getattr(cmd_opts, "autogenerate", False):
-            script = directives[0]
-            if script.upgrade_ops.is_empty():
-                directives[:] = []
-                logger.info("No changes in schema detected.")
-
     if USING_FLASK_MIGRATE:
         # Use Flask-Migrate provided configure_args (if present)
-        conf_args = current_app.extensions["migrate"].configure_args
-        if conf_args.get("process_revision_directives") is None:
-            conf_args["process_revision_directives"] = process_revision_directives
+        conf_args = current_app.extensions["migrate"].configure_args or {}
+        conf_args.setdefault("process_revision_directives", process_revision_directives)
+        conf_args.setdefault("include_object", include_object)
+        conf_args.setdefault("compare_type", True)
+        conf_args.setdefault("compare_server_default", True)
 
         connectable = get_engine()
-
         with connectable.connect() as connection:
             context.configure(
                 connection=connection,
                 target_metadata=get_metadata(),
                 **conf_args,
             )
-
             with context.begin_transaction():
                 context.run_migrations()
         return
 
-    # Non-Flask path (Render): create engine from DATABASE_URL
-    from sqlalchemy import create_engine  # noqa: WPS433
+    # Non-Flask path (Render/CI): create engine from sqlalchemy.url
+    from sqlalchemy import create_engine  # runtime import is intentional
 
     url = config.get_main_option("sqlalchemy.url")
     if not url:
-        raise RuntimeError("No sqlalchemy.url configured. Set DATABASE_URL on Render.")
+        raise RuntimeError("No sqlalchemy.url configured. Set DATABASE_URL / RENDER_DB_URL.")
 
     engine = create_engine(url)
 
@@ -176,11 +203,11 @@ def run_migrations_online():
         context.configure(
             connection=connection,
             target_metadata=get_metadata(),
+            include_object=include_object,
             process_revision_directives=process_revision_directives,
             compare_type=True,
             compare_server_default=True,
         )
-
         with context.begin_transaction():
             context.run_migrations()
 

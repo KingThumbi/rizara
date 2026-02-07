@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block title %}{{ doc.title }}{% endblock %}
+
+{% block content %}
+  <div class="container" style="max-width:860px; margin:0 auto; padding:24px;">
+    <div class="card">
+      <div style="font-weight:900; font-size:20px;">{{ doc.title }}</div>
+      <div class="muted" style="margin-top:6px;">
+        Buyer: <b>{{ buyer.name }}</b> · Type: <b>{{ doc.doc_type }}</b> · Version: <b>{{ doc.version }}</b>
+      </div>
+      <div class="muted" style="margin-top:6px;">
+        Status: <span class="badge">{{ doc.status }}</span>
+      </div>
+
+      <hr style="margin:16px 0; border:0; border-top:1px solid #e5e7eb;" />
+
+      {% if doc.storage_key %}
+        <p><a href="{{ doc.storage_key }}" target="_blank">Open PDF</a></p>
+      {% else %}
+        <p class="muted">PDF not uploaded yet.</p>
+      {% endif %}
+
+      <div style="height:12px;"></div>
+
+      {% if doc.status in ['draft'] %}
+        <form method="POST" action="{{ url_for('main.buyer_document_sign', document_id=doc.id) }}" class="col" style="gap:12px;">
+          <div>
+            <label class="muted">Your name</label>
+            <input name="signer_name" required style="width:100%; padding:10px 12px; border-radius:12px; border:1px solid #e5e7eb;" />
+          </div>
+
+          <div>
+            <label class="muted">Email (optional)</label>
+            <input name="signer_email" style="width:100%; padding:10px 12px; border-radius:12px; border:1px solid #e5e7eb;" />
+          </div>
+
+          <div>
+            <label class="muted">Consent text (optional)</label>
+            <textarea name="typed_consent_text" rows="3" style="width:100%; padding:10px 12px; border-radius:12px; border:1px solid #e5e7eb;">I confirm I agree and accept this document.</textarea>
+          </div>
+
+          <button type="submit" class="btn btn-primary">Sign (Typed)</button>
+        </form>
+      {% else %}
+        <p class="muted">Signing is disabled for this status.</p>
+      {% endif %}
+
+      <hr style="margin:16px 0; border:0; border-top:1px solid #e5e7eb;" />
+      <div style="font-weight:900; margin-bottom:8px;">Signature log</div>
+      <ul class="muted" style="margin:0; padding-left:18px;">
+        {% for s in signatures %}
+          <li>{{ s.signer_type }} — {{ s.signer_name }} — {{ s.sign_method }} — {{ s.signed_at }}</li>
+        {% else %}
+          <li>No signatures yet.</li>
+        {% endfor %}
+      </ul>
+    </div>
+  </div>
+{% endblock %}

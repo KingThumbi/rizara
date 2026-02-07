@@ -1,13 +1,21 @@
 # app/models.py
+from __future__ import annotations
 
-import uuid
 import enum
-from datetime import datetime, date
+import uuid
+from datetime import date, datetime, timezone
 
+import sqlalchemy as sa
 from flask_login import UserMixin
 from sqlalchemy import Enum as SAEnum
+from sqlalchemy.dialects.postgresql import INET, UUID
+from sqlalchemy.sql import func
 
 from .extensions import db
+
+
+def utcnow() -> datetime:
+    return datetime.now(timezone.utc)
 
 
 # =========================================================
@@ -20,7 +28,11 @@ class User(UserMixin, db.Model):
 
     # Identity
     name = db.Column(db.String(120), nullable=False)
-    email = db.Column(db.String(120), unique=True, nullable=False)
+
+    # IMPORTANT:
+    # Keep unique=True + index=True, but also pin the constraint name so Alembic stops
+    # churning between user_email_key vs ix_user_email.
+    email = db.Column(db.String(120), nullable=False)
     phone = db.Column(db.String(30), unique=True, nullable=True)
 
     # Auth
@@ -45,16 +57,176 @@ class User(UserMixin, db.Model):
     accepted_terms_at = db.Column(db.DateTime, nullable=True)
     terms_version = db.Column(db.String(20), nullable=True)
 
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
     updated_at = db.Column(
         db.DateTime,
+        nullable=False,
         default=datetime.utcnow,
         onupdate=datetime.utcnow,
-        nullable=False,
     )
 
-    def __repr__(self):
+    __table_args__ = (
+        db.UniqueConstraint("email", name="user_email_key"),
+        db.Index("ix_user_email", "email", unique=True),
+    )
+
+    def __repr__(self) -> str:
         return f"<User {self.id} {self.email}>"
+
+
+# =========================================================
+# Buyer (Business profile) + optional login link
+# =========================================================
+class Buyer(db.Model):
+    __tablename__ = "buyer"
+
+    id = db.Column(db.Integer, primary_key=True)
+
+    user_id = db.Column(db.Integer, db.ForeignKey("user.id"), unique=True, nullable=True)
+    user = db.relationship("User", foreign_keys=[user_id], lazy="joined")
+
+    name = db.Column(db.String(160), nullable=False)
+    phone = db.Column(db.String(30), nullable=True)
+    email = db.Column(db.String(120), nullable=True)
+    address = db.Column(db.String(255), nullable=True)
+    tax_pin = db.Column(db.String(60), nullable=True)
+
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+    def __repr__(self) -> str:
+        return f"<Buyer {self.id} {self.name}>"
+
+
+# =========================================================
+# Documents (LOI, agreements, specs) + signatures
+# =========================================================
+class Document(db.Model):
+    __tablename__ = "document"
+
+    id = db.Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+
+    buyer_id = db.Column(
+        db.Integer,
+        db.ForeignKey("buyer.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    buyer = db.relationship("Buyer", foreign_keys=[buyer_id], lazy="joined")
+
+    doc_type = db.Column(db.String(50), nullable=False, index=True)   # indexed in DB
+    title = db.Column(db.String(200), nullable=False)
+
+    status = db.Column(db.String(30), nullable=False, default="draft", index=True)  # indexed in DB
+    version = db.Column(db.Integer, nullable=False, default=1)
+
+    storage_key = db.Column(db.String(500), nullable=True)
+    file_sha256 = db.Column(db.String(64), nullable=True)
+
+    # DB column is "timestamp without time zone" (naive datetime)
+    issued_at = db.Column(db.DateTime, nullable=True)
+    expires_at = db.Column(db.DateTime, nullable=True)
+
+    created_by_user_id = db.Column(
+        db.Integer,
+        db.ForeignKey("user.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    created_by = db.relationship("User", foreign_keys=[created_by_user_id], lazy="joined")
+
+    # Match DB defaults: now()
+    created_at = db.Column(db.DateTime, nullable=False, server_default=sa.text("now()"))
+    updated_at = db.Column(
+        db.DateTime,
+        nullable=False,
+        server_default=sa.text("now()"),
+        # IMPORTANT: Postgres won't auto-update this unless you add a trigger.
+        # This sets updated_at on ORM updates.
+        onupdate=datetime.utcnow,
+    )
+
+    __table_args__ = (
+        db.UniqueConstraint(
+            "buyer_id", "doc_type", "version",
+            name="uq_document_buyer_type_version",
+        ),
+        db.Index(
+            "ix_document_buyer_type_status",
+            "buyer_id", "doc_type", "status",
+        ),
+    )
+
+    signatures = db.relationship(
+        "DocumentSignature",
+        back_populates="document",
+        lazy="select",
+        cascade="all, delete-orphan",
+    )
+
+    def __repr__(self) -> str:
+        return f"<Document {self.id} {self.doc_type} v{self.version} {self.status}>"
+
+
+class DocumentSignature(db.Model):
+    __tablename__ = "document_signature"
+
+    id = db.Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+
+    document_id = db.Column(
+        UUID(as_uuid=True),
+        db.ForeignKey("document.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    document = db.relationship("Document", back_populates="signatures", lazy="joined")
+
+    signer_type = db.Column(db.String(30), nullable=False)  # buyer|rizara_admin|rizara_staff
+
+    signed_by_user_id = db.Column(
+        db.Integer,
+        db.ForeignKey("user.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    signed_by = db.relationship("User", foreign_keys=[signed_by_user_id], lazy="joined")
+
+    sign_method = db.Column(db.String(30), nullable=False)  # drawn|typed|docusign
+    signer_name = db.Column(db.String(160), nullable=False)
+    signer_email = db.Column(db.String(255), nullable=True)
+
+    signature_image_storage_key = db.Column(db.String(500), nullable=True)
+    typed_consent_text = db.Column(db.Text, nullable=True)
+
+    signed_at = db.Column(db.DateTime, nullable=False, server_default=sa.text("now()"))
+    ip_address = db.Column(INET, nullable=True)
+    user_agent = db.Column(db.Text, nullable=True)
+
+    __table_args__ = (
+        db.CheckConstraint(
+            "signer_type in ('buyer','rizara_admin','rizara_staff')",
+            name="ck_docsig_signer_type",
+        ),
+        db.CheckConstraint(
+            "sign_method in ('drawn','typed','docusign')",
+            name="ck_docsig_sign_method",
+        ),
+    )
+
+    def __repr__(self) -> str:
+        return f"<DocumentSignature {self.id} {self.signer_type} {self.sign_method}>"
+
+DOCUMENT_STATUSES = {"draft", "buyer_signed", "executed", "expired", "void"}
+
+ALLOWED_TRANSITIONS = {
+    "draft": {"buyer_signed", "void"},
+    "buyer_signed": {"executed", "void"},
+    "executed": {"void"},
+    "expired": {"void"},
+    "void": set(),
+}
+
+def can_transition(current: str, target: str) -> bool:
+    return target in ALLOWED_TRANSITIONS.get(current, set())
 
 
 # =========================================================
@@ -68,23 +240,17 @@ class Farmer(db.Model):
     phone = db.Column(db.String(20), unique=True, nullable=False)
     county = db.Column(db.String(100), nullable=False)
     ward = db.Column(db.String(100), nullable=False)
-    village = db.Column(db.String(120))
-    latitude = db.Column(db.Float)
-    longitude = db.Column(db.Float)
-    location_notes = db.Column(db.String(255))
+    village = db.Column(db.String(120), nullable=True)
+    latitude = db.Column(db.Float, nullable=True)
+    longitude = db.Column(db.Float, nullable=True)
+    location_notes = db.Column(db.String(255), nullable=True)
     onboarded_at = db.Column(db.DateTime, default=datetime.utcnow)
 
-    goats = db.relationship(
-        "Goat", backref="farmer", lazy=True, cascade="all, delete-orphan"
-    )
-    sheep = db.relationship(
-        "Sheep", backref="farmer", lazy=True, cascade="all, delete-orphan"
-    )
-    cattle = db.relationship(
-        "Cattle", backref="farmer", lazy=True, cascade="all, delete-orphan"
-    )
+    goats = db.relationship("Goat", backref="farmer", lazy=True, cascade="all, delete-orphan")
+    sheep = db.relationship("Sheep", backref="farmer", lazy=True, cascade="all, delete-orphan")
+    cattle = db.relationship("Cattle", backref="farmer", lazy=True, cascade="all, delete-orphan")
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"<Farmer {self.id} {self.name}>"
 
 
@@ -94,14 +260,14 @@ class Farmer(db.Model):
 class BaseAnimal(db.Model):
     __abstract__ = True
 
-    id = db.Column(db.UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id = db.Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
 
     farmer_tag = db.Column(db.String(64), nullable=False)
     rizara_id = db.Column(db.String(64), unique=True, nullable=False)
 
-    sex = db.Column(db.String(10))
-    breed = db.Column(db.String(50))
-    estimated_dob = db.Column(db.Date)
+    sex = db.Column(db.String(10), nullable=True)
+    breed = db.Column(db.String(50), nullable=True)
+    estimated_dob = db.Column(db.Date, nullable=True)
 
     status = db.Column(db.String(30), nullable=False, default="on_farm")
 
@@ -113,11 +279,11 @@ class BaseAnimal(db.Model):
     is_active = db.Column(db.Boolean, default=True, nullable=False)
 
     # Aggregation snapshot (purchase point)
-    aggregated_at = db.Column(db.DateTime)
-    aggregated_by_user_id = db.Column(db.Integer, db.ForeignKey("user.id"))
-    live_weight_kg = db.Column(db.Float)
-    weight_method = db.Column(db.String(20))  # scale | estimated | tape | other
-    purchase_price_per_head = db.Column(db.Float)
+    aggregated_at = db.Column(db.DateTime, nullable=True)
+    aggregated_by_user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=True)
+    live_weight_kg = db.Column(db.Float, nullable=True)
+    weight_method = db.Column(db.String(20), nullable=True)  # scale | estimated | tape | other
+    purchase_price_per_head = db.Column(db.Float, nullable=True)
     purchase_currency = db.Column(db.String(10), default="KES")
 
 
@@ -127,9 +293,7 @@ class BaseAnimal(db.Model):
 class Goat(BaseAnimal):
     __tablename__ = "goat"
 
-    aggregation_batch_id = db.Column(
-        db.Integer, db.ForeignKey("aggregation_batch.id"), nullable=True
-    )
+    aggregation_batch_id = db.Column(db.Integer, db.ForeignKey("aggregation_batch.id"), nullable=True)
     aggregation_batch = db.relationship("AggregationBatch", back_populates="goats")
 
     processing_batches = db.relationship(
@@ -138,7 +302,7 @@ class Goat(BaseAnimal):
         back_populates="goats",
     )
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"<Goat {self.id} {self.rizara_id} {self.status}>"
 
 
@@ -148,9 +312,7 @@ class Goat(BaseAnimal):
 class Sheep(BaseAnimal):
     __tablename__ = "sheep"
 
-    aggregation_batch_id = db.Column(
-        db.Integer, db.ForeignKey("aggregation_batch.id"), nullable=True
-    )
+    aggregation_batch_id = db.Column(db.Integer, db.ForeignKey("aggregation_batch.id"), nullable=True)
     aggregation_batch = db.relationship("AggregationBatch", back_populates="sheep")
 
     processing_batches = db.relationship(
@@ -159,7 +321,7 @@ class Sheep(BaseAnimal):
         back_populates="sheep",
     )
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"<Sheep {self.id} {self.rizara_id} {self.status}>"
 
 
@@ -169,9 +331,7 @@ class Sheep(BaseAnimal):
 class Cattle(BaseAnimal):
     __tablename__ = "cattle"
 
-    aggregation_batch_id = db.Column(
-        db.Integer, db.ForeignKey("aggregation_batch.id"), nullable=True
-    )
+    aggregation_batch_id = db.Column(db.Integer, db.ForeignKey("aggregation_batch.id"), nullable=True)
     aggregation_batch = db.relationship("AggregationBatch", back_populates="cattle")
 
     processing_batches = db.relationship(
@@ -180,7 +340,7 @@ class Cattle(BaseAnimal):
         back_populates="cattle",
     )
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"<Cattle {self.id} {self.rizara_id} {self.status}>"
 
 
@@ -196,7 +356,7 @@ class AggregationBatch(db.Model):
     date_received = db.Column(db.Date, default=date.today)
 
     is_locked = db.Column(db.Boolean, default=False)
-    locked_at = db.Column(db.DateTime)
+    locked_at = db.Column(db.DateTime, nullable=True)
 
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
@@ -207,7 +367,7 @@ class AggregationBatch(db.Model):
     sheep = db.relationship("Sheep", back_populates="aggregation_batch", lazy="select")
     cattle = db.relationship("Cattle", back_populates="aggregation_batch", lazy="select")
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"<AggregationBatch {self.id} {self.animal_type}>"
 
 
@@ -216,39 +376,20 @@ class AggregationBatch(db.Model):
 # =========================================================
 processing_goats = db.Table(
     "processing_goats",
-    db.Column(
-        "processing_batch_id",
-        db.Integer,
-        db.ForeignKey("processing_batch.id"),
-        primary_key=True,
-    ),
-    db.Column("goat_id", db.UUID(as_uuid=True), db.ForeignKey("goat.id"), primary_key=True),
+    db.Column("processing_batch_id", db.Integer, db.ForeignKey("processing_batch.id"), primary_key=True),
+    db.Column("goat_id", UUID(as_uuid=True), db.ForeignKey("goat.id"), primary_key=True),
 )
 
 processing_sheep = db.Table(
     "processing_sheep",
-    db.Column(
-        "processing_batch_id",
-        db.Integer,
-        db.ForeignKey("processing_batch.id"),
-        primary_key=True,
-    ),
-    db.Column(
-        "sheep_id", db.UUID(as_uuid=True), db.ForeignKey("sheep.id"), primary_key=True
-    ),
+    db.Column("processing_batch_id", db.Integer, db.ForeignKey("processing_batch.id"), primary_key=True),
+    db.Column("sheep_id", UUID(as_uuid=True), db.ForeignKey("sheep.id"), primary_key=True),
 )
 
 processing_cattle = db.Table(
     "processing_cattle",
-    db.Column(
-        "processing_batch_id",
-        db.Integer,
-        db.ForeignKey("processing_batch.id"),
-        primary_key=True,
-    ),
-    db.Column(
-        "cattle_id", db.UUID(as_uuid=True), db.ForeignKey("cattle.id"), primary_key=True
-    ),
+    db.Column("processing_batch_id", db.Integer, db.ForeignKey("processing_batch.id"), primary_key=True),
+    db.Column("cattle_id", UUID(as_uuid=True), db.ForeignKey("cattle.id"), primary_key=True),
 )
 
 
@@ -261,11 +402,11 @@ class ProcessingBatch(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     animal_type = db.Column(db.String(20), nullable=False)  # goat, sheep, cattle
     facility = db.Column(db.String(120), nullable=False)
-    slaughter_date = db.Column(db.Date)
-    halal_cert_ref = db.Column(db.String(120))
+    slaughter_date = db.Column(db.Date, nullable=True)
+    halal_cert_ref = db.Column(db.String(120), nullable=True)
 
     is_locked = db.Column(db.Boolean, default=False)
-    locked_at = db.Column(db.DateTime)
+    locked_at = db.Column(db.DateTime, nullable=True)
 
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
@@ -276,7 +417,7 @@ class ProcessingBatch(db.Model):
     sheep = db.relationship("Sheep", secondary=processing_sheep, back_populates="processing_batches")
     cattle = db.relationship("Cattle", secondary=processing_cattle, back_populates="processing_batches")
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"<ProcessingBatch {self.id} {self.animal_type}>"
 
 
@@ -288,7 +429,7 @@ class TraceabilityRecord(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     animal_type = db.Column(db.String(20), nullable=False)  # goat, sheep, cattle
-    animal_id = db.Column(db.UUID(as_uuid=True), nullable=False)
+    animal_id = db.Column(UUID(as_uuid=True), nullable=False)
     qr_code_data = db.Column(db.Text, nullable=False)
     public_url = db.Column(db.String(255), nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
@@ -303,33 +444,10 @@ class ContactMessage(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(120), nullable=False)
     email = db.Column(db.String(120), nullable=False)
-    subject = db.Column(db.String(200))
+    subject = db.Column(db.String(200), nullable=True)
     message = db.Column(db.Text, nullable=False)
     status = db.Column(db.String(20), default="new")  # new, reviewed, closed
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
-
-
-# =========================================================
-# Buyer (Business profile) + optional login link
-# =========================================================
-class Buyer(db.Model):
-    __tablename__ = "buyer"
-
-    id = db.Column(db.Integer, primary_key=True)
-
-    user_id = db.Column(db.Integer, db.ForeignKey("user.id"), unique=True, nullable=True)
-    user = db.relationship("User", foreign_keys=[user_id], lazy="joined")
-
-    name = db.Column(db.String(160), nullable=False)
-    phone = db.Column(db.String(30))
-    email = db.Column(db.String(120))
-    address = db.Column(db.String(255))
-    tax_pin = db.Column(db.String(60))
-
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
-
-    def __repr__(self):
-        return f"<Buyer {self.id} {self.name}>"
 
 
 # =========================================================
@@ -345,11 +463,11 @@ class OrderRequest(db.Model):
 
     buyer_name = db.Column(db.String(120), nullable=False)
     phone = db.Column(db.String(30), nullable=False)
-    email = db.Column(db.String(120))
+    email = db.Column(db.String(120), nullable=True)
     product = db.Column(db.String(120), nullable=False)
     quantity = db.Column(db.Integer, nullable=False)
     delivery_location = db.Column(db.String(200), nullable=False)
-    notes = db.Column(db.Text)
+    notes = db.Column(db.Text, nullable=True)
 
     status = db.Column(db.String(20), default="new")  # new, reviewed, approved, rejected
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
@@ -364,24 +482,24 @@ class AnimalEvent(db.Model):
     id = db.Column(db.Integer, primary_key=True)
 
     animal_type = db.Column(db.String(20), nullable=False)  # goat, sheep, cattle
-    animal_id = db.Column(db.UUID(as_uuid=True), nullable=False)
+    animal_id = db.Column(UUID(as_uuid=True), nullable=False)
 
     event_type = db.Column(db.String(50), nullable=False)
     event_datetime = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
 
-    performed_by_user_id = db.Column(db.Integer, db.ForeignKey("user.id"))
-    from_farmer_id = db.Column(db.Integer, db.ForeignKey("farmer.id"))
-    to_farmer_id = db.Column(db.Integer, db.ForeignKey("farmer.id"))
+    performed_by_user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=True)
+    from_farmer_id = db.Column(db.Integer, db.ForeignKey("farmer.id"), nullable=True)
+    to_farmer_id = db.Column(db.Integer, db.ForeignKey("farmer.id"), nullable=True)
 
-    from_location = db.Column(db.String(120))
-    to_location = db.Column(db.String(120))
+    from_location = db.Column(db.String(120), nullable=True)
+    to_location = db.Column(db.String(120), nullable=True)
 
-    notes = db.Column(db.Text)
-    attachment_url = db.Column(db.String(255))
+    notes = db.Column(db.Text, nullable=True)
+    attachment_url = db.Column(db.String(255), nullable=True)
 
     is_verified = db.Column(db.Boolean, default=True, nullable=False)
-    verified_by_user_id = db.Column(db.Integer, db.ForeignKey("user.id"))
-    verified_at = db.Column(db.DateTime)
+    verified_by_user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=True)
+    verified_at = db.Column(db.DateTime, nullable=True)
 
 
 # =========================================================
@@ -398,11 +516,11 @@ class AggregationCost(db.Model):
     currency = db.Column(db.String(10), default="KES")
 
     incurred_date = db.Column(db.Date, default=date.today, nullable=False)
-    paid_to = db.Column(db.String(120))
-    reference = db.Column(db.String(120))
-    notes = db.Column(db.Text)
+    paid_to = db.Column(db.String(120), nullable=True)
+    reference = db.Column(db.String(120), nullable=True)
+    notes = db.Column(db.Text, nullable=True)
 
-    created_by_user_id = db.Column(db.Integer, db.ForeignKey("user.id"))
+    created_by_user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
 
 
@@ -415,21 +533,21 @@ class AnimalHealthEvent(db.Model):
     id = db.Column(db.Integer, primary_key=True)
 
     animal_type = db.Column(db.String(20), nullable=False)
-    animal_id = db.Column(db.UUID(as_uuid=True), nullable=False)
+    animal_id = db.Column(UUID(as_uuid=True), nullable=False)
 
     aggregation_batch_id = db.Column(db.Integer, db.ForeignKey("aggregation_batch.id"), nullable=False)
 
-    diagnosis = db.Column(db.String(200))
-    treatment = db.Column(db.String(200))
+    diagnosis = db.Column(db.String(200), nullable=True)
+    treatment = db.Column(db.String(200), nullable=True)
 
     cost = db.Column(db.Float, default=0.0)
     currency = db.Column(db.String(10), default="KES")
 
-    treated_by = db.Column(db.String(120))
+    treated_by = db.Column(db.String(120), nullable=True)
     event_date = db.Column(db.Date, default=date.today, nullable=False)
-    notes = db.Column(db.Text)
+    notes = db.Column(db.Text, nullable=True)
 
-    recorded_by_user_id = db.Column(db.Integer, db.ForeignKey("user.id"))
+    recorded_by_user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
 
 
@@ -445,9 +563,9 @@ class ProcessingYield(db.Model):
     total_carcass_weight_kg = db.Column(db.Float, nullable=False)
     parts_included_in_batch_sale = db.Column(db.Boolean, default=True, nullable=False)
     parts_sold_separately = db.Column(db.Boolean, default=False, nullable=False)
-    parts_notes = db.Column(db.Text)
+    parts_notes = db.Column(db.Text, nullable=True)
 
-    recorded_by_user_id = db.Column(db.Integer, db.ForeignKey("user.id"))
+    recorded_by_user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=True)
     recorded_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
 
 
@@ -468,7 +586,7 @@ class ProcessingBatchSale(db.Model):
 
     sale_date = db.Column(db.Date, default=date.today, nullable=False)
 
-    notes = db.Column(db.Text)
+    notes = db.Column(db.Text, nullable=True)
 
     recorded_by_user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=True)
     recorded_by = db.relationship("User", foreign_keys=[recorded_by_user_id], lazy="joined")
@@ -495,19 +613,16 @@ class Invoice(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     invoice_number = db.Column(db.String(40), unique=True, nullable=False)
 
-    buyer_id = db.Column(db.Integer, db.ForeignKey("buyer.id"), nullable=False)
+    buyer_id = db.Column(db.Integer, db.ForeignKey("buyer.id", ondelete="CASCADE"), nullable=False, index=True)
     buyer = db.relationship("Buyer", foreign_keys=[buyer_id], lazy="joined")
 
     processing_batch_sale_id = db.Column(
-        db.Integer,
-        db.ForeignKey("processing_batch_sale.id"),
-        unique=True,
-        nullable=False,
+        db.Integer, db.ForeignKey("processing_batch_sale.id"), unique=True, nullable=False
     )
     sale = db.relationship("ProcessingBatchSale", foreign_keys=[processing_batch_sale_id], lazy="joined")
 
     issue_date = db.Column(db.Date, default=date.today, nullable=False)
-    due_date = db.Column(db.Date)
+    due_date = db.Column(db.Date, nullable=True)
 
     status = db.Column(
         SAEnum(
@@ -528,22 +643,17 @@ class Invoice(db.Model):
     tax = db.Column(db.Float, default=0.0, nullable=False)
     total = db.Column(db.Float, default=0.0, nullable=False)
 
-    notes = db.Column(db.Text)
-    terms = db.Column(db.Text)
+    notes = db.Column(db.Text, nullable=True)
+    terms = db.Column(db.Text, nullable=True)
 
-    issued_by_user_id = db.Column(db.Integer, db.ForeignKey("user.id"))
+    issued_by_user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=True)
     issued_by = db.relationship("User", foreign_keys=[issued_by_user_id], lazy="joined")
 
-    items = db.relationship(
-        "InvoiceItem",
-        back_populates="invoice",
-        cascade="all, delete-orphan",
-        lazy="select",
-    )
+    items = db.relationship("InvoiceItem", back_populates="invoice", cascade="all, delete-orphan", lazy="select")
 
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"<Invoice {self.id} {self.invoice_number} {self.status}>"
 
 
@@ -572,9 +682,9 @@ class Vendor(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(160), nullable=False)
-    phone = db.Column(db.String(30))
-    email = db.Column(db.String(120))
-    notes = db.Column(db.Text)
+    phone = db.Column(db.String(30), nullable=True)
+    email = db.Column(db.String(120), nullable=False)
+    notes = db.Column(db.Text, nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
 
 
@@ -599,18 +709,18 @@ class Expense(db.Model):
     expense_date = db.Column(db.Date, default=date.today, nullable=False)
 
     category_id = db.Column(db.Integer, db.ForeignKey("expense_category.id"), nullable=False)
-    vendor_id = db.Column(db.Integer, db.ForeignKey("vendor.id"))
+    vendor_id = db.Column(db.Integer, db.ForeignKey("vendor.id"), nullable=True)
 
     amount = db.Column(db.Float, nullable=False)
     currency = db.Column(db.String(10), default="KES")
 
-    payment_method = db.Column(db.String(30))  # cash/mpesa/bank
-    reference = db.Column(db.String(120))
-    cost_center = db.Column(db.String(120))
-    notes = db.Column(db.Text)
-    attachment_url = db.Column(db.String(255))
+    payment_method = db.Column(db.String(30), nullable=True)  # cash/mpesa/bank
+    reference = db.Column(db.String(120), nullable=True)
+    cost_center = db.Column(db.String(120), nullable=True)
+    notes = db.Column(db.Text, nullable=True)
+    attachment_url = db.Column(db.String(255), nullable=True)
 
-    created_by_user_id = db.Column(db.Integer, db.ForeignKey("user.id"))
+    created_by_user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
 
 
@@ -625,15 +735,15 @@ class Asset(db.Model):
     asset_type = db.Column(db.String(60), nullable=False)  # vehicle, scale, equipment...
     ownership_type = db.Column(db.String(20), default="owned", nullable=False)  # owned/leased
 
-    purchase_date = db.Column(db.Date)
-    purchase_cost = db.Column(db.Float)
+    purchase_date = db.Column(db.Date, nullable=True)
+    purchase_cost = db.Column(db.Float, nullable=True)
     currency = db.Column(db.String(10), default="KES")
 
-    location = db.Column(db.String(120))
+    location = db.Column(db.String(120), nullable=True)
     status = db.Column(db.String(20), default="active", nullable=False)  # active/repair/disposed
 
-    vendor_id = db.Column(db.Integer, db.ForeignKey("vendor.id"))
-    notes = db.Column(db.Text)
+    vendor_id = db.Column(db.Integer, db.ForeignKey("vendor.id"), nullable=True)
+    notes = db.Column(db.Text, nullable=True)
 
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
 
@@ -651,8 +761,8 @@ class AssetMaintenance(db.Model):
     cost = db.Column(db.Float, default=0.0)
     currency = db.Column(db.String(10), default="KES")
 
-    notes = db.Column(db.Text)
-    attachment_url = db.Column(db.String(255))
+    notes = db.Column(db.Text, nullable=True)
+    attachment_url = db.Column(db.String(255), nullable=True)
 
-    created_by_user_id = db.Column(db.Integer, db.ForeignKey("user.id"))
+    created_by_user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
