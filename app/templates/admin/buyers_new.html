@@ -1,0 +1,117 @@
+{# app/templates/admin/buyers_new.html #}
+{% extends "layouts/base_admin.html" %}
+
+{% block page_title %}New Buyer{% endblock %}
+
+{% block content %}
+  <div class="max-w-3xl mx-auto">
+
+    <!-- Header -->
+    <div class="flex items-start justify-between gap-4 mb-6">
+      <div>
+        <h1 class="text-2xl font-bold text-gray-900">New Buyer</h1>
+        <p class="text-sm text-gray-600 mt-1">
+          Create a customer profile to assign documents. Buyer portal login can be enabled later.
+        </p>
+      </div>
+
+      <a href="{{ url_for('admin.buyers_list') }}"
+         class="inline-flex items-center rounded-lg border border-gray-300 bg-white px-4 py-2 font-semibold text-gray-700 hover:bg-gray-50 transition">
+        ← Back
+      </a>
+    </div>
+
+    <!-- Form card -->
+    <div class="bg-white rounded-2xl shadow-sm border border-gray-200 p-6">
+      <form method="POST" class="space-y-5">
+
+        <!-- Buyer name -->
+        <div>
+          <label class="block text-sm font-semibold text-gray-700 mb-1">
+            Buyer name <span class="text-red-600">*</span>
+          </label>
+          <input type="text"
+                 name="name"
+                 required
+                 maxlength="160"
+                 placeholder="e.g. Gulf Foods Trading LLC"
+                 class="w-full rounded-xl border border-gray-300 px-4 py-2.5 bg-white text-gray-900 placeholder:text-gray-400
+                        focus:outline-none focus:ring-2 focus:ring-jungle/40 focus:border-jungle" />
+          <p class="text-xs text-gray-500 mt-1">
+            Appears on documents, invoices, and order records.
+          </p>
+        </div>
+
+        <!-- Email + Phone -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label class="block text-sm font-semibold text-gray-700 mb-1">Email</label>
+            <input type="email"
+                   name="email"
+                   maxlength="120"
+                   placeholder="buyer@example.com"
+                   class="w-full rounded-xl border border-gray-300 px-4 py-2.5 bg-white text-gray-900 placeholder:text-gray-400
+                          focus:outline-none focus:ring-2 focus:ring-jungle/40 focus:border-jungle" />
+          </div>
+
+          <div>
+            <label class="block text-sm font-semibold text-gray-700 mb-1">Phone</label>
+            <input type="text"
+                   name="phone"
+                   maxlength="30"
+                   placeholder="+971..."
+                   class="w-full rounded-xl border border-gray-300 px-4 py-2.5 bg-white text-gray-900 placeholder:text-gray-400
+                          focus:outline-none focus:ring-2 focus:ring-jungle/40 focus:border-jungle" />
+          </div>
+        </div>
+
+        <!-- Address -->
+        <div>
+          <label class="block text-sm font-semibold text-gray-700 mb-1">Address</label>
+          <input type="text"
+                 name="address"
+                 maxlength="255"
+                 placeholder="City, Country / P.O Box..."
+                 class="w-full rounded-xl border border-gray-300 px-4 py-2.5 bg-white text-gray-900 placeholder:text-gray-400
+                        focus:outline-none focus:ring-2 focus:ring-jungle/40 focus:border-jungle" />
+        </div>
+
+        <!-- Tax PIN + Portal info -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label class="block text-sm font-semibold text-gray-700 mb-1">Tax PIN</label>
+            <input type="text"
+                   name="tax_pin"
+                   maxlength="60"
+                   placeholder="Optional"
+                   class="w-full rounded-xl border border-gray-300 px-4 py-2.5 bg-white text-gray-900 placeholder:text-gray-400
+                          focus:outline-none focus:ring-2 focus:ring-jungle/40 focus:border-jungle" />
+          </div>
+
+          <div class="flex items-end">
+            <div class="w-full rounded-xl border border-gray-200 bg-gray-50 p-4">
+              <div class="text-sm font-semibold text-gray-900">Buyer Portal</div>
+              <div class="text-xs text-gray-600 mt-1">
+                Login is disabled by default. You can enable it later by linking this buyer to a user account.
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Actions -->
+        <div class="flex items-center justify-end gap-2 pt-2">
+          <a href="{{ url_for('admin.buyers_list') }}"
+             class="inline-flex items-center rounded-xl border border-gray-300 bg-white px-4 py-2 font-semibold text-gray-700 hover:bg-gray-50 transition">
+            Cancel
+          </a>
+
+          <button type="submit"
+                  class="inline-flex items-center rounded-xl bg-jungle px-5 py-2 font-semibold text-white hover:bg-jungleLight transition">
+            Create Buyer
+          </button>
+        </div>
+
+      </form>
+    </div>
+  </div>
+{% endblock %}

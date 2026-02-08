@@ -1,11 +1,16 @@
 # app/admin.py
 from __future__ import annotations
 
+import re
+import secrets
 import sqlalchemy as sa
-from flask import Blueprint, flash, jsonify, redirect, render_template, request, url_for
+from flask import Blueprint, flash, jsonify, redirect, render_template, request, url_for, make_response
 from flask_login import current_user
 from sqlalchemy import desc
 from werkzeug.security import generate_password_hash
+from datetime import datetime, timedelta, timezone
+from weasyprint import HTML
+from zoneinfo import ZoneInfo
 
 from .extensions import db
 from .models import Buyer, Document, DocumentSignature, User
@@ -21,6 +26,11 @@ admin_bp = Blueprint("admin", __name__, url_prefix="/admin")
 DOC_STATUSES = {"draft", "buyer_signed", "executed", "expired", "void"}
 DOC_TYPE_MAXLEN = 50
 DOC_TITLE_MAXLEN = 200
+BUYER_NAME_MAXLEN = 160
+BUYER_PHONE_MAXLEN = 30
+BUYER_EMAIL_MAXLEN = 120
+BUYER_ADDRESS_MAXLEN = 255
+BUYER_TAXPIN_MAXLEN = 60
 
 
 def _commit_or_rollback(action: str) -> bool:
@@ -64,6 +74,94 @@ def get_creatable_roles():
         ),
         200,
     )
+
+
+# -------------------------------------------------------------------
+# Buyers (Customers)
+# GET /admin/buyers
+# GET+POST /admin/buyers/new
+# -------------------------------------------------------------------
+@admin_bp.route("/buyers", methods=["GET"])
+@admin_required
+def buyers_list():
+    q = _clean_str(request.args.get("q"))
+    query = Buyer.query
+
+    if q:
+        like = f"%{q}%"
+        query = query.filter(
+            sa.or_(
+                Buyer.name.ilike(like),
+                Buyer.email.ilike(like),
+                Buyer.phone.ilike(like),
+                Buyer.tax_pin.ilike(like),
+            )
+        )
+
+    buyers = query.order_by(desc(Buyer.created_at)).limit(200).all()
+    return render_template("admin/buyers_list.html", buyers=buyers, q=q)
+
+
+@admin_bp.route("/buyers/new", methods=["GET", "POST"])
+@admin_required
+def buyers_new():
+    if request.method == "GET":
+        return render_template("admin/buyers_new.html")
+
+    name = _clean_str(request.form.get("name"))
+    email = _clean_str(request.form.get("email")).lower() or None
+    phone = _clean_str(request.form.get("phone")) or None
+    address = _clean_str(request.form.get("address")) or None
+    tax_pin = _clean_str(request.form.get("tax_pin")) or None
+
+    # Basic validation
+    if not name:
+        flash("Buyer name is required.", "danger")
+        return render_template("admin/buyers_new.html")
+
+    # Length guards (match DB column max where reasonable)
+    if len(name) > BUYER_NAME_MAXLEN:
+        flash(f"Name too long (max {BUYER_NAME_MAXLEN}).", "danger")
+        return render_template("admin/buyers_new.html")
+
+    if email and len(email) > BUYER_EMAIL_MAXLEN:
+        flash(f"Email too long (max {BUYER_EMAIL_MAXLEN}).", "danger")
+        return render_template("admin/buyers_new.html")
+
+    if phone and len(phone) > BUYER_PHONE_MAXLEN:
+        flash(f"Phone too long (max {BUYER_PHONE_MAXLEN}).", "danger")
+        return render_template("admin/buyers_new.html")
+
+    if address and len(address) > BUYER_ADDRESS_MAXLEN:
+        flash(f"Address too long (max {BUYER_ADDRESS_MAXLEN}).", "danger")
+        return render_template("admin/buyers_new.html")
+
+    if tax_pin and len(tax_pin) > BUYER_TAXPIN_MAXLEN:
+        flash(f"Tax PIN too long (max {BUYER_TAXPIN_MAXLEN}).", "danger")
+        return render_template("admin/buyers_new.html")
+
+    # Optional: prevent duplicate buyer by user-entered email (not DB-enforced)
+    # (Your schema does NOT have unique(email) on buyer, only unique(user_id).)
+    # If you want duplicates allowed (e.g., multiple contacts share email), remove this.
+    if email and Buyer.query.filter(sa.func.lower(Buyer.email) == email).first():
+        flash("A buyer with that email already exists.", "danger")
+        return render_template("admin/buyers_new.html")
+
+    buyer = Buyer(
+        name=name,
+        email=email,
+        phone=phone,
+        address=address,
+        tax_pin=tax_pin,
+        # user_id intentionally left NULL (buyer portal login can be enabled later)
+    )
+
+    db.session.add(buyer)
+    if not _commit_or_rollback("Create buyer"):
+        return render_template("admin/buyers_new.html")
+
+    flash("Buyer created.", "success")
+    return redirect(url_for("admin.buyers_list"))
 
 
 # -------------------------------------------------------------------
@@ -243,7 +341,6 @@ def documents_list():
         doc_statuses=sorted(DOC_STATUSES),
     )
 
-
 @admin_bp.route("/documents/new", methods=["GET", "POST"])
 @admin_required
 def documents_new():
@@ -291,6 +388,20 @@ def documents_new():
         flash("Invalid status.", "danger")
         return render_template("admin/documents_new.html", buyers=buyers, doc_statuses=sorted(DOC_STATUSES))
 
+    # ------------------------------------------------------------
+    # Auto-bump version to satisfy uq_document_buyer_type_version
+    # (buyer_id, doc_type, version) must be unique.
+    # ------------------------------------------------------------
+    existing_max = (
+        db.session.query(sa.func.max(Document.version))
+        .filter(Document.buyer_id == buyer_id, Document.doc_type == doc_type)
+        .scalar()
+    )
+
+    if existing_max is not None and version <= int(existing_max):
+        version = int(existing_max) + 1
+        flash(f"Version already exists for this buyer + type. Auto-set to v{version}.", "info")
+
     doc = Document(
         buyer_id=buyer_id,
         doc_type=doc_type,
@@ -301,12 +412,43 @@ def documents_new():
     )
 
     db.session.add(doc)
-    if not _commit_or_rollback("Create document"):
+    try:
+        db.session.commit()
+    except IntegrityError:
+        db.session.rollback()
+        flash("That buyer + document type + version already exists. Try a higher version.", "danger")
+        return render_template("admin/documents_new.html", buyers=buyers, doc_statuses=sorted(DOC_STATUSES))
+    except Exception as exc:
+        db.session.rollback()
+        flash(f"Create document failed: {exc}", "danger")
         return render_template("admin/documents_new.html", buyers=buyers, doc_statuses=sorted(DOC_STATUSES))
 
     flash("Document created.", "success")
     return redirect(url_for("admin.documents_view", document_id=str(doc.id)))
 
+def generate_buyer_sign_token(days_valid: int = 7):
+    token = secrets.token_urlsafe(32)
+    expires_at = datetime.now(timezone.utc) + timedelta(days=days_valid)
+    return token, expires_at
+
+@admin_bp.route("/documents/<uuid:document_id>/send-for-signing", methods=["POST"])
+@admin_required
+def send_document_for_signing(document_id):
+    document = Document.query.get_or_404(document_id)
+
+    if document.status in ("buyer_signed", "executed", "void"):
+        flash("This document cannot be sent for signing.", "warning")
+        return redirect(url_for("admin.documents_view", document_id=str(document.id)))
+
+    token, expires_at = generate_buyer_sign_token(days_valid=7)
+
+    document.buyer_sign_token = token
+    document.buyer_sign_token_expires_at = expires_at
+
+    db.session.commit()
+
+    flash("Signing link generated successfully.", "success")
+    return redirect(url_for("admin.documents_view", document_id=str(document.id)))
 
 @admin_bp.route("/documents/<uuid:document_id>", methods=["GET"])
 @admin_required
@@ -321,9 +463,9 @@ def documents_view(document_id):
 
     return render_template(
         "admin/documents_view.html",
-        document=doc,          # ✅ ORM object
+        document=doc,  # ✅ ORM object
         signatures=signatures,
-        doc_statuses=sorted(DOC_STATUSES)
+        doc_statuses=sorted(DOC_STATUSES),
     )
 
 
@@ -349,3 +491,33 @@ def documents_set_status(document_id):
 
     flash(f"Status updated to {target}.", "success")
     return redirect(url_for("admin.documents_view", document_id=str(doc.id)))
+
+def _safe_filename(s: str) -> str:
+    s = (s or "").strip()
+    s = re.sub(r"[^A-Za-z0-9._-]+", "_", s)
+    return s[:120] or "document"
+
+@admin_bp.route("/documents/<uuid:document_id>/loi", methods=["GET"])
+@admin_required
+def documents_loi_preview(document_id):
+    doc = Document.query.get_or_404(document_id)
+    now_eat = datetime.now(ZoneInfo("Africa/Nairobi"))
+    return render_template("pdfs/loi.html", document=doc, now_eat=now_eat)
+
+@admin_bp.route("/documents/<uuid:document_id>/loi.pdf", methods=["GET"])
+@admin_required
+def documents_loi_pdf(document_id):
+    doc = Document.query.get_or_404(document_id)
+    now_eat = datetime.now(ZoneInfo("Africa/Nairobi"))
+
+    html = render_template("pdfs/loi.html", document=doc, now_eat=now_eat)
+
+    pdf_bytes = HTML(string=html, base_url=request.host_url).write_pdf()
+
+    buyer_name = doc.buyer.name if doc.buyer else "Buyer"
+    filename = f"Rizara_LOI_{_safe_filename(buyer_name)}_v{doc.version}.pdf"
+
+    resp = make_response(pdf_bytes)
+    resp.headers["Content-Type"] = "application/pdf"
+    resp.headers["Content-Disposition"] = f'attachment; filename="{filename}"'
+    return resp

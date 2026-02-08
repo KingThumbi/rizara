@@ -4,8 +4,8 @@ from __future__ import annotations
 from flask import Flask, render_template, redirect, url_for, request
 from flask_login import current_user
 
-from .extensions import db, migrate, login_manager, limiter
 from .config import Config
+from .extensions import db, migrate, login_manager, limiter
 
 
 def create_app() -> Flask:
@@ -31,10 +31,12 @@ def create_app() -> Flask:
     from .routes import main
     from .auth import auth
     from .admin import admin_bp
+    from .public import public  # <-- public blueprint (signing flow)
 
     app.register_blueprint(main)
     app.register_blueprint(auth)
     app.register_blueprint(admin_bp)
+    app.register_blueprint(public)
 
     # ======================
     # Global Terms Enforcement (External users only)

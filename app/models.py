@@ -2,8 +2,9 @@
 from __future__ import annotations
 
 import enum
+import secrets
 import uuid
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timezone, timedelta
 
 import sqlalchemy as sa
 from flask_login import UserMixin
@@ -145,6 +146,27 @@ class Document(db.Model):
         onupdate=datetime.utcnow,
     )
 
+    buyer_sign_token = db.Column(db.String(64), unique=True, nullable=True, index=True)
+    buyer_sign_token_expires_at = db.Column(db.DateTime(timezone=True), nullable=True)
+
+    buyer_signed_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    buyer_sign_name = db.Column(db.String(120), nullable=True)
+    buyer_sign_email = db.Column(db.String(120), nullable=True)
+
+    buyer_sign_ip = db.Column(db.String(64), nullable=True)
+    buyer_sign_user_agent = db.Column(db.String(255), nullable=True)
+
+    def new_sign_token(self, hours: int = 72) -> str:
+        token = secrets.token_urlsafe(32)  # ~43 chars
+        self.buyer_sign_token = token
+        self.buyer_sign_token_expires_at = datetime.now(timezone.utc) + timedelta(hours=hours)
+        return token
+
+    def is_sign_token_valid(self) -> bool:
+        if not self.buyer_sign_token or not self.buyer_sign_token_expires_at:
+            return False
+        return datetime.now(timezone.utc) <= self.buyer_sign_token_expires_at
+    
     __table_args__ = (
         db.UniqueConstraint(
             "buyer_id", "doc_type", "version",

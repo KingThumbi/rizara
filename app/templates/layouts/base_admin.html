@@ -4,11 +4,19 @@
 {% block title %}{% block page_title %}Rizara Admin{% endblock %}{% endblock %}
 
 {% block body %}
-  {# Admin chrome (nav/sidebar/topbar) #}
-  {% include "partials/admin_chrome.html" %}
+  <div class="min-h-screen flex flex-col bg-gray-100">
+    {% include "partials/admin_chrome.html" %}
 
-  {# Main admin page container (centers content) #}
-  <main class="max-w-7xl mx-auto px-6 py-8">
-    {% block content %}{% endblock %}
-  </main>
+    <main class="flex-1 px-4 sm:px-6 py-8">
+      <div class="max-w-7xl mx-auto">
+        {% block content %}{% endblock %}
+      </div>
+    </main>
+
+    <footer class="mt-auto text-center text-sm text-gray-500 py-6">
+      © {{ current_year or 2026 }} Rizara Meats Ltd — Secure • Traceable • Halal
+    </footer>
+
+    {% block scripts %}{% endblock %}
+  </div>
 {% endblock %}

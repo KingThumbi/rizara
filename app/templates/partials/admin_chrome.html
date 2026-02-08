@@ -1,20 +1,16 @@
 {# app/templates/partials/admin_chrome.html #}
 <nav class="bg-jungle text-white px-6 py-4 flex justify-between items-center shadow">
   <div class="text-xl font-bold tracking-wide">Rizara Meats</div>
+
   <div class="flex items-center gap-3">
     <a href="{{ url_for('main.dashboard') }}"
        class="bg-gold text-jungle font-semibold px-4 py-2 rounded hover:bg-yellow-400 transition">
       ← Back to Dashboard
     </a>
+
     <a href="{{ url_for('auth.logout') }}"
        class="bg-white/10 text-white font-semibold px-4 py-2 rounded hover:bg-white/20 transition">
       Logout
     </a>
   </div>
 </nav>
-
-{% block page %}{% endblock %}
-
-<footer class="text-center text-sm text-gray-500 py-6">
-  © {{ current_year or 2026 }} Rizara Meats Ltd — Secure • Traceable • Halal
-</footer>

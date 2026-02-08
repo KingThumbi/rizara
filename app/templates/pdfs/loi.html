@@ -1,0 +1,127 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Letter of Intent</title>
+  <style>
+    @page { size: A4; margin: 22mm 18mm; }
+    body { font-family: Arial, Helvetica, sans-serif; color:#111; font-size: 11.5pt; line-height: 1.45; }
+    .top { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom: 18px; }
+    .brand { font-weight: 900; font-size: 16pt; color:#1f6f54; }
+    .meta { font-size: 9.5pt; color:#444; text-align:right; }
+    .hr { border-top: 1px solid #ddd; margin: 12px 0 18px; }
+    .h1 { font-size: 14pt; font-weight: 900; margin: 0 0 6px; }
+    .muted { color:#555; }
+    .box { border: 1px solid #e6e6e6; background:#fafafa; padding: 10px 12px; border-radius: 10px; }
+    .row { display:flex; gap:14px; }
+    .col { flex:1; }
+    .section { margin: 14px 0; }
+    .siggrid { display:flex; gap:18px; margin-top: 18px; }
+    .sig { flex:1; border-top: 1px solid #bbb; padding-top: 8px; }
+    .stamp { margin-top: 10px; padding: 10px 12px; border: 1px solid #cfe7db; background:#f3fbf6; border-radius: 10px; }
+    .small { font-size: 9.5pt; }
+  </style>
+</head>
+<body>
+
+  <div class="top">
+    <div>
+      <div class="brand">Rizara Meats Ltd</div>
+      <div class="muted small">Ethical • Traceable • Halal</div>
+    </div>
+    <div class="meta">
+      <div><strong>Document:</strong> LOI</div>
+      <div><strong>Version:</strong> v{{ document.version }}</div>
+      <div><strong>Date:</strong> {{ now_eat.strftime("%Y-%m-%d") }}</div>
+    </div>
+  </div>
+
+  <div class="hr"></div>
+
+  <div class="section">
+    <div class="h1">Letter of Intent (LOI)</div>
+    <div class="muted">This LOI outlines the intent to purchase halal chilled carcasses from Rizara Meats Ltd.</div>
+  </div>
+
+  <div class="section box">
+    <div class="row">
+      <div class="col">
+        <div class="small muted"><strong>Buyer</strong></div>
+        <div><strong>{{ document.buyer.name if document.buyer else "—" }}</strong></div>
+        <div class="small muted">
+          {{ document.buyer.email if document.buyer and document.buyer.email else "" }}
+          {% if document.buyer and document.buyer.phone %} · {{ document.buyer.phone }}{% endif %}
+        </div>
+      </div>
+      <div class="col">
+        <div class="small muted"><strong>Reference</strong></div>
+        <div class="small">Document ID: {{ document.id }}</div>
+        <div class="small">Title: {{ document.title or "—" }}</div>
+        <div class="small">Status: {{ document.status }}</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <p>
+      Rizara Meats Ltd (“Seller”) intends to supply the Buyer with premium halal meat products, primarily
+      <strong>lamb</strong> and <strong>goat</strong>, and select <strong>beef</strong>, delivered as <strong>chilled carcasses</strong>
+      under cold-chain handling to meet export standards.
+    </p>
+    <p>
+      All livestock shall be sourced ethically and subjected to veterinary inspection by authorized Kenyan bodies,
+      with halal certification provided by recognized halal certification entities in Kenya, as applicable to the shipment.
+    </p>
+    <p>
+      This LOI is non-binding except for confidentiality and good-faith engagement, until a definitive agreement is executed.
+    </p>
+  </div>
+
+  <div class="section box">
+    <div class="small muted"><strong>Commercial Notes (summary)</strong></div>
+    <ul style="margin:8px 0 0; padding-left:18px;">
+      <li>Product: chilled carcasses (lamb, goat; some beef).</li>
+      <li>Quality: veterinary-inspected, cold-chain controlled.</li>
+      <li>Traceability: batch-level tracking from origin to delivery.</li>
+      <li>Delivery: Incoterms and shipment schedule to be agreed.</li>
+    </ul>
+  </div>
+
+  <div class="section">
+    <div class="siggrid">
+      <div class="sig">
+        <div class="small muted"><strong>For Rizara Meats Ltd (Seller)</strong></div>
+        <div class="small">Authorized Signatory</div>
+      </div>
+      <div class="sig">
+        <div class="small muted"><strong>For Buyer</strong></div>
+        <div class="small">Authorized Signatory</div>
+      </div>
+    </div>
+
+    {% if document.buyer_signed_at %}
+      <div class="stamp">
+        <div><strong>Digitally Signed by Buyer</strong></div>
+        <div class="small muted">
+          Name: {{ document.buyer_sign_name or "—" }} |
+          Email: {{ document.buyer_sign_email or "—" }} |
+          Signed at: {{ document.buyer_signed_at }}
+        </div>
+        <div class="small muted">
+          IP: {{ document.buyer_sign_ip or "—" }}
+        </div>
+      </div>
+    {% else %}
+      <div class="stamp">
+        <div><strong>Signature Status</strong></div>
+        <div class="small muted">Pending buyer signature.</div>
+      </div>
+    {% endif %}
+  </div>
+
+  <div class="section small muted" style="margin-top:22px;">
+    © {{ now_eat.year }} Rizara Meats Ltd. This document is system-generated.
+  </div>
+
+</body>
+</html>

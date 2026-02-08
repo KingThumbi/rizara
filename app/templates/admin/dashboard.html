@@ -242,6 +242,28 @@
           + Create User
         </a>
 
+        <!-- Documents -->
+        <a href="{{ url_for('admin.documents_list') }}"
+           class="flex justify-center items-center bg-jungle text-white py-4 rounded-lg font-semibold hover:bg-jungleLight transition">
+          Documents
+        </a>
+
+        <a href="{{ url_for('admin.documents_new') }}"
+           class="flex justify-center items-center bg-gold text-jungle py-4 rounded-lg font-semibold hover:bg-yellow-400 transition">
+          + New Document
+        </a>
+
+        <!-- Buyers -->
+        <a href="{{ url_for('admin.buyers_list') }}"
+           class="flex justify-center items-center bg-gray-900 text-white py-4 rounded-lg font-semibold hover:bg-gray-700 transition">
+          Buyers
+        </a>
+
+        <a href="{{ url_for('admin.buyers_new') }}"
+           class="flex justify-center items-center bg-gray-800 text-white py-4 rounded-lg font-semibold hover:bg-gray-700 transition">
+          + New Buyer
+        </a>
+
       </div>
     </section>
 
