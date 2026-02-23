@@ -1,181 +1,216 @@
 {# app/templates/public/sign_export_sales_contract.html #}
-{% extends "layouts/base_public.html" %}
-{% block page_title %}Sign Contract · Rizara{% endblock %}
+{% extends "layouts/base.html" %}
+{% block title %}Sign Contract · Rizara{% endblock %}
 
-{% block content %}
+{% block body %}
   {% set p = document.payload or {} %}
   {% set contract = p.get('contract', {}) %}
   {% set product  = p.get('product', {}) %}
   {% set pricing  = p.get('pricing', {}) %}
   {% set payment  = p.get('payment', {}) %}
 
-  <div class="max-w-5xl mx-auto px-4 py-10">
-    {# Top "dashboard-like" header bar #}
-    <div class="mb-6">
-      <div class="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
-        <div>
-          <h1 class="text-2xl sm:text-3xl font-extrabold text-jungle tracking-tight">
-            Export Sales Contract Signing
-          </h1>
-          <p class="text-sm text-gray-600 mt-1">
-            Document ID: <span class="font-mono text-xs sm:text-sm">{{ document.id }}</span>
-            <span class="mx-2 text-gray-300">•</span>
-            Version: <span class="font-semibold">v{{ document.version }}</span>
-          </p>
-        </div>
-
-        <div class="flex flex-col sm:flex-row gap-2">
-          <a href="{{ url_for('main.public_download_contract_draft_pdf', token=token) }}"
-             target="_blank" rel="noopener"
-             class="inline-flex items-center justify-center gap-2 bg-white border border-gray-200 text-gray-900 font-semibold px-4 py-2 rounded-lg hover:bg-gray-50 transition">
-            Download contract PDF (read first)
-          </a>
-
-          <div class="inline-flex items-center justify-center bg-gray-50 border border-gray-200 text-gray-700 font-semibold px-4 py-2 rounded-lg">
-            Date (EAT): <span class="ml-2 font-mono text-sm">{{ now_eat }}</span>
-          </div>
-        </div>
-      </div>
-
-      <div class="mt-4 border-t border-gray-200"></div>
+  {# TOP BAR (Public Context) — matches dashboard style #}
+  <div class="bg-jungle text-white px-6 py-4 flex justify-between items-center shadow">
+    <div class="flex items-center gap-4">
+      <div class="text-2xl font-bold tracking-wide">Rizara Meats</div>
+      <span class="hidden md:inline text-sm opacity-90">Buyer Signing Portal</span>
     </div>
 
-    <div class="grid grid-cols-1 lg:grid-cols-5 gap-6">
-      {# Left: Summary + guidance #}
-      <div class="lg:col-span-2 space-y-6">
-        <div class="bg-white rounded-2xl shadow p-6 border border-gray-100">
-          <h2 class="text-lg font-bold text-gray-900">Before you sign</h2>
-          <p class="text-sm text-gray-600 mt-2">
-            Please download and read the PDF contract. If anything is incorrect, contact Rizara to adjust the details before signing.
+    <div class="flex items-center gap-3">
+      <a href="{{ url_for('main.public_download_contract_draft_pdf', token=token) }}"
+         target="_blank" rel="noopener"
+         class="bg-gold text-jungle font-semibold px-4 py-2 rounded hover:bg-yellow-400 transition">
+        View Draft PDF
+      </a>
+
+      <a href="#sign"
+         class="bg-white text-jungle font-semibold px-4 py-2 rounded hover:bg-gray-100 transition">
+        Sign Now
+      </a>
+    </div>
+  </div>
+
+  {# MAIN — match dashboard container sizing #}
+  <main class="max-w-7xl mx-auto px-6 py-8">
+
+    {# PAGE TITLE — match dashboard typography #}
+    <div class="mb-8">
+      <h1 class="text-3xl font-bold text-jungle">Export Sales Contract</h1>
+      <p class="text-gray-600 mt-1">
+        Please review the draft PDF first. If anything is incorrect, request changes before signing.
+      </p>
+
+      <div class="mt-3 flex flex-wrap items-center gap-2 text-sm">
+        <span class="text-gray-600">Document ID</span>
+        <span class="font-mono text-gray-900">{{ document.id }}</span>
+        <span class="text-gray-400">|</span>
+        <span class="text-gray-600">Version</span>
+        <span class="font-semibold text-gray-900">v{{ document.version }}</span>
+        <span class="text-gray-400">|</span>
+        <span class="text-gray-600">Date (EAT)</span>
+        <span class="font-mono text-gray-900">{{ now_eat }}</span>
+      </div>
+    </div>
+
+    {# FLASH MESSAGES — match dashboard flash styles #}
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        <div class="mb-6 space-y-3">
+          {% for category, message in messages %}
+            <div class="px-4 py-3 rounded-lg
+              {% if category == 'success' %}
+                bg-green-100 text-green-800
+              {% elif category in ['danger', 'error'] %}
+                bg-red-100 text-red-800
+              {% elif category == 'warning' %}
+                bg-yellow-100 text-yellow-800
+              {% else %}
+                bg-gray-100 text-gray-800
+              {% endif %}
+            ">
+              {{ message }}
+            </div>
+          {% endfor %}
+        </div>
+      {% endif %}
+    {% endwith %}
+
+    {# CONTENT GRID — dashboard-like cards #}
+    <section class="grid grid-cols-1 lg:grid-cols-5 gap-6">
+
+      {# LEFT COLUMN — summary card #}
+      <aside class="lg:col-span-2">
+
+        <div class="bg-white rounded-xl shadow p-6 mb-6">
+          <h2 class="text-xl font-semibold text-jungle mb-2">Contract Summary</h2>
+          <p class="text-gray-600 text-sm mb-4">
+            Key terms below are a quick reference. Always rely on the PDF as the source of truth.
           </p>
 
-          <div class="mt-4 flex flex-col gap-3">
-            <a href="{{ url_for('main.public_download_contract_draft_pdf', token=token) }}"
-               target="_blank" rel="noopener"
-               class="w-full text-center bg-white border border-gray-200 text-gray-900 font-semibold px-4 py-2 rounded-lg hover:bg-gray-50 transition">
-              Download contract PDF (read first)
-            </a>
-          </div>
+          <div class="space-y-3 text-sm">
+            <div class="flex items-start justify-between gap-4">
+              <span class="text-gray-600">Incoterm</span>
+              <span class="font-semibold text-gray-900 text-right">{{ contract.get('incoterm','—') }}</span>
+            </div>
+            <div class="flex items-start justify-between gap-4">
+              <span class="text-gray-600">Quantity (kg)</span>
+              <span class="font-semibold text-gray-900 text-right">{{ product.get('quantity_kg','—') }}</span>
+            </div>
+            <div class="flex items-start justify-between gap-4">
+              <span class="text-gray-600">Price / kg</span>
+              <span class="font-semibold text-gray-900 text-right">{{ pricing.get('price_per_kg','—') }}</span>
+            </div>
 
-          <div class="mt-5 rounded-xl border border-gray-200 bg-gray-50 p-4">
-            <div class="text-sm font-semibold text-gray-800">Contract summary</div>
-            <div class="mt-3 text-sm space-y-1">
-              <div class="flex justify-between gap-3">
-                <span class="text-gray-500">Incoterm</span>
-                <span class="font-semibold text-gray-900">{{ contract.get('incoterm','—') }}</span>
-              </div>
-              <div class="flex justify-between gap-3">
-                <span class="text-gray-500">Quantity (kg)</span>
-                <span class="font-semibold text-gray-900">{{ product.get('quantity_kg','—') }}</span>
-              </div>
-              <div class="flex justify-between gap-3">
-                <span class="text-gray-500">Price/kg</span>
-                <span class="font-semibold text-gray-900">{{ pricing.get('price_per_kg','—') }}</span>
-              </div>
-              <div class="pt-2 border-t border-gray-200">
-                <div class="text-gray-500">Payment</div>
-                <div class="font-semibold text-gray-900 mt-1">
-                  {{ payment.get('advance_percent','—') }}% advance / {{ payment.get('balance_percent','—') }}% balance
-                </div>
+            <div class="pt-3 mt-3 border-t border-gray-200">
+              <div class="text-gray-600">Payment</div>
+              <div class="mt-1 font-semibold text-gray-900">
+                {{ payment.get('advance_percent','—') }}% advance
+                <span class="text-gray-400 mx-1">/</span>
+                {{ payment.get('balance_percent','—') }}% balance
               </div>
             </div>
           </div>
-
-          <p class="text-xs text-gray-500 mt-4">
-            This signing link is private. Do not share it.
-          </p>
         </div>
 
-        {# Flash messages #}
-        {% with messages = get_flashed_messages(with_categories=true) %}
-          {% if messages %}
-            <div class="space-y-3">
-              {% for category, message in messages %}
-                <div class="px-4 py-3 rounded-lg border
-                  {% if category == 'success' %}bg-green-50 text-green-800 border-green-200
-                  {% elif category in ['danger','error'] %}bg-red-50 text-red-800 border-red-200
-                  {% elif category == 'warning' %}bg-yellow-50 text-yellow-800 border-yellow-200
-                  {% else %}bg-gray-50 text-gray-800 border-gray-200{% endif %}">
-                  {{ message }}
-                </div>
-              {% endfor %}
-            </div>
-          {% endif %}
-        {% endwith %}
-      </div>
+        <div class="bg-white rounded-xl shadow p-6">
+          <h2 class="text-xl font-semibold text-jungle mb-2">Important</h2>
+          <ul class="text-sm text-gray-600 space-y-2">
+            <li>• This signing link is private — do not share it.</li>
+            <li>• If you need changes, do not sign yet. Request an updated draft.</li>
+            <li>• Your typed name will be stored as the signature for this version.</li>
+          </ul>
 
-      {# Right: Signing form card #}
-      <div class="lg:col-span-3">
-        <div class="bg-white rounded-2xl shadow p-6 border border-gray-100">
-          <div class="flex items-start justify-between gap-4">
-            <div>
-              <h2 class="text-xl font-extrabold text-jungle">Sign contract</h2>
-              <p class="text-sm text-gray-600 mt-1">
-                Enter your details exactly as you’d like them to appear in the signing record.
-              </p>
-            </div>
-            <div class="hidden sm:flex items-center gap-2 text-xs text-gray-500">
-              <span class="inline-block h-2 w-2 rounded-full bg-jungle"></span>
-              Secure digital signing
-            </div>
+          <div class="mt-5">
+            <a href="{{ url_for('main.public_download_contract_draft_pdf', token=token) }}"
+               target="_blank" rel="noopener"
+               class="w-full flex justify-center items-center bg-gold text-jungle py-3 rounded-lg font-semibold hover:bg-yellow-400 transition">
+              View Draft PDF
+            </a>
+          </div>
+        </div>
+
+      </aside>
+
+      {# RIGHT COLUMN — signing form card #}
+      <section class="lg:col-span-3">
+
+        <div id="sign" class="bg-white rounded-xl shadow p-6">
+          <div class="flex items-center justify-between gap-4 mb-4">
+            <h2 class="text-xl font-semibold text-jungle">Sign Contract</h2>
+            <div class="text-sm text-gray-500">Secure digital signing</div>
           </div>
 
-          <form method="POST" action="/sign/{{ token }}" class="mt-6 space-y-4">
+          <form method="POST" action="/sign/{{ token }}" class="space-y-5">
             <div>
-              <label class="block text-sm font-semibold text-gray-700 mb-1">Your full name</label>
+              <label class="block text-sm font-semibold text-gray-900 mb-1">Your full name</label>
               <input
                 name="signer_name"
                 required
                 autocomplete="name"
-                class="w-full border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-jungle/30"
+                class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-jungle/30"
                 placeholder="e.g. Ahmed Ali"
               />
             </div>
 
             <div>
-              <label class="block text-sm font-semibold text-gray-700 mb-1">Email (optional)</label>
+              <label class="block text-sm font-semibold text-gray-900 mb-1">Email (optional)</label>
               <input
                 name="signer_email"
                 type="email"
                 autocomplete="email"
-                class="w-full border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-jungle/30"
+                class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-jungle/30"
                 placeholder="e.g. buyer@company.com"
               />
-              <p class="text-xs text-gray-500 mt-1">
-                If provided, we’ll include it in the signing record.
-              </p>
+              <p class="mt-1 text-xs text-gray-500">If provided, it will be included in the signing record.</p>
             </div>
 
-            <label class="flex items-start gap-3 rounded-lg border border-gray-200 bg-gray-50 px-4 py-3">
-              <input type="checkbox" name="consent" value="yes" class="mt-1 h-4 w-4">
-              <span class="text-sm text-gray-700">
-                I confirm I have read the contract PDF and agree to the terms of this contract.
-              </span>
-            </label>
+            <div class="rounded-lg border border-gray-200 bg-gray-50 p-4">
+              <div class="flex items-start gap-3">
+                <input
+                  type="checkbox"
+                  name="consent"
+                  value="yes"
+                  class="mt-1 h-4 w-4 rounded border-gray-300"
+                  required
+                >
+                <div class="text-sm text-gray-700">
+                  <div class="font-semibold text-gray-900">Consent to sign electronically</div>
+                  <p class="mt-1 text-gray-600">
+                    I confirm I have reviewed the contract PDF and agree to the terms.
+                    I understand my typed name serves as my electronic signature.
+                  </p>
+                </div>
+              </div>
+            </div>
 
             <button
               type="submit"
-              class="w-full bg-jungle text-white font-semibold px-4 py-2 rounded-lg hover:bg-jungleLight transition">
-              Sign contract
+              class="w-full flex justify-center items-center bg-jungle text-white py-3 rounded-lg font-semibold hover:bg-jungleLight transition">
+              Sign Contract
             </button>
 
-            <div class="text-xs text-gray-500 text-center">
-              By signing, you agree to use electronic records and typed-name signing for this transaction.
+            <div class="text-center text-xs text-gray-500">
+              By signing, you agree to electronic records and typed-name signing for this transaction.
             </div>
           </form>
-
-          <div class="mt-6 border-t border-gray-200 pt-4">
-            <div class="text-sm text-gray-600">
-              Need changes before signing?
-              <span class="font-semibold text-gray-900">Download the PDF</span> and share feedback with Rizara.
-            </div>
-          </div>
         </div>
-      </div>
-    </div>
 
-    <footer class="text-center text-xs text-gray-500 mt-10">
-      © {{ now_eat.year }} Rizara Meats Ltd — Ethical • Traceable • Halal
-    </footer>
-  </div>
+        <div class="bg-white rounded-xl shadow p-6 mt-6">
+          <h3 class="text-lg font-semibold text-jungle mb-2">Signing Record</h3>
+          <p class="text-sm text-gray-600">
+            Your signing details will be stored with the contract version shown above.
+            If the contract is revised, you’ll receive a new signing link for the updated version.
+          </p>
+        </div>
+
+      </section>
+    </section>
+
+  </main>
+
+  {# FOOTER — same as dashboard style #}
+  <footer class="text-center text-sm text-gray-500 py-6">
+    © {{ now_eat.year }} Rizara Meats Ltd — Ethical • Traceable • Halal
+  </footer>
+
 {% endblock %}

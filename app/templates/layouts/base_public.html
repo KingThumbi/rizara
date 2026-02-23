@@ -5,12 +5,66 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>{% block page_title %}Rizara{% endblock %}</title>
     <link rel="icon" href="{{ url_for('static', filename='favicon.ico') }}">
-    {# If you have Tailwind compiled CSS, link it here #}
+
+    {# ---- Styles (IMPORTANT: enable the ONE that exists in /static) ---- #}
+    {# If your compiled Tailwind lives at static/css/app.css (recommended) #}
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
+    {# Alternative common paths (uncomment if that’s where yours is) #}
     {# <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}"> #}
+    {# <link rel="stylesheet" href="{{ url_for('static', filename='dist/app.css') }}"> #}
+
+    {# Minimal brand tokens (safe fallback even if CSS fails) #}
+    <style>
+      :root{
+        --jungle:#0B3B2E;
+        --jungleLight:#115E44;
+        --gold:#D4AF37;
+      }
+    </style>
+
+    {% block extra_head %}{% endblock %}
   </head>
-  <body class="bg-gray-50 text-gray-900">
+
+  <body class="bg-gray-50 text-gray-900 antialiased">
+    {# Simple public header to match dashboards #}
+    <header class="border-b border-gray-200 bg-white/80 backdrop-blur">
+      <div class="max-w-6xl mx-auto px-4 sm:px-6 py-3 flex items-center justify-between gap-3">
+        <a href="/" 
+           class="flex items-center gap-2 font-extrabold tracking-tight text-[color:var(--jungle)]">
+           class="flex items-center gap-2 font-extrabold tracking-tight text-[color:var(--jungle)]">
+          <span class="inline-block h-2.5 w-2.5 rounded-full bg-[color:var(--gold)]"></span>
+          Rizara
+        </a>
+
+        <div class="text-xs sm:text-sm text-gray-600">
+          {% block header_right %}{% endblock %}
+        </div>
+      </div>
+    </header>
+
     <main class="min-h-screen">
+      {# Optional global flash area (pages can still render their own) #}
+      <div class="max-w-6xl mx-auto px-4 sm:px-6 pt-6">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+          {% if messages %}
+            <div class="space-y-3 mb-6">
+              {% for category, message in messages %}
+                <div class="rounded-xl border px-4 py-3 text-sm
+                  {% if category == 'success' %}bg-green-50 text-green-900 border-green-200
+                  {% elif category in ['danger','error'] %}bg-red-50 text-red-900 border-red-200
+                  {% elif category == 'warning' %}bg-yellow-50 text-yellow-900 border-yellow-200
+                  {% else %}bg-gray-50 text-gray-900 border-gray-200{% endif %}">
+                  {{ message }}
+                </div>
+              {% endfor %}
+            </div>
+          {% endif %}
+        {% endwith %}
+      </div>
+
       {% block content %}{% endblock %}
     </main>
+
+    {% block scripts %}{% endblock %}
   </body>
 </html>

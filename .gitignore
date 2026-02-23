@@ -25,3 +25,5 @@ env/
 *.sql
 # Flask runtime / local-only data
 instance/
+__pycache__/
+*.py[cod]
