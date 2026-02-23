@@ -9,14 +9,16 @@ from datetime import date, datetime, timezone, timedelta
 import sqlalchemy as sa
 from flask_login import UserMixin
 from sqlalchemy import Enum as SAEnum
-from sqlalchemy.dialects.postgresql import INET, UUID
-from sqlalchemy.sql import func
+from sqlalchemy.dialects.postgresql import INET, UUID, JSONB
+from sqlalchemy.ext.mutable import MutableDict
 
 from .extensions import db
 
 
-def utcnow() -> datetime:
-    return datetime.now(timezone.utc)
+# Use **naive UTC** everywhere because your DB columns are "timestamp without time zone".
+# (Postgres stores no TZ info, so we standardize on UTC-naive in app code.)
+def utcnow_naive() -> datetime:
+    return datetime.utcnow()
 
 
 # =========================================================
@@ -58,12 +60,12 @@ class User(UserMixin, db.Model):
     accepted_terms_at = db.Column(db.DateTime, nullable=True)
     terms_version = db.Column(db.String(20), nullable=True)
 
-    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, nullable=False, default=utcnow_naive)
     updated_at = db.Column(
         db.DateTime,
         nullable=False,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        default=utcnow_naive,
+        onupdate=utcnow_naive,
     )
 
     __table_args__ = (
@@ -92,7 +94,7 @@ class Buyer(db.Model):
     address = db.Column(db.String(255), nullable=True)
     tax_pin = db.Column(db.String(60), nullable=True)
 
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    created_at = db.Column(db.DateTime, default=utcnow_naive, nullable=False)
 
     def __repr__(self) -> str:
         return f"<Buyer {self.id} {self.name}>"
@@ -114,7 +116,7 @@ class Document(db.Model):
     )
     buyer = db.relationship("Buyer", foreign_keys=[buyer_id], lazy="joined")
 
-    doc_type = db.Column(db.String(50), nullable=False, index=True)   # indexed in DB
+    doc_type = db.Column(db.String(50), nullable=False, index=True)  # indexed in DB
     title = db.Column(db.String(200), nullable=False)
 
     status = db.Column(db.String(30), nullable=False, default="draft", index=True)  # indexed in DB
@@ -122,6 +124,11 @@ class Document(db.Model):
 
     storage_key = db.Column(db.String(500), nullable=True)
     file_sha256 = db.Column(db.String(64), nullable=True)
+
+    # IMPORTANT:
+    # Use MutableDict so SQLAlchemy tracks in-place JSON edits and persists them.
+    # DB column is jsonb (already migrated).
+    payload = db.Column(MutableDict.as_mutable(JSONB), nullable=True)
 
     # DB column is "timestamp without time zone" (naive datetime)
     issued_at = db.Column(db.DateTime, nullable=True)
@@ -141,16 +148,18 @@ class Document(db.Model):
         db.DateTime,
         nullable=False,
         server_default=sa.text("now()"),
-        # IMPORTANT: Postgres won't auto-update this unless you add a trigger.
-        # This sets updated_at on ORM updates.
-        onupdate=datetime.utcnow,
+        # DB already has a trigger trg_set_document_updated_at() for updated_at;
+        # keep ORM onupdate too (harmless; helps when trigger isn't present in some env).
+        onupdate=utcnow_naive,
     )
 
-    buyer_sign_token = db.Column(db.String(64), unique=True, nullable=True, index=True)
-    buyer_sign_token_expires_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    # IMPORTANT: match DB schema
+    # DB: buyer_sign_token varchar(128), indexed, NOT unique constraint.
+    buyer_sign_token = db.Column(db.String(128), nullable=True, index=True)
+    buyer_sign_token_expires_at = db.Column(db.DateTime, nullable=True)
 
-    buyer_signed_at = db.Column(db.DateTime(timezone=True), nullable=True)
-    buyer_sign_name = db.Column(db.String(120), nullable=True)
+    buyer_signed_at = db.Column(db.DateTime, nullable=True)
+    buyer_sign_name = db.Column(db.String(160), nullable=True)  # DB is varchar(160)
     buyer_sign_email = db.Column(db.String(120), nullable=True)
 
     buyer_sign_ip = db.Column(db.String(64), nullable=True)
@@ -159,22 +168,27 @@ class Document(db.Model):
     def new_sign_token(self, hours: int = 72) -> str:
         token = secrets.token_urlsafe(32)  # ~43 chars
         self.buyer_sign_token = token
-        self.buyer_sign_token_expires_at = datetime.now(timezone.utc) + timedelta(hours=hours)
+        # Store as naive UTC to match DB type
+        self.buyer_sign_token_expires_at = utcnow_naive() + timedelta(hours=hours)
         return token
 
     def is_sign_token_valid(self) -> bool:
         if not self.buyer_sign_token or not self.buyer_sign_token_expires_at:
             return False
-        return datetime.now(timezone.utc) <= self.buyer_sign_token_expires_at
-    
+        return utcnow_naive() <= self.buyer_sign_token_expires_at
+
     __table_args__ = (
         db.UniqueConstraint(
-            "buyer_id", "doc_type", "version",
+            "buyer_id",
+            "doc_type",
+            "version",
             name="uq_document_buyer_type_version",
         ),
         db.Index(
             "ix_document_buyer_type_status",
-            "buyer_id", "doc_type", "status",
+            "buyer_id",
+            "doc_type",
+            "status",
         ),
     )
 
@@ -237,6 +251,7 @@ class DocumentSignature(db.Model):
     def __repr__(self) -> str:
         return f"<DocumentSignature {self.id} {self.signer_type} {self.sign_method}>"
 
+
 DOCUMENT_STATUSES = {"draft", "buyer_signed", "executed", "expired", "void"}
 
 ALLOWED_TRANSITIONS = {
@@ -246,6 +261,7 @@ ALLOWED_TRANSITIONS = {
     "expired": {"void"},
     "void": set(),
 }
+
 
 def can_transition(current: str, target: str) -> bool:
     return target in ALLOWED_TRANSITIONS.get(current, set())
@@ -266,7 +282,7 @@ class Farmer(db.Model):
     latitude = db.Column(db.Float, nullable=True)
     longitude = db.Column(db.Float, nullable=True)
     location_notes = db.Column(db.String(255), nullable=True)
-    onboarded_at = db.Column(db.DateTime, default=datetime.utcnow)
+    onboarded_at = db.Column(db.DateTime, default=utcnow_naive)
 
     goats = db.relationship("Goat", backref="farmer", lazy=True, cascade="all, delete-orphan")
     sheep = db.relationship("Sheep", backref="farmer", lazy=True, cascade="all, delete-orphan")
@@ -295,7 +311,7 @@ class BaseAnimal(db.Model):
 
     farmer_id = db.Column(db.Integer, db.ForeignKey("farmer.id"), nullable=False)
 
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=utcnow_naive)
 
     # Operational flags
     is_active = db.Column(db.Boolean, default=True, nullable=False)
@@ -380,7 +396,7 @@ class AggregationBatch(db.Model):
     is_locked = db.Column(db.Boolean, default=False)
     locked_at = db.Column(db.DateTime, nullable=True)
 
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=utcnow_naive)
 
     created_by_user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
     created_by = db.relationship("User", foreign_keys=[created_by_user_id], lazy="joined")
@@ -430,7 +446,7 @@ class ProcessingBatch(db.Model):
     is_locked = db.Column(db.Boolean, default=False)
     locked_at = db.Column(db.DateTime, nullable=True)
 
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=utcnow_naive)
 
     created_by_user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=True)
     created_by = db.relationship("User", foreign_keys=[created_by_user_id], lazy="joined")
@@ -454,7 +470,7 @@ class TraceabilityRecord(db.Model):
     animal_id = db.Column(UUID(as_uuid=True), nullable=False)
     qr_code_data = db.Column(db.Text, nullable=False)
     public_url = db.Column(db.String(255), nullable=False)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=utcnow_naive)
 
 
 # =========================================================
@@ -469,7 +485,7 @@ class ContactMessage(db.Model):
     subject = db.Column(db.String(200), nullable=True)
     message = db.Column(db.Text, nullable=False)
     status = db.Column(db.String(20), default="new")  # new, reviewed, closed
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=utcnow_naive)
 
 
 # =========================================================
@@ -492,7 +508,7 @@ class OrderRequest(db.Model):
     notes = db.Column(db.Text, nullable=True)
 
     status = db.Column(db.String(20), default="new")  # new, reviewed, approved, rejected
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=utcnow_naive)
 
 
 # =========================================================
@@ -507,7 +523,7 @@ class AnimalEvent(db.Model):
     animal_id = db.Column(UUID(as_uuid=True), nullable=False)
 
     event_type = db.Column(db.String(50), nullable=False)
-    event_datetime = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    event_datetime = db.Column(db.DateTime, default=utcnow_naive, nullable=False)
 
     performed_by_user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=True)
     from_farmer_id = db.Column(db.Integer, db.ForeignKey("farmer.id"), nullable=True)
@@ -543,7 +559,7 @@ class AggregationCost(db.Model):
     notes = db.Column(db.Text, nullable=True)
 
     created_by_user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    created_at = db.Column(db.DateTime, default=utcnow_naive, nullable=False)
 
 
 # =========================================================
@@ -570,7 +586,7 @@ class AnimalHealthEvent(db.Model):
     notes = db.Column(db.Text, nullable=True)
 
     recorded_by_user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    created_at = db.Column(db.DateTime, default=utcnow_naive, nullable=False)
 
 
 # =========================================================
@@ -588,7 +604,7 @@ class ProcessingYield(db.Model):
     parts_notes = db.Column(db.Text, nullable=True)
 
     recorded_by_user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=True)
-    recorded_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    recorded_at = db.Column(db.DateTime, default=utcnow_naive, nullable=False)
 
 
 # =========================================================
@@ -613,7 +629,7 @@ class ProcessingBatchSale(db.Model):
     recorded_by_user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=True)
     recorded_by = db.relationship("User", foreign_keys=[recorded_by_user_id], lazy="joined")
 
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    created_at = db.Column(db.DateTime, default=utcnow_naive, nullable=False)
 
 
 # =========================================================
@@ -673,7 +689,7 @@ class Invoice(db.Model):
 
     items = db.relationship("InvoiceItem", back_populates="invoice", cascade="all, delete-orphan", lazy="select")
 
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    created_at = db.Column(db.DateTime, default=utcnow_naive, nullable=False)
 
     def __repr__(self) -> str:
         return f"<Invoice {self.id} {self.invoice_number} {self.status}>"
@@ -707,7 +723,7 @@ class Vendor(db.Model):
     phone = db.Column(db.String(30), nullable=True)
     email = db.Column(db.String(120), nullable=False)
     notes = db.Column(db.Text, nullable=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    created_at = db.Column(db.DateTime, default=utcnow_naive, nullable=False)
 
 
 # =========================================================
@@ -743,7 +759,7 @@ class Expense(db.Model):
     attachment_url = db.Column(db.String(255), nullable=True)
 
     created_by_user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    created_at = db.Column(db.DateTime, default=utcnow_naive, nullable=False)
 
 
 # =========================================================
@@ -767,7 +783,7 @@ class Asset(db.Model):
     vendor_id = db.Column(db.Integer, db.ForeignKey("vendor.id"), nullable=True)
     notes = db.Column(db.Text, nullable=True)
 
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    created_at = db.Column(db.DateTime, default=utcnow_naive, nullable=False)
 
 
 # =========================================================
@@ -787,4 +803,4 @@ class AssetMaintenance(db.Model):
     attachment_url = db.Column(db.String(255), nullable=True)
 
     created_by_user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    created_at = db.Column(db.DateTime, default=utcnow_naive, nullable=False)

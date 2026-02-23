@@ -1,0 +1,41 @@
+{# app/templates/public/sign_not_supported.html #}
+{% extends "layouts/base_public.html" %}
+{% block page_title %}Unsupported Document · Rizara{% endblock %}
+
+{% block content %}
+  <div class="max-w-xl mx-auto py-14">
+    <div class="bg-white rounded-2xl shadow p-6">
+
+      <div class="flex items-start justify-between gap-4">
+        <div>
+          <h1 class="text-2xl font-bold text-jungle">Signing Not Available</h1>
+          <p class="text-gray-600 mt-2">
+            This document type does not support public digital signing.
+          </p>
+        </div>
+        <span class="inline-flex px-3 py-1 rounded-full border border-gray-200 text-xs font-semibold">
+          Unsupported
+        </span>
+      </div>
+
+      <hr class="my-6 border-gray-100"/>
+
+      <div class="text-sm text-gray-600 space-y-3">
+        <p>
+          The signing link you accessed is valid, but this document is not configured
+          for buyer-side electronic signing in the Rizara system.
+        </p>
+
+        <p>
+          Please contact Rizara support or the sender of this document
+          if you believe this is an error.
+        </p>
+      </div>
+
+      <div class="mt-6 text-xs text-gray-500">
+        If you reached this page from a shared link, confirm the document type with the sender.
+      </div>
+
+    </div>
+  </div>
+{% endblock %}

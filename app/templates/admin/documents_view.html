@@ -5,37 +5,45 @@
 {% block content %}
   <div class="max-w-6xl mx-auto">
 
-    <!-- Header -->
-    <div class="flex items-start justify-between gap-4 mb-6">
-      <div>
+    {# -------------------------
+       Header
+    -------------------------- #}
+    <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-6">
+      <div class="min-w-0">
         <h1 class="text-3xl font-bold text-jungle">Document</h1>
-        <p class="text-gray-600 mt-1">
-          {% if document %}{{ document.id }}{% else %}Not found{% endif %}
+        <p class="text-gray-600 mt-1 break-words">
+          {% if document %}
+            <span class="font-mono text-sm">{{ document.id }}</span>
+          {% else %}
+            Not found
+          {% endif %}
         </p>
       </div>
 
-      <div class="flex items-center gap-2">
+      <div class="flex items-center gap-2 shrink-0">
         <a href="{{ url_for('admin.documents_list') }}"
-           class="bg-white border border-gray-200 text-gray-800 font-semibold px-4 py-2 rounded hover:bg-gray-50 transition">
+           class="bg-white border border-gray-200 text-gray-800 font-semibold px-4 py-2 rounded-lg hover:bg-gray-50 transition">
           ← Back
         </a>
       </div>
     </div>
 
-    <!-- Flash messages -->
+    {# -------------------------
+       Flash messages
+    -------------------------- #}
     {% with messages = get_flashed_messages(with_categories=true) %}
       {% if messages %}
         <div class="mb-6 space-y-3">
           {% for category, message in messages %}
-            <div class="px-4 py-3 rounded-lg
+            <div class="px-4 py-3 rounded-lg border
               {% if category == 'success' %}
-                bg-green-100 text-green-800
+                bg-green-50 text-green-800 border-green-200
               {% elif category in ['danger', 'error'] %}
-                bg-red-100 text-red-800
+                bg-red-50 text-red-800 border-red-200
               {% elif category == 'warning' %}
-                bg-yellow-100 text-yellow-800
+                bg-yellow-50 text-yellow-800 border-yellow-200
               {% else %}
-                bg-gray-100 text-gray-800
+                bg-gray-50 text-gray-800 border-gray-200
               {% endif %}
             ">
               {{ message }}
@@ -51,53 +59,140 @@
       </div>
     {% else %}
 
+      {# -------------------------
+         Helpers
+      -------------------------- #}
+      {% set statuses = (doc_statuses or ['draft','buyer_signed','executed','expired','void']) %}
+      {% set is_contract = (document.doc_type == "export_sales_contract") %}
+      {% set is_editable = (document.status not in ["buyer_signed", "executed", "void"]) %}
+      {% set is_signed_or_executed = (document.status in ["buyer_signed", "executed"]) %}
+      {% set has_sign_link = (document.buyer_sign_token is not none and (document.buyer_sign_token|string)|length > 0) %}
+      {% set has_snapshot = (document.storage_key is not none and (document.storage_key|string)|length > 0) %}
+      {% set show_send_for_signing = (document.status == "draft") %}
+      {% set show_download_signed = (is_contract and is_signed_or_executed) %}
+
+      {# best-effort signing url #}
+      {% if has_sign_link %}
+        {% set sign_url = request.host_url ~ 'sign/' ~ document.buyer_sign_token %}
+      {% else %}
+        {% set sign_url = "" %}
+      {% endif %}
+
       <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
 
-        <!-- LEFT: Details + Buyer Signing -->
+        {# =========================================================
+           LEFT: Details + Buyer Signing
+        ========================================================== #}
         <section class="bg-white rounded-xl shadow p-6 lg:col-span-2">
 
-          <!-- Details header + actions + status update -->
-          <div class="flex flex-col md:flex-row md:items-start md:justify-between gap-4 mb-4">
-            <div>
+          {# Top row: title + status actions #}
+          <div class="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4 mb-5">
+            <div class="min-w-0">
               <h2 class="text-lg font-semibold text-jungle">Details</h2>
-              <p class="text-sm text-gray-500 mt-1">Manage status, preview LOI, download PDF, and review buyer signing.</p>
+              <p class="text-sm text-gray-500 mt-1">
+                Manage status, documents, signing, and snapshots.
+              </p>
 
-              <!-- LOI Actions -->
-              <div class="mt-3 flex flex-wrap gap-2">
+              {# Actions row #}
+              <div class="mt-3 flex flex-wrap items-center gap-2">
+
+                {# LOI actions #}
                 <a href="{{ url_for('admin.documents_loi_preview', document_id=document.id) }}"
-                   class="bg-white border border-gray-200 text-gray-800 font-semibold px-4 py-2 rounded hover:bg-gray-50 transition">
+                   class="bg-white border border-gray-200 text-gray-800 font-semibold px-4 py-2 rounded-lg hover:bg-gray-50 transition">
                   Preview LOI
                 </a>
 
                 <a href="{{ url_for('admin.documents_loi_pdf', document_id=document.id) }}"
-                   class="bg-jungle text-white font-semibold px-4 py-2 rounded hover:bg-jungleLight transition">
-                  Download PDF
+                   class="bg-jungle text-white font-semibold px-4 py-2 rounded-lg hover:bg-jungleLight transition">
+                  Download LOI PDF
                 </a>
+
+                {# Contract editor #}
+                {% if is_contract and is_editable %}
+                  <a href="{{ url_for('admin.documents_contract_edit', document_id=document.id) }}"
+                     class="bg-gold text-jungle font-semibold px-4 py-2 rounded-lg hover:bg-yellow-400 transition">
+                    Edit Contract Terms
+                  </a>
+                {% endif %}
+
+                {# Signed Contract snapshot download (ADMIN)
+                   IMPORTANT: show based on status, not storage_key, because older docs may not have it yet #}
+                {% if show_download_signed %}
+                  <a href="{{ url_for('admin.documents_signed_pdf', document_id=document.id) }}"
+                     class="bg-jungle text-white font-semibold px-4 py-2 rounded-lg hover:bg-jungleLight transition">
+                    📥 Download Signed Contract PDF
+                  </a>
+                {% endif %}
+
+                {# Execute (Rizara internal signature) #}
+                {% if is_contract and document.status == "buyer_signed" %}
+                  <form method="POST"
+                        action="{{ url_for('admin.documents_execute', document_id=document.id) }}"
+                        class="inline-flex">
+                    <button type="submit"
+                            class="bg-gold text-jungle font-semibold px-4 py-2 rounded-lg hover:bg-yellow-400 transition">
+                      Execute (Rizara Sign)
+                    </button>
+                  </form>
+                {% endif %}
               </div>
             </div>
 
+            {# Status update #}
             <form method="POST"
                   action="{{ url_for('admin.documents_set_status', document_id=document.id) }}"
-                  class="flex items-center gap-2">
-              {% set statuses = (doc_statuses or ['draft','buyer_signed','executed','expired','void']) %}
-              <select name="status"
-                      class="border border-gray-200 rounded-lg px-3 py-2 bg-white text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-jungle/30">
-                {% for s in statuses %}
-                  <option value="{{ s }}" {% if document.status == s %}selected{% endif %}>{{ s }}</option>
-                {% endfor %}
-              </select>
-              <button type="submit"
-                      class="bg-jungle text-white font-semibold px-4 py-2 rounded hover:bg-jungleLight transition">
-                Update
-              </button>
+                  class="flex flex-col sm:flex-row sm:items-center gap-2 shrink-0">
+              <label class="text-xs font-semibold text-gray-500 uppercase tracking-wide">Status</label>
+              <div class="flex items-center gap-2">
+                <select name="status"
+                        class="border border-gray-200 rounded-lg px-3 py-2 bg-white text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-jungle/30">
+                  {% for s in statuses %}
+                    <option value="{{ s }}" {% if document.status == s %}selected{% endif %}>{{ s }}</option>
+                  {% endfor %}
+                </select>
+                <button type="submit"
+                        class="bg-jungle text-white font-semibold px-4 py-2 rounded-lg hover:bg-jungleLight transition">
+                  Update
+                </button>
+              </div>
             </form>
           </div>
 
-          <!-- Details grid -->
+          {# Status banner #}
+          <div class="mb-6">
+            <div class="rounded-xl border px-4 py-3
+              {% if document.status == 'draft' %}
+                bg-gray-50 border-gray-200
+              {% elif document.status == 'buyer_signed' %}
+                bg-yellow-50 border-yellow-200
+              {% elif document.status == 'executed' %}
+                bg-green-50 border-green-200
+              {% elif document.status == 'void' %}
+                bg-red-50 border-red-200
+              {% else %}
+                bg-white border-gray-200
+              {% endif %}
+            ">
+              <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                <div class="text-sm text-gray-700">
+                  <span class="font-semibold">Current status:</span>
+                  <span class="inline-flex ml-2 px-2.5 py-1 rounded-full border border-gray-200 text-xs font-semibold bg-white">
+                    {{ document.status or '—' }}
+                  </span>
+                </div>
+                <div class="text-xs text-gray-500">
+                  Type: <span class="font-semibold text-gray-800">{{ document.doc_type or '—' }}</span>
+                  · v{{ document.version or 1 }}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {# Details grid #}
           <dl class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-            <div>
+            <div class="rounded-lg border border-gray-100 p-4">
               <dt class="text-gray-500">Buyer</dt>
-              <dd class="font-semibold text-gray-900">
+              <dd class="font-semibold text-gray-900 mt-1">
                 {{ document.buyer.name if document.buyer else '—' }}
                 {% if document.buyer and document.buyer.email %}
                   <span class="text-gray-500 font-normal">({{ document.buyer.email }})</span>
@@ -105,55 +200,83 @@
               </dd>
             </div>
 
-            <div>
-              <dt class="text-gray-500">Status</dt>
-              <dd>
-                <span class="inline-flex px-3 py-1 rounded-full border border-gray-200 text-xs font-semibold">
-                  {{ document.status or '—' }}
-                </span>
-              </dd>
-            </div>
-
-            <div class="md:col-span-2">
+            <div class="rounded-lg border border-gray-100 p-4">
               <dt class="text-gray-500">Title</dt>
-              <dd class="font-semibold text-gray-900">{{ document.title or '—' }}</dd>
+              <dd class="font-semibold text-gray-900 mt-1">{{ document.title or '—' }}</dd>
             </div>
 
-            <div>
-              <dt class="text-gray-500">Type</dt>
-              <dd class="font-semibold text-gray-900">{{ document.doc_type or '—' }}</dd>
-            </div>
-
-            <div>
-              <dt class="text-gray-500">Version</dt>
-              <dd class="font-semibold text-gray-900">{{ document.version or 1 }}</dd>
-            </div>
-
-            <div>
+            <div class="rounded-lg border border-gray-100 p-4">
               <dt class="text-gray-500">Created</dt>
-              <dd class="text-gray-800">{{ document.created_at or '' }}</dd>
+              <dd class="text-gray-800 mt-1">{{ document.created_at or '—' }}</dd>
             </div>
 
-            <div>
+            <div class="rounded-lg border border-gray-100 p-4">
               <dt class="text-gray-500">Updated</dt>
-              <dd class="text-gray-800">{{ document.updated_at or '' }}</dd>
+              <dd class="text-gray-800 mt-1">{{ document.updated_at or '—' }}</dd>
             </div>
+
+            {# Snapshot info (show if present; do not block download button on this) #}
+            {% if has_snapshot or document.file_sha256 %}
+              <div class="md:col-span-2 rounded-lg border border-gray-100 p-4">
+                <dt class="text-gray-500">Signed Snapshot</dt>
+                <dd class="mt-2 space-y-2">
+                  {% if has_snapshot %}
+                    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                      <div class="text-xs text-gray-600 min-w-0">
+                        <span class="font-semibold text-gray-700">storage_key</span>
+                        <div class="font-mono break-words bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 mt-1">
+                          {{ document.storage_key }}
+                        </div>
+                      </div>
+                      <button type="button"
+                              class="bg-white border border-gray-200 text-gray-800 font-semibold px-3 py-2 rounded-lg hover:bg-gray-50 transition shrink-0"
+                              onclick="copyText('{{ document.storage_key|e }}', this)">
+                        Copy
+                      </button>
+                    </div>
+                  {% endif %}
+
+                  {% if document.file_sha256 %}
+                    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                      <div class="text-xs text-gray-600 min-w-0">
+                        <span class="font-semibold text-gray-700">sha256</span>
+                        <div class="font-mono break-words bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 mt-1">
+                          {{ document.file_sha256 }}
+                        </div>
+                      </div>
+                      <button type="button"
+                              class="bg-white border border-gray-200 text-gray-800 font-semibold px-3 py-2 rounded-lg hover:bg-gray-50 transition shrink-0"
+                              onclick="copyText('{{ document.file_sha256|e }}', this)">
+                        Copy
+                      </button>
+                    </div>
+                  {% endif %}
+
+                  {% if show_download_signed and not has_snapshot %}
+                    <div class="text-xs text-gray-500">
+                      Note: this document can be downloaded, but <span class="font-semibold">storage_key</span> is not yet recorded (older document or snapshot not generated).
+                    </div>
+                  {% endif %}
+                </dd>
+              </div>
+            {% endif %}
           </dl>
 
-          <!-- Buyer Signing Panel -->
-          <div class="mt-6 border-t border-gray-100 pt-6">
-
+          {# =========================================================
+             Buyer Signing Panel
+          ========================================================== #}
+          <div class="mt-8 border-t border-gray-100 pt-6">
             <div class="flex items-center justify-between gap-3">
               <h2 class="text-lg font-semibold text-jungle">Buyer Signing</h2>
 
-              {% if document.status == "draft" %}
+              {% if show_send_for_signing %}
                 <form method="POST"
                       action="{{ url_for('admin.send_document_for_signing', document_id=document.id) }}"
                       class="shrink-0">
-                  <button class="bg-gold text-jungle font-semibold px-4 py-2 rounded hover:bg-yellow-400 transition"
+                  <button class="bg-gold text-jungle font-semibold px-4 py-2 rounded-lg hover:bg-yellow-400 transition"
                           type="submit">
-                    {% if document.buyer_sign_token %}
-                      Regenerate signing link
+                    {% if has_sign_link %}
+                      Regenerate link
                     {% else %}
                       Send for signing
                     {% endif %}
@@ -163,9 +286,9 @@
             </div>
 
             <div class="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-              <div>
+              <div class="rounded-lg border border-gray-100 p-4">
                 <div class="text-gray-500">Signed at</div>
-                <div class="font-semibold text-gray-900">
+                <div class="font-semibold text-gray-900 mt-1">
                   {% if document.buyer_signed_at %}
                     {{ document.buyer_signed_at }}
                   {% else %}
@@ -174,9 +297,9 @@
                 </div>
               </div>
 
-              <div>
+              <div class="rounded-lg border border-gray-100 p-4">
                 <div class="text-gray-500">Signer</div>
-                <div class="font-semibold text-gray-900">
+                <div class="font-semibold text-gray-900 mt-1">
                   {% if document.buyer_sign_name %}
                     {{ document.buyer_sign_name }}
                   {% else %}
@@ -192,81 +315,141 @@
                 </div>
               </div>
 
-              <div class="md:col-span-2">
+              <div class="md:col-span-2 rounded-lg border border-gray-100 p-4">
                 <div class="text-gray-500">Signer IP</div>
-                <div class="font-mono text-xs bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">
+                <div class="font-mono text-xs bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 mt-2">
                   {{ document.buyer_sign_ip or '—' }}
                 </div>
               </div>
 
-              <div class="md:col-span-2">
+              <div class="md:col-span-2 rounded-lg border border-gray-100 p-4">
                 <div class="text-gray-500">User agent</div>
-                <div class="font-mono text-xs bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 whitespace-pre-wrap break-words">
+                <div class="font-mono text-xs bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 mt-2 whitespace-pre-wrap break-words">
                   {{ document.buyer_sign_user_agent or '—' }}
                 </div>
               </div>
             </div>
 
-            {% if document.buyer_sign_token %}
+            {# Signing link block #}
+            {% if has_sign_link %}
               <div class="mt-5 border-t border-gray-100 pt-5">
-                <div class="text-xs uppercase tracking-wide text-gray-500 font-semibold mb-2">
-                  Active signing link
-                </div>
-
-                {% set sign_url = request.host_url ~ 'sign/' ~ document.buyer_sign_token %}
-
-                <div class="font-mono text-xs bg-gray-50 border border-dashed border-gray-300 rounded-lg px-3 py-2"
-                     id="sign-link-{{ document.id }}">
-                  {{ sign_url }}
-                </div>
-
-                <div class="mt-3 flex flex-wrap items-center gap-3">
-                  <button type="button"
-                          class="bg-jungle text-white font-semibold px-4 py-2 rounded hover:bg-jungleLight transition"
-                          onclick="copySigningLink('sign-link-{{ document.id }}', this)">
-                    Copy link
-                  </button>
-
+                <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-2">
+                  <div class="text-xs uppercase tracking-wide text-gray-500 font-semibold">
+                    Active signing link
+                  </div>
                   <div class="text-xs text-gray-500">
                     Valid until:
                     <span class="font-semibold text-gray-800">{{ document.buyer_sign_token_expires_at }}</span>
+                  </div>
+                </div>
+
+                <div class="rounded-lg border border-dashed border-gray-300 bg-gray-50 p-3">
+                  <div class="font-mono text-xs break-words" id="sign-link-{{ document.id }}">{{ sign_url }}</div>
+
+                  <div class="mt-3 flex flex-wrap items-center gap-2">
+                    <button type="button"
+                            class="bg-jungle text-white font-semibold px-4 py-2 rounded-lg hover:bg-jungleLight transition"
+                            onclick="copySigningLink('sign-link-{{ document.id }}', this)">
+                      Copy link
+                    </button>
+
+                    <a href="{{ sign_url }}"
+                       target="_blank" rel="noopener noreferrer"
+                       class="bg-white border border-gray-200 text-gray-800 font-semibold px-4 py-2 rounded-lg hover:bg-gray-50 transition">
+                      Open link
+                    </a>
+
+                    <button type="button"
+                            class="bg-white border border-gray-200 text-gray-800 font-semibold px-4 py-2 rounded-lg hover:bg-gray-50 transition"
+                            onclick="copyText('{{ sign_url|e }}', this)">
+                      Copy full URL
+                    </button>
                   </div>
                 </div>
               </div>
             {% else %}
               <div class="mt-5 border-t border-gray-100 pt-5 text-sm text-gray-500">
                 No active signing link yet.
-                {% if document.status == "draft" %}
+                {% if show_send_for_signing %}
                   Use <span class="font-semibold">Send for signing</span> to generate one.
                 {% endif %}
               </div>
             {% endif %}
-
           </div>
         </section>
 
-        <!-- RIGHT: Signatures -->
-        <aside class="bg-white rounded-xl shadow p-6">
-          <h2 class="text-lg font-semibold text-jungle mb-4">Signatures</h2>
+        {# =========================================================
+           RIGHT: Signatures + Audit Timeline
+        ========================================================== #}
+        <aside class="space-y-6">
 
-          {% if signatures %}
-            <div class="space-y-3">
-              {% for s in signatures %}
-                <div class="border border-gray-200 rounded-lg p-4">
-                  <div class="flex justify-between gap-3">
-                    <div class="font-semibold text-gray-900">{{ s.signer_name or 'Signer' }}</div>
-                    <div class="text-xs text-gray-500">{{ s.signed_at or s.created_at or '' }}</div>
-                  </div>
-                  <div class="text-xs text-gray-500 mt-1">{{ s.signer_email or '' }}</div>
-                  <div class="text-sm mt-2">
-                    Status: <span class="font-semibold">{{ s.status or 'pending' }}</span>
-                  </div>
-                </div>
-              {% endfor %}
+          {# Signatures #}
+          <div class="bg-white rounded-xl shadow p-6">
+            <div class="flex items-center justify-between gap-3 mb-4">
+              <h2 class="text-lg font-semibold text-jungle">Signatures</h2>
+              {% if signatures %}
+                <span class="text-xs text-gray-500">{{ signatures|length }} record(s)</span>
+              {% endif %}
             </div>
-          {% else %}
-            <p class="text-gray-500 text-sm">No signatures recorded yet.</p>
-          {% endif %}
+
+            {% if signatures %}
+              <div class="space-y-3">
+                {% for s in signatures %}
+                  <div class="border border-gray-200 rounded-lg p-4">
+                    <div class="flex items-start justify-between gap-3">
+                      <div class="min-w-0">
+                        <div class="font-semibold text-gray-900 truncate">
+                          {{ s.signer_name or 'Signer' }}
+                        </div>
+                        {% if s.signer_email %}
+                          <div class="text-xs text-gray-500 mt-1 truncate">{{ s.signer_email }}</div>
+                        {% endif %}
+                      </div>
+                      <div class="text-xs text-gray-500 shrink-0">
+                        {{ s.signed_at or '' }}
+                      </div>
+                    </div>
+
+                    <div class="text-sm mt-3 text-gray-700">
+                      <span class="text-gray-500">Type:</span>
+                      <span class="font-semibold">{{ s.signer_type or '—' }}</span>
+                      <span class="mx-2 text-gray-300">•</span>
+                      <span class="text-gray-500">Method:</span>
+                      <span class="font-semibold">{{ s.sign_method or '—' }}</span>
+                    </div>
+                  </div>
+                {% endfor %}
+              </div>
+            {% else %}
+              <p class="text-gray-500 text-sm">No signatures recorded yet.</p>
+            {% endif %}
+          </div>
+
+          {# Audit Timeline #}
+          <div class="bg-white rounded-xl shadow p-6">
+            <h2 class="text-lg font-semibold text-jungle mb-4">Audit Timeline</h2>
+
+            {% if events %}
+              <ol class="space-y-3">
+                {% for e in events %}
+                  <li class="border border-gray-200 rounded-lg p-4">
+                    <div class="flex items-start justify-between gap-4">
+                      <div class="font-semibold text-gray-900">{{ e.label }}</div>
+                      <div class="text-xs text-gray-500">{{ e.at }}</div>
+                    </div>
+                    {% if e.meta %}
+                      <div class="text-sm text-gray-600 mt-1">{{ e.meta }}</div>
+                    {% endif %}
+                  </li>
+                {% endfor %}
+              </ol>
+            {% else %}
+              <p class="text-gray-500 text-sm">
+                Timeline will appear once events are wired from the backend.
+              </p>
+            {% endif %}
+          </div>
+
         </aside>
 
       </div>
@@ -310,6 +493,35 @@
         }, 1200);
       } catch (e) {
         window.prompt("Copy this link:", text);
+      }
+    }
+
+    async function copyText(text, btn) {
+      const original = btn.textContent;
+      try {
+        if (navigator.clipboard && window.isSecureContext) {
+          await navigator.clipboard.writeText(text);
+        } else {
+          const ta = document.createElement("textarea");
+          ta.value = text;
+          ta.setAttribute("readonly", "");
+          ta.style.position = "absolute";
+          ta.style.left = "-9999px";
+          document.body.appendChild(ta);
+          ta.select();
+          document.execCommand("copy");
+          document.body.removeChild(ta);
+        }
+
+        btn.textContent = "Copied!";
+        btn.disabled = true;
+
+        setTimeout(() => {
+          btn.textContent = original;
+          btn.disabled = false;
+        }, 1200);
+      } catch (e) {
+        window.prompt("Copy:", text);
       }
     }
   </script>

@@ -1,0 +1,547 @@
+{# app/templates/admin/document_contract_edit.html #}
+{% extends "layouts/base.html" %}
+{% block title %}Edit Contract · {{ document.id }} · Rizara{% endblock %}
+
+{% block body %}
+
+<nav class="bg-jungle text-white px-6 py-4 flex justify-between items-center shadow">
+  <div class="flex items-center gap-3">
+    <div class="text-xl font-bold tracking-wide">Rizara Meats</div>
+    <div class="text-white/70 text-sm hidden sm:block">Contract Editor</div>
+  </div>
+
+  <div class="flex items-center gap-3">
+    <a href="{{ url_for('admin.documents_list') }}"
+       class="bg-white/10 text-white font-semibold px-4 py-2 rounded-lg hover:bg-white/20 transition">
+      ← Back
+    </a>
+    <a href="{{ url_for('auth.logout') }}"
+       class="bg-white/10 text-white font-semibold px-4 py-2 rounded-lg hover:bg-white/20 transition">
+      Logout
+    </a>
+  </div>
+</nav>
+
+<main class="max-w-7xl mx-auto px-6 py-10">
+
+  {% set p = document.payload or {} %}
+  {% set contract = p.get('contract', {}) %}
+  {% set product  = p.get('product', {}) %}
+  {% set pricing  = p.get('pricing', {}) %}
+  {% set payment  = p.get('payment', {}) %}
+  {% set shipment = p.get('shipment', {}) %}
+
+  {# Prefer buyer from profile #}
+  {% set b = document.buyer if document.buyer else None %}
+  {% set buyer_name = (b.name if b and b.name else contract.get('buyer_name')) %}
+  {% set buyer_email = (b.email if b and b.email else contract.get('buyer_email')) %}
+  {% set buyer_phone = (b.phone if b and b.phone else contract.get('buyer_phone')) %}
+  {% set buyer_address = (b.address if b and b.address else contract.get('buyer_location')) %}
+  {% set buyer_company = (contract.get('buyer_company') or '') %}
+
+  {# Prefer URLs passed from route (production). Fall back only if not provided. #}
+  {% set draft_pdf_url = draft_pdf_url if draft_pdf_url is defined else url_for('main.admin_download_contract_draft_pdf', document_id=document.id) %}
+  {% set preview_pdf_url = preview_pdf_url if preview_pdf_url is defined else draft_pdf_url %}
+  {% set send_for_signing_url = send_for_signing_url if send_for_signing_url is defined else url_for('admin.send_document_for_signing', document_id=document.id) %}
+  {% set buyer_edit_url = buyer_edit_url if buyer_edit_url is defined and buyer_edit_url else (url_for('admin.buyers_list') if b else None) %}
+
+  <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+
+    <!-- LEFT: Main editor -->
+    <div class="lg:col-span-8 space-y-6">
+
+      <!-- Header / Summary -->
+      <div class="bg-white rounded-2xl shadow p-6 border border-gray-100">
+        <div class="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
+          <div>
+            <h1 class="text-2xl sm:text-3xl font-bold text-jungle">Edit Export Sales Contract</h1>
+            <p class="text-gray-600 mt-1">
+              Document ID: <span class="font-mono text-sm">{{ document.id }}</span>
+              <span class="mx-2">•</span>
+              Version: <span class="font-semibold">v{{ document.version }}</span>
+              <span class="mx-2">•</span>
+              Status: <span class="font-semibold">{{ document.status }}</span>
+            </p>
+          </div>
+
+          <!-- Primary actions (single place, no duplicates) -->
+          <div class="flex flex-wrap gap-2 md:justify-end">
+            <a href="{{ preview_pdf_url }}"
+               target="_blank" rel="noopener"
+               class="px-4 py-2 rounded-lg border border-gray-200 bg-white text-gray-900 font-semibold hover:bg-gray-50 transition">
+              Preview PDF
+            </a>
+
+            <a href="{{ draft_pdf_url }}"
+               target="_blank" rel="noopener"
+               class="px-4 py-2 rounded-lg bg-white border border-gray-200 text-gray-900 font-semibold hover:bg-gray-50 transition">
+              Download Draft
+            </a>
+
+            <button type="submit" form="contractForm"
+                    class="px-4 py-2 rounded-lg bg-jungle text-white font-semibold hover:bg-jungleLight transition">
+              Save Draft
+            </button>
+
+            <form method="POST" action="{{ send_for_signing_url }}">
+              <button type="submit"
+                      class="px-4 py-2 rounded-lg bg-gold text-jungle font-semibold hover:bg-yellow-400 transition">
+                Send for signing
+              </button>
+            </form>
+          </div>
+        </div>
+
+        <!-- Summary cards (kept, but compact + consistent spacing) -->
+        <div class="mt-5 grid grid-cols-1 md:grid-cols-3 gap-3">
+          <div class="rounded-xl border border-gray-200 bg-gray-50 p-4">
+            <div class="text-xs uppercase tracking-wide text-gray-500">Buyer</div>
+            <div class="mt-1 font-semibold text-gray-900">{{ buyer_name or '—' }}</div>
+            <div class="text-sm text-gray-700 mt-1 space-y-0.5">
+              {% if buyer_company %}<div>{{ buyer_company }}</div>{% endif %}
+              <div class="break-words">{{ buyer_email or '—' }}</div>
+              <div class="break-words">{{ buyer_phone or '—' }}</div>
+              <div class="text-gray-600 break-words">{{ buyer_address or '—' }}</div>
+            </div>
+
+            {% if buyer_edit_url %}
+              <a href="{{ buyer_edit_url }}"
+                 class="mt-3 inline-flex w-full justify-center px-3 py-2 rounded-lg bg-gold text-jungle font-semibold hover:bg-yellow-400 transition">
+                Edit Buyer Profile
+              </a>
+            {% endif %}
+          </div>
+
+          <div class="rounded-xl border border-gray-200 p-4">
+            <div class="text-xs uppercase tracking-wide text-gray-500">Contract basics</div>
+            <div class="mt-2 text-sm text-gray-800 space-y-1">
+              <div><span class="text-gray-500">Incoterm:</span> <span class="font-semibold">{{ contract.get('incoterm','—') }}</span></div>
+              <div><span class="text-gray-500">Handover point:</span> <span class="font-semibold">{{ shipment.get('handover_point','—') }}</span></div>
+              <div><span class="text-gray-500">Payment:</span>
+                <span class="font-semibold">{{ payment.get('advance_percent','—') }}% advance / {{ payment.get('balance_percent','—') }}% balance</span>
+              </div>
+              <div><span class="text-gray-500">Balance condition:</span>
+                <span class="font-semibold">{{ payment.get('balance_condition','—') }}</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="rounded-xl border border-gray-200 p-4">
+            <div class="text-xs uppercase tracking-wide text-gray-500">Notes</div>
+            <div class="mt-2 text-sm text-gray-700">
+              <div class="text-gray-500">Draft PDF is available before signing (same as LOI).</div>
+              <div class="mt-2 text-gray-600">
+                Tip: Keep fields complete to avoid signing delays.
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Flash messages -->
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+          <div class="space-y-3">
+            {% for category, message in messages %}
+              <div class="px-4 py-3 rounded-lg border
+                {% if category == 'success' %}bg-green-50 text-green-800 border-green-200
+                {% elif category in ['danger','error'] %}bg-red-50 text-red-800 border-red-200
+                {% elif category == 'warning' %}bg-yellow-50 text-yellow-800 border-yellow-200
+                {% else %}bg-gray-50 text-gray-800 border-gray-200{% endif %}">
+                {{ message }}
+              </div>
+            {% endfor %}
+          </div>
+        {% endif %}
+      {% endwith %}
+
+      <!-- FORM -->
+      <form id="contractForm" method="POST" class="space-y-6">
+
+        <!-- Section: Product & Pricing -->
+        <div class="bg-white rounded-2xl shadow p-6 border border-gray-100">
+          <div class="flex items-start justify-between gap-4">
+            <div>
+              <h2 class="text-lg font-bold text-gray-900">Product & pricing</h2>
+              <p class="text-sm text-gray-600 mt-1">
+                Select product, enter quantity and price/kg. Estimated total updates automatically.
+              </p>
+            </div>
+
+            <!-- Move total label into section header to shorten page -->
+            <div class="hidden md:block text-right">
+              <div class="text-xs uppercase tracking-wide text-gray-500">Estimated total</div>
+              <div class="font-mono font-semibold text-gray-900" id="totalLabelHeader">—</div>
+            </div>
+          </div>
+
+          {% set species = (product.get('species') or '') %}
+
+          <div class="mt-5">
+            <div class="text-sm font-semibold text-gray-700">Product (select one)</div>
+            <div class="mt-2 grid grid-cols-1 sm:grid-cols-3 gap-3">
+              {% set options = [('goat','Goat'),('lamb','Lamb'),('beef','Beef')] %}
+              {% for val, label in options %}
+                <label class="group flex items-center gap-3 p-3 rounded-xl border border-gray-200 hover:border-gray-300 cursor-pointer transition">
+                  <input type="radio" name="product_species" value="{{ val }}" class="h-4 w-4"
+                         {% if species == val %}checked{% endif %}>
+                  <div>
+                    <div class="font-semibold text-gray-900">{{ label }}</div>
+                    <div class="text-xs text-gray-500">Select {{ label|lower }} as the main product</div>
+                  </div>
+                </label>
+              {% endfor %}
+            </div>
+          </div>
+
+          <div class="mt-5 grid grid-cols-1 sm:grid-cols-4 gap-3">
+            <div>
+              <label class="block text-sm font-semibold text-gray-700 mb-1">Quantity (kg)</label>
+              <input id="quantityKg" name="quantity_kg" type="number" step="0.01" min="0"
+                     value="{{ product.get('quantity_kg','') }}"
+                     class="w-full border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-jungle/30">
+            </div>
+
+            <div>
+              <label class="block text-sm font-semibold text-gray-700 mb-1">Price per kg</label>
+              <input id="pricePerKg" name="price_per_kg" type="number" step="0.01" min="0"
+                     value="{{ pricing.get('price_per_kg','') }}"
+                     class="w-full border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-jungle/30">
+            </div>
+
+            <div>
+              <label class="block text-sm font-semibold text-gray-700 mb-1">Currency</label>
+              {% set cur = pricing.get('currency','USD') %}
+              <select name="currency"
+                      class="w-full border border-gray-200 rounded-lg px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-jungle/30">
+                {% for c in ['USD','AED','KES','EUR','GBP'] %}
+                  <option value="{{ c }}" {% if cur == c %}selected{% endif %}>{{ c }}</option>
+                {% endfor %}
+              </select>
+            </div>
+
+            <div>
+              <label class="block text-sm font-semibold text-gray-700 mb-1">Total</label>
+              <input id="totalValue" name="total_value" type="text" readonly
+                     value="{{ pricing.get('total_value','') }}"
+                     class="w-full border border-gray-200 rounded-lg px-3 py-2 bg-gray-50 font-mono">
+            </div>
+          </div>
+
+          <div class="mt-5 grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label class="block text-sm font-semibold text-gray-700 mb-1">Condition</label>
+              <input name="condition" type="text"
+                     value="{{ product.get('condition','Chilled (0–4°C)') }}"
+                     class="w-full border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-jungle/30">
+            </div>
+            <div>
+              <label class="block text-sm font-semibold text-gray-700 mb-1">Packaging</label>
+              <input name="packaging" type="text"
+                     value="{{ product.get('packaging','Food-grade export packaging') }}"
+                     class="w-full border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-jungle/30">
+            </div>
+          </div>
+
+          <div class="mt-3">
+            <label class="block text-sm font-semibold text-gray-700 mb-1">Certification</label>
+            <input name="certification" type="text"
+                   value="{{ product.get('certification','Veterinary Health + Halal Certificate') }}"
+                   class="w-full border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-jungle/30">
+          </div>
+        </div>
+
+        <!-- Section: Payment -->
+        <div class="bg-white rounded-2xl shadow p-6 border border-gray-100">
+          <h2 class="text-lg font-bold text-gray-900">Payment terms</h2>
+          <p class="text-sm text-gray-600 mt-1">Clear terms reduce back-and-forth with the buyer.</p>
+
+          <div class="mt-5 grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div>
+              <label class="block text-sm font-semibold text-gray-700 mb-1">Advance (%)</label>
+              <input id="advancePercent" name="advance_percent" type="number" step="1" min="0" max="100"
+                     value="{{ payment.get('advance_percent','') }}"
+                     class="w-full border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-jungle/30">
+            </div>
+
+            <div>
+              <label class="block text-sm font-semibold text-gray-700 mb-1">Balance (%)</label>
+              <input id="balancePercent" name="balance_percent" type="number" step="1" min="0" max="100"
+                     value="{{ payment.get('balance_percent','') }}"
+                     class="w-full border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-jungle/30">
+            </div>
+
+            <div>
+              <label class="block text-sm font-semibold text-gray-700 mb-1">Method</label>
+              <input name="payment_method" type="text"
+                     value="{{ payment.get('method','T/T (bank transfer)') }}"
+                     class="w-full border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-jungle/30">
+            </div>
+          </div>
+
+          <div class="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div>
+              <label class="block text-sm font-semibold text-gray-700 mb-1">Reference note</label>
+              <input name="payment_reference" type="text"
+                     value="{{ payment.get('reference','As invoiced') }}"
+                     class="w-full border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-jungle/30">
+            </div>
+
+            <div>
+              <label class="block text-sm font-semibold text-gray-700 mb-1">
+                Balance condition <span class="text-gray-400">(required)</span>
+              </label>
+              <input name="balance_condition" type="text" required
+                     placeholder="e.g. Against Air Waybill copy"
+                     value="{{ payment.get('balance_condition','Against Air Waybill copy') }}"
+                     class="w-full border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-jungle/30">
+              <p class="text-xs text-gray-500 mt-2">
+                Example: “Against Air Waybill copy”, “Against BL copy”, “On presentation of shipping documents”.
+              </p>
+            </div>
+          </div>
+
+          <p class="text-xs text-gray-500 mt-3">
+            Optional: We can auto-set balance = 100 − advance to prevent mistakes.
+          </p>
+        </div>
+
+        <!-- Section: Delivery / Incoterms -->
+        <div class="bg-white rounded-2xl shadow p-6 border border-gray-100">
+          <h2 class="text-lg font-bold text-gray-900">Delivery & handover</h2>
+          <p class="text-sm text-gray-600 mt-1">Define Incoterm and where handover happens.</p>
+
+          <div class="mt-5 grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              {% set inc = (contract.get('incoterm','') or '').upper().strip() %}
+              <label class="block text-sm font-semibold text-gray-700 mb-1">Incoterm</label>
+
+              <select name="incoterm"
+                      class="w-full border border-gray-200 rounded-lg px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-jungle/30">
+                <option value="" {% if not inc %}selected{% endif %}>Select Incoterm…</option>
+
+                {% set incoterms = [
+                  ('EXW','EXW — Ex Works'),
+                  ('FCA','FCA — Free Carrier'),
+                  ('FAS','FAS — Free Alongside Ship'),
+                  ('FOB','FOB — Free On Board'),
+                  ('CFR','CFR — Cost and Freight'),
+                  ('CIF','CIF — Cost, Insurance & Freight'),
+                  ('CPT','CPT — Carriage Paid To'),
+                  ('CIP','CIP — Carriage & Insurance Paid To'),
+                  ('DAP','DAP — Delivered At Place'),
+                  ('DPU','DPU — Delivered at Place Unloaded'),
+                  ('DDP','DDP — Delivered Duty Paid')
+                ] %}
+
+                {% for code, label in incoterms %}
+                  <option value="{{ code }}" {% if inc == code %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+              </select>
+
+              <p class="text-xs text-gray-500 mt-2">
+                Tip: Choose the Incoterm agreed with the buyer. This helps define handover responsibilities clearly.
+              </p>
+            </div>
+
+            <div>
+              <label class="block text-sm font-semibold text-gray-700 mb-1">Handover point (Port/Airport)</label>
+              <input name="handover_point" type="text"
+                     value="{{ shipment.get('handover_point','JKIA / Nairobi') }}"
+                     class="w-full border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-jungle/30">
+            </div>
+          </div>
+
+          <div class="mt-3">
+            <label class="block text-sm font-semibold text-gray-700 mb-1">Delivery notes (optional)</label>
+            <textarea name="delivery_notes" rows="3"
+                      class="w-full border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-jungle/30">{{ shipment.get('notes','') }}</textarea>
+          </div>
+        </div>
+
+        <!-- Section: Additional notes -->
+        <div class="bg-white rounded-2xl shadow p-6 border border-gray-100">
+          <h2 class="text-lg font-bold text-gray-900">Additional notes</h2>
+          <p class="text-sm text-gray-600 mt-1">Optional context to make the contract clearer to the buyer.</p>
+
+          <div class="mt-4">
+            <label class="block text-sm font-semibold text-gray-700 mb-1">Contract notes (optional)</label>
+            <textarea name="contract_notes" rows="4"
+                      class="w-full border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-jungle/30">{{ contract.get('notes','') }}</textarea>
+          </div>
+        </div>
+
+      </form>
+    </div>
+
+    <!-- RIGHT: Sidebar (sticky, to reduce perceived length) -->
+    <aside class="lg:col-span-4 space-y-6 lg:sticky lg:top-6">
+
+      <!-- Readiness checklist -->
+      <div class="bg-white rounded-2xl shadow p-6 border border-gray-100">
+        <h3 class="text-lg font-bold text-gray-900">Readiness checklist</h3>
+        <p class="text-sm text-gray-600 mt-1">Avoid sending incomplete contracts.</p>
+
+        <ul class="mt-4 space-y-2 text-sm">
+          <li class="flex items-start gap-2">
+            <span id="ckBuyer" class="mt-0.5 inline-flex h-5 w-5 items-center justify-center rounded-full bg-gray-100 text-gray-500">•</span>
+            <div>
+              <div class="font-semibold text-gray-900">Buyer details present</div>
+              <div class="text-gray-500">Name + at least email/phone</div>
+            </div>
+          </li>
+
+          <li class="flex items-start gap-2">
+            <span id="ckProduct" class="mt-0.5 inline-flex h-5 w-5 items-center justify-center rounded-full bg-gray-100 text-gray-500">•</span>
+            <div>
+              <div class="font-semibold text-gray-900">Product selected</div>
+              <div class="text-gray-500">Goat / Lamb / Beef</div>
+            </div>
+          </li>
+
+          <li class="flex items-start gap-2">
+            <span id="ckPricing" class="mt-0.5 inline-flex h-5 w-5 items-center justify-center rounded-full bg-gray-100 text-gray-500">•</span>
+            <div>
+              <div class="font-semibold text-gray-900">Quantity & price set</div>
+              <div class="text-gray-500">Estimated total computed</div>
+            </div>
+          </li>
+
+          <li class="flex items-start gap-2">
+            <span id="ckPayment" class="mt-0.5 inline-flex h-5 w-5 items-center justify-center rounded-full bg-gray-100 text-gray-500">•</span>
+            <div>
+              <div class="font-semibold text-gray-900">Payment terms set</div>
+              <div class="text-gray-500">Advance + balance + condition</div>
+            </div>
+          </li>
+
+          <li class="flex items-start gap-2">
+            <span id="ckDelivery" class="mt-0.5 inline-flex h-5 w-5 items-center justify-center rounded-full bg-gray-100 text-gray-500">•</span>
+            <div>
+              <div class="font-semibold text-gray-900">Delivery set</div>
+              <div class="text-gray-500">Incoterm + handover point</div>
+            </div>
+          </li>
+        </ul>
+
+        <div class="mt-5 rounded-xl border border-gray-200 bg-gray-50 p-4">
+          <div class="text-sm font-semibold text-gray-900">Estimated total</div>
+          <div class="mt-1 font-mono text-gray-900 break-words" id="totalLabel">—</div>
+          <div class="text-xs text-gray-500 mt-1">Computed from quantity × price/kg</div>
+        </div>
+      </div>
+
+      <!-- PDF & sharing (kept, but no duplicate actions) -->
+      <div class="bg-white rounded-2xl shadow p-6 border border-gray-100">
+        <h3 class="text-lg font-bold text-gray-900">PDF & sharing</h3>
+        <p class="text-sm text-gray-600 mt-1">Buyer can download the draft before signing.</p>
+
+        <div class="mt-4 flex flex-col gap-3">
+          <a href="{{ preview_pdf_url }}"
+             target="_blank" rel="noopener"
+             class="text-center px-4 py-2 rounded-lg border border-gray-200 bg-white text-gray-900 font-semibold hover:bg-gray-50 transition">
+            Preview PDF
+          </a>
+
+          <a href="{{ draft_pdf_url }}"
+             target="_blank" rel="noopener"
+             class="text-center px-4 py-2 rounded-lg bg-white border border-gray-200 text-gray-900 font-semibold hover:bg-gray-50 transition">
+            Download Draft
+          </a>
+
+          <div class="text-xs text-gray-500">
+            Use the top “Send for signing” button when ready.
+          </div>
+        </div>
+      </div>
+
+    </aside>
+  </div>
+</main>
+
+<script>
+(function(){
+  const qty = document.getElementById("quantityKg");
+  const ppk = document.getElementById("pricePerKg");
+  const tot = document.getElementById("totalValue");
+  const totalLabel = document.getElementById("totalLabel");
+  const totalLabelHeader = document.getElementById("totalLabelHeader");
+
+  const ckBuyer = document.getElementById("ckBuyer");
+  const ckProduct = document.getElementById("ckProduct");
+  const ckPricing = document.getElementById("ckPricing");
+  const ckPayment = document.getElementById("ckPayment");
+  const ckDelivery = document.getElementById("ckDelivery");
+
+  function setOk(el, ok){
+    if (!el) return;
+    el.textContent = ok ? "✓" : "•";
+    el.className = "mt-0.5 inline-flex h-5 w-5 items-center justify-center rounded-full " +
+      (ok ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500");
+  }
+
+  function readRadio(name){
+    const el = document.querySelector(`input[name="${name}"]:checked`);
+    return el ? el.value : "";
+  }
+
+  function recalc(){
+    const q = parseFloat(qty?.value || "0");
+    const p = parseFloat(ppk?.value || "0");
+    if (!isFinite(q) || !isFinite(p) || q <= 0 || p <= 0){
+      if (tot) tot.value = "";
+      if (totalLabel) totalLabel.textContent = "—";
+      if (totalLabelHeader) totalLabelHeader.textContent = "—";
+      return;
+    }
+    const v = (q * p);
+    const txt = v.toFixed(2);
+    if (tot) tot.value = txt;
+    if (totalLabel) totalLabel.textContent = txt;
+    if (totalLabelHeader) totalLabelHeader.textContent = txt;
+  }
+
+  function checkAll(){
+    const buyerHasName = {{ 'true' if buyer_name else 'false' }};
+    const buyerHasContact = {{ 'true' if (buyer_email or buyer_phone) else 'false' }};
+    setOk(ckBuyer, buyerHasName && buyerHasContact);
+
+    const species = readRadio("product_species");
+    setOk(ckProduct, !!species);
+
+    const q = parseFloat(qty?.value || "0");
+    const p = parseFloat(ppk?.value || "0");
+    const pricingOk = isFinite(q) && isFinite(p) && q > 0 && p > 0;
+    setOk(ckPricing, pricingOk);
+
+    const adv = document.getElementById("advancePercent");
+    const bal = document.getElementById("balancePercent");
+    const bc  = document.querySelector('input[name="balance_condition"]');
+
+    const advV = parseFloat(adv?.value || "0");
+    const balV = parseFloat(bal?.value || "0");
+    const bcOk = (bc?.value || "").trim().length > 0;
+
+    const paymentOk = (adv?.value || bal?.value) && isFinite(advV) && isFinite(balV) && bcOk;
+    setOk(ckPayment, !!paymentOk);
+
+    const inc = document.querySelector('select[name="incoterm"]');
+    const hop = document.querySelector('input[name="handover_point"]');
+    const deliveryOk = (inc?.value || "").trim().length > 0 && (hop?.value || "").trim().length > 0;
+    setOk(ckDelivery, deliveryOk);
+  }
+
+  qty?.addEventListener("input", function(){ recalc(); checkAll(); });
+  ppk?.addEventListener("input", function(){ recalc(); checkAll(); });
+
+  document.querySelectorAll('input, textarea, select').forEach(el => {
+    el.addEventListener("input", checkAll);
+    el.addEventListener("change", checkAll);
+  });
+
+  recalc();
+  checkAll();
+})();
+</script>
+
+{% endblock %}

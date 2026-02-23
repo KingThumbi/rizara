@@ -1,0 +1,40 @@
+{# app/templates/pdfs/_letterhead.html #}
+<div class="letterhead">
+  <div class="lh-topbar"></div>
+  <div class="lh-body">
+    <div class="grid">
+      <div class="row">
+        <div class="cell cell-50">
+          <div class="brand-name">{{ company.name if company else "Rizara" }}</div>
+          {% if company and company.tagline %}
+            <div class="brand-tagline small">{{ company.tagline }}</div>
+          {% endif %}
+
+          <div class="tiny muted" style="margin-top:6px;">
+            {% if company and company.address %}{{ company.address }}<br>{% endif %}
+            {% if company and company.email %}Email: {{ company.email }}{% endif %}
+            {% if company and company.phone %} • Phone: {{ company.phone }}{% endif %}
+            {% if company and company.website %}<br>Web: {{ company.website }}{% endif %}
+          </div>
+        </div>
+
+        <div class="cell cell-50 right doc-meta">
+          <div style="font-size: 12.5pt; font-weight: 800; color: var(--navy); margin-bottom: 2px;">
+            {{ doc_title or "Document" }}
+          </div>
+
+          <div class="kv small"><span class="k">Reference:</span> <span class="muted">{{ doc_ref or (document.id if document else "—") }}</span></div>
+          <div class="kv small"><span class="k">Date (EAT):</span> <span class="muted">{{ doc_date or (now_eat if now_eat else "—") }}</span></div>
+
+          {% if document %}
+            <div class="kv small"><span class="k">Version:</span> <span class="muted">{{ document.version }}</span></div>
+            <div class="kv small">
+              <span class="k">Status:</span>
+              <span class="pill">{{ document.status }}</span>
+            </div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

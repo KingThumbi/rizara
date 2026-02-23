@@ -1,127 +1,149 @@
-<!doctype html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <title>Letter of Intent</title>
-  <style>
-    @page { size: A4; margin: 22mm 18mm; }
-    body { font-family: Arial, Helvetica, sans-serif; color:#111; font-size: 11.5pt; line-height: 1.45; }
-    .top { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom: 18px; }
-    .brand { font-weight: 900; font-size: 16pt; color:#1f6f54; }
-    .meta { font-size: 9.5pt; color:#444; text-align:right; }
-    .hr { border-top: 1px solid #ddd; margin: 12px 0 18px; }
-    .h1 { font-size: 14pt; font-weight: 900; margin: 0 0 6px; }
-    .muted { color:#555; }
-    .box { border: 1px solid #e6e6e6; background:#fafafa; padding: 10px 12px; border-radius: 10px; }
-    .row { display:flex; gap:14px; }
-    .col { flex:1; }
-    .section { margin: 14px 0; }
-    .siggrid { display:flex; gap:18px; margin-top: 18px; }
-    .sig { flex:1; border-top: 1px solid #bbb; padding-top: 8px; }
-    .stamp { margin-top: 10px; padding: 10px 12px; border: 1px solid #cfe7db; background:#f3fbf6; border-radius: 10px; }
-    .small { font-size: 9.5pt; }
-  </style>
-</head>
-<body>
+{# app/templates/pdfs/loi.html #}
+{% extends "pdfs/base_pdf.html" %}
 
-  <div class="top">
-    <div>
-      <div class="brand">Rizara Meats Ltd</div>
-      <div class="muted small">Ethical • Traceable • Halal</div>
+{% block content %}
+  {# Optional payload support if you later store LOI-specific data in document.payload #}
+  {% set p = document.payload or {} %}
+  {% set loi = p.get("loi", {}) %}
+  {% set buyer = document.buyer if document.buyer else None %}
+
+  <div class="box">
+    <div class="grid">
+      <div class="row">
+        <div class="cell cell-50">
+          <div class="label">Seller</div>
+          <div><strong>{{ company.name if company else "Rizara Meats Ltd" }}</strong></div>
+          <div class="small muted">Republic of Kenya</div>
+          <div class="small">
+            <div class="kv"><span class="k">Address:</span> {{ company.address if company else "—" }}</div>
+            <div class="kv"><span class="k">Email:</span> {{ company.email if company else "—" }}</div>
+            <div class="kv"><span class="k">Phone:</span> {{ company.phone if company else "—" }}</div>
+            <div class="kv"><span class="k">Website:</span> {{ company.website if company else "—" }}</div>
+          </div>
+        </div>
+
+        <div class="cell cell-50">
+          <div class="label">Buyer</div>
+          <div><strong>{{ buyer.name if buyer else (loi.get("buyer_name") or "—") }}</strong></div>
+          <div class="small">
+            <div class="kv"><span class="k">Company:</span> {{ loi.get("buyer_company") or "—" }}</div>
+            <div class="kv"><span class="k">Email:</span> {{ (buyer.email if buyer and buyer.email else None) or (loi.get("buyer_email") or "—") }}</div>
+            <div class="kv"><span class="k">Phone:</span> {{ (buyer.phone if buyer and buyer.phone else None) or (loi.get("buyer_phone") or "—") }}</div>
+            <div class="kv"><span class="k">Location:</span> {{ loi.get("buyer_location") or "—" }}</div>
+          </div>
+        </div>
+      </div>
     </div>
-    <div class="meta">
-      <div><strong>Document:</strong> LOI</div>
-      <div><strong>Version:</strong> v{{ document.version }}</div>
-      <div><strong>Date:</strong> {{ now_eat.strftime("%Y-%m-%d") }}</div>
+
+    <div class="tiny muted" style="margin-top:8px;">
+      This Letter of Intent (“LOI”) is issued to summarize the parties’ current commercial understanding and to guide the preparation of a definitive agreement.
+    </div>
+  </div>
+
+  <h2>1. Purpose of this LOI</h2>
+  <p>
+    The Seller and the Buyer intend to explore a commercial relationship for the supply of halal meat products for export.
+    This LOI outlines the intended scope, quality standards, and the proposed path toward a final Export Sales Contract and supporting shipment documents.
+  </p>
+
+  <h2>2. Products and Quality Standards</h2>
+  <div class="box">
+    <div class="kv"><span class="k">Primary products:</span> {{ loi.get("products") or "Halal chilled carcasses (goat, lamb) and selected beef cuts/carcasses (where agreed)." }}</div>
+    <div class="kv"><span class="k">Condition:</span> {{ loi.get("condition") or "Chilled (0–4°C), handled under cold-chain controls." }}</div>
+    <div class="kv"><span class="k">Quality:</span> {{ loi.get("quality") or "Veterinary inspected, export hygiene standards, food-grade packaging." }}</div>
+    <div class="kv"><span class="k">Halal:</span> {{ loi.get("halal") or "Processed under halal standards with certification references available per shipment." }}</div>
+    <div class="kv"><span class="k">Traceability:</span> {{ loi.get("traceability") or "Batch-level tracking from sourcing through processing and dispatch." }}</div>
+  </div>
+
+  <h2>3. Proposed Commercial Understanding (Summary)</h2>
+  <p class="muted small">
+    The items below are a working summary and will be confirmed in the final contract and/or proforma invoice:
+  </p>
+  <div class="box">
+    <ul style="margin:8px 0 0; padding-left:18px;">
+      <li><strong>Volumes:</strong> {{ loi.get("volumes") or "To be agreed per shipment schedule and availability." }}</li>
+      <li><strong>Pricing:</strong> {{ loi.get("pricing") or "To be agreed per product specification and destination requirements; currency and basis to be stated in invoice." }}</li>
+      <li><strong>Packaging & labeling:</strong> {{ loi.get("packaging") or "Food-grade export packaging; labeling aligned to destination market requirements where reasonably practicable." }}</li>
+      <li><strong>Delivery terms:</strong> {{ loi.get("delivery") or "Incoterms, handover point, and transport responsibilities to be confirmed in the final contract." }}</li>
+      <li><strong>Payment:</strong> {{ loi.get("payment") or "Advance and balance schedule to be confirmed in the final contract/proforma invoice." }}</li>
+    </ul>
+  </div>
+
+  <h2>4. Documentation</h2>
+  <p>
+    For each agreed shipment, the Seller expects to prepare the typical export documentation set where applicable, which may include:
+  </p>
+  <ul>
+    <li>Commercial Invoice and Packing List</li>
+    <li>Air Waybill (AWB) or equivalent transport document</li>
+    <li>Veterinary Health Certificate</li>
+    <li>Halal Certificate reference (as applicable)</li>
+    <li>Certificate of Origin (where requested/required)</li>
+  </ul>
+
+  <h2>5. Next Steps</h2>
+  <ol>
+    <li>Confirm product specifications (cuts/carcass type, grading, packaging, labeling, weights).</li>
+    <li>Confirm commercial terms (price basis, delivery term/Incoterm, payment schedule).</li>
+    <li>Issue a proforma invoice (if required) and finalize shipment timeline.</li>
+    <li>Execute the Export Sales Contract through the Rizara platform.</li>
+  </ol>
+
+  <h2>6. Confidentiality and Good-Faith Engagement</h2>
+  <p>
+    The parties agree to treat commercially sensitive information exchanged under this LOI as confidential and to use it only for evaluating and
+    preparing the contemplated transaction. The parties also agree to engage in good faith to finalize the definitive agreement where practicable.
+  </p>
+
+  <h2>7. Non-Binding Nature</h2>
+  <p>
+    This LOI is intended as a statement of intent and is <strong>not</strong> a final sales contract. No party is required to proceed with a shipment
+    unless and until the definitive Export Sales Contract (and/or other binding document) is executed by the parties.
+    Sections relating to confidentiality and good-faith engagement are intended to apply upon acceptance of this LOI.
+  </p>
+
+  <h2>8. Governing Law</h2>
+  <p>
+    This LOI is governed by the laws of the Republic of Kenya.
+  </p>
+
+  <div class="hr"></div>
+
+  <h2>Signatures</h2>
+  <div class="siggrid">
+    <div class="sigcell">
+      <div class="label">For the Seller ({{ company.name if company else "Rizara Meats Ltd" }})</div>
+      <div class="line"></div>
+      <div class="small">
+        <div><span class="label">Name:</span> {{ loi.get("seller_sign_name") or "Authorized Representative" }}</div>
+        <div><span class="label">Title:</span> {{ loi.get("seller_sign_title") or "" }}</div>
+        <div><span class="label">Date:</span> {{ loi.get("seller_sign_date") or "" }}</div>
+      </div>
+    </div>
+
+    <div class="sigcell">
+      <div class="label">For the Buyer</div>
+      <div class="line"></div>
+      <div class="small">
+        <div><span class="label">Name:</span> {{ document.buyer_sign_name or (buyer.name if buyer else (loi.get("buyer_name") or "Buyer")) }}</div>
+        <div><span class="label">Email:</span> {{ document.buyer_sign_email or (buyer.email if buyer and buyer.email else (loi.get("buyer_email") or "")) }}</div>
+        <div><span class="label">Signed at (UTC):</span> {{ document.buyer_signed_at or "—" }}</div>
+      </div>
+
+      <div class="stamp tiny">
+        <div class="label">Signing Record (system-generated)</div>
+        <div><span class="label">IP:</span> {{ document.buyer_sign_ip or "—" }}</div>
+        <div><span class="label">User-Agent:</span> {{ document.buyer_sign_user_agent or "—" }}</div>
+        <div class="muted">
+          This record is stored by the system to maintain a clear history of signing activity for this document.
+        </div>
+      </div>
     </div>
   </div>
 
   <div class="hr"></div>
-
-  <div class="section">
-    <div class="h1">Letter of Intent (LOI)</div>
-    <div class="muted">This LOI outlines the intent to purchase halal chilled carcasses from Rizara Meats Ltd.</div>
-  </div>
-
-  <div class="section box">
-    <div class="row">
-      <div class="col">
-        <div class="small muted"><strong>Buyer</strong></div>
-        <div><strong>{{ document.buyer.name if document.buyer else "—" }}</strong></div>
-        <div class="small muted">
-          {{ document.buyer.email if document.buyer and document.buyer.email else "" }}
-          {% if document.buyer and document.buyer.phone %} · {{ document.buyer.phone }}{% endif %}
-        </div>
-      </div>
-      <div class="col">
-        <div class="small muted"><strong>Reference</strong></div>
-        <div class="small">Document ID: {{ document.id }}</div>
-        <div class="small">Title: {{ document.title or "—" }}</div>
-        <div class="small">Status: {{ document.status }}</div>
-      </div>
-    </div>
-  </div>
-
-  <div class="section">
-    <p>
-      Rizara Meats Ltd (“Seller”) intends to supply the Buyer with premium halal meat products, primarily
-      <strong>lamb</strong> and <strong>goat</strong>, and select <strong>beef</strong>, delivered as <strong>chilled carcasses</strong>
-      under cold-chain handling to meet export standards.
-    </p>
-    <p>
-      All livestock shall be sourced ethically and subjected to veterinary inspection by authorized Kenyan bodies,
-      with halal certification provided by recognized halal certification entities in Kenya, as applicable to the shipment.
-    </p>
-    <p>
-      This LOI is non-binding except for confidentiality and good-faith engagement, until a definitive agreement is executed.
-    </p>
-  </div>
-
-  <div class="section box">
-    <div class="small muted"><strong>Commercial Notes (summary)</strong></div>
-    <ul style="margin:8px 0 0; padding-left:18px;">
-      <li>Product: chilled carcasses (lamb, goat; some beef).</li>
-      <li>Quality: veterinary-inspected, cold-chain controlled.</li>
-      <li>Traceability: batch-level tracking from origin to delivery.</li>
-      <li>Delivery: Incoterms and shipment schedule to be agreed.</li>
-    </ul>
-  </div>
-
-  <div class="section">
-    <div class="siggrid">
-      <div class="sig">
-        <div class="small muted"><strong>For Rizara Meats Ltd (Seller)</strong></div>
-        <div class="small">Authorized Signatory</div>
-      </div>
-      <div class="sig">
-        <div class="small muted"><strong>For Buyer</strong></div>
-        <div class="small">Authorized Signatory</div>
-      </div>
-    </div>
-
-    {% if document.buyer_signed_at %}
-      <div class="stamp">
-        <div><strong>Digitally Signed by Buyer</strong></div>
-        <div class="small muted">
-          Name: {{ document.buyer_sign_name or "—" }} |
-          Email: {{ document.buyer_sign_email or "—" }} |
-          Signed at: {{ document.buyer_signed_at }}
-        </div>
-        <div class="small muted">
-          IP: {{ document.buyer_sign_ip or "—" }}
-        </div>
-      </div>
-    {% else %}
-      <div class="stamp">
-        <div><strong>Signature Status</strong></div>
-        <div class="small muted">Pending buyer signature.</div>
-      </div>
-    {% endif %}
-  </div>
-
-  <div class="section small muted" style="margin-top:22px;">
-    © {{ now_eat.year }} Rizara Meats Ltd. This document is system-generated.
-  </div>
-
-</body>
-</html>
+  <p class="tiny muted center">
+    This LOI is generated through the Rizara platform. If you have questions about this document, contact
+    {{ company.email if company else "sales@rizara.co.ke" }}.
+  </p>
+{% endblock %}

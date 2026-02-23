@@ -1,48 +1,142 @@
 # app/routes.py
+from __future__ import annotations
 
 import os
 import uuid
-import requests
 from functools import wraps
-from datetime import date, datetime
+from datetime import date, datetime, timezone
+from zoneinfo import ZoneInfo
 
+import requests
+import sqlalchemy as sa
 from flask import (
     Blueprint,
-    render_template,
-    request,
-    redirect,
-    url_for,
+    abort,
+    current_app,
     flash,
     jsonify,
-    current_app,
+    make_response,
+    redirect,
+    render_template,
+    request,
+    Response,
     send_from_directory,
+    url_for,
 )
 from flask_login import current_user, login_required
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy import or_
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
+from sqlalchemy.orm import lazyload
+from werkzeug.exceptions import NotFound
 
-from .extensions import db, limiter
-from .utils.guards import admin_required
-from .utils.invoice_pdf import render_invoice_pdf  # PDF renderer (no DB writes)
+from app.extensions import db, limiter
+from app.utils.guards import admin_required
+from app.utils.invoice_pdf import render_invoice_pdf
 
-from .models import (
-    User,
+from app.models import (
+    AggregationBatch,
+    Buyer,
+    Cattle,
+    ContactMessage,
+    Document,
+    DocumentSignature,
     Farmer,
     Goat,
-    Sheep,
-    Cattle,
-    AggregationBatch,
-    ProcessingBatch,
-    ContactMessage,
-    OrderRequest,
-    ProcessingYield,
-    Buyer,
-    ProcessingBatchSale,
     Invoice,
     InvoiceItem,
-    InvoiceStatus,  # ✅ Enum
+    InvoiceStatus,
+    OrderRequest,
+    ProcessingBatch,
+    ProcessingBatchSale,
+    ProcessingYield,
+    Sheep,
+    User,
 )
 
+from app.services.document_files import (
+    store_document_pdf_snapshot,
+    load_document_snapshot_bytes,
+)
+from app.services.document_renderer import render_export_sales_contract_pdf_bytes
+
 main = Blueprint("main", __name__)
+
+#base_url helper
+def _public_base_url() -> str:
+    """
+    Base URL used by PDF rendering for absolute links (assets, images, etc).
+    Priority:
+      1) PUBLIC_BASE_URL config/env (recommended in production)
+      2) request.url_root in runtime (good locally)
+    """
+    cfg = (current_app.config.get("PUBLIC_BASE_URL") or os.getenv("PUBLIC_BASE_URL") or "").strip()
+    if cfg:
+        return cfg.rstrip("/")
+    # request.url_root ends with trailing slash
+    if request and request.url_root:
+        return request.url_root.rstrip("/")
+    return "http://127.0.0.1:5000"
+
+def _weasy_base_url() -> str:
+    """
+    WeasyPrint base_url:
+    - must be an absolute URL so relative static/assets resolve.
+    - request.url_root includes trailing slash.
+    """
+    return (request.url_root or "").rstrip("/") + "/"   
+
+# =========================================================
+# Time helpers (STANDARD)
+# =========================================================
+def utcnow_naive() -> datetime:
+    """Naive UTC now (preferred for DB timestamp without timezone)."""
+    return datetime.utcnow()
+
+
+def utcnow_aware() -> datetime:
+    """Aware UTC now (rarely stored; mostly for comparisons)."""
+    return datetime.now(timezone.utc)
+
+
+def _is_expired(exp, now_utc_aware: datetime, now_utc_naive: datetime) -> bool:
+    """
+    exp can be naive or aware depending on DB column history.
+    Compare safely without crashing.
+    """
+    if not exp:
+        return True
+    try:
+        if getattr(exp, "tzinfo", None) is None:
+            return now_utc_naive > exp
+        return now_utc_aware > exp
+    except Exception:
+        return True
+
+
+def _real_ip() -> str:
+    xff = (request.headers.get("X-Forwarded-For") or "").strip()
+    if xff:
+        return xff.split(",")[0].strip() or "0.0.0.0"
+    return request.remote_addr or "0.0.0.0"
+
+
+def _safe_user_agent(maxlen: int = 255) -> str:
+    ua = (request.headers.get("User-Agent") or "").strip()
+    return (ua[:maxlen] if ua else "unknown")
+
+
+# =========================================================
+# Small DB helper (SAFE)
+# =========================================================
+def _commit_or_rollback(action: str) -> bool:
+    try:
+        db.session.commit()
+        return True
+    except Exception as exc:
+        db.session.rollback()
+        current_app.logger.exception("%s failed", action)
+        flash(f"{action} failed. Please try again.", "danger")
+        return False
 
 
 # ======================
@@ -53,9 +147,9 @@ def buyer_required(view):
     def wrapped(*args, **kwargs):
         if not current_user.is_authenticated:
             return redirect(url_for("auth.login"))
-        if (getattr(current_user, "role", "") or "").lower() != "buyer":
+        if (getattr(current_user, "role", "") or "").strip().lower() != "buyer":
             flash("Access denied.", "danger")
-            return redirect(url_for("main.dashboard"))  # role-safe router now
+            return redirect(url_for("main.dashboard"))
         return view(*args, **kwargs)
 
     return wrapped
@@ -80,6 +174,77 @@ def _is_admin() -> bool:
     role = _role()
     return bool(getattr(current_user, "is_admin", False)) or role in ("admin", "super_admin", "superadmin")
 
+
+# ======================
+# Parsers
+# ======================
+def _parse_float(val):
+    try:
+        if val is None or str(val).strip() == "":
+            return None
+        return float(val)
+    except (TypeError, ValueError):
+        return None
+
+
+def _parse_int(val):
+    try:
+        if val is None or str(val).strip() == "":
+            return None
+        return int(val)
+    except (TypeError, ValueError):
+        return None
+
+
+def _parse_date(val):
+    try:
+        if not val:
+            return None
+        return date.fromisoformat(val)
+    except (TypeError, ValueError):
+        return None
+
+
+def _parse_uuid(val):
+    try:
+        if val is None:
+            return None
+        s = str(val).strip()
+        if not s:
+            return None
+        return uuid.UUID(s)
+    except Exception:
+        return None
+
+
+def _safe_enum_value(v):
+    try:
+        return v.value
+    except Exception:
+        return v
+
+
+# ======================
+# reCAPTCHA Verification (SECURE)
+# ======================
+def verify_recaptcha(response_token: str) -> bool:
+    secret = (current_app.config.get("RECAPTCHA_SECRET_KEY") if current_app else None) or os.getenv("RECAPTCHA_SECRET_KEY")
+
+    # Fail closed if not configured
+    if not secret or not response_token:
+        current_app.logger.warning("reCAPTCHA missing secret/token; rejecting.")
+        return False
+
+    try:
+        r = requests.post(
+            "https://www.google.com/recaptcha/api/siteverify",
+            data={"secret": secret, "response": response_token},
+            timeout=5,
+        )
+        return bool(r.json().get("success", False))
+    except Exception:
+        current_app.logger.exception("reCAPTCHA verification failed.")
+        return False
 
 # ======================
 # Home
@@ -144,11 +309,6 @@ def _parse_uuid(val):
 
 
 def _safe_enum_value(v):
-    """
-    For templates / display:
-    - If v is Enum -> return its `.value`
-    - Else -> return v
-    """
     try:
         return v.value
     except Exception:
@@ -200,15 +360,12 @@ def dashboard():
     """
     role = _role()
 
-    # Admins -> Operations Dashboard
     if _is_admin():
         return redirect(url_for("main.admin_dashboard"))
 
-    # Buyers -> Buyer Portal
     if role == "buyer":
         return redirect(url_for("main.buyer_dashboard"))
 
-    # Other supported roles -> their dashboards
     if role == "farmer":
         return redirect(url_for("main.farmer_dashboard"))
     if role in ("staff", "rizara_staff", "operations"):
@@ -218,13 +375,12 @@ def dashboard():
     if role in ("service_provider", "veterinary", "agronomist", "feed_specialist"):
         return redirect(url_for("main.service_provider_dashboard"))
 
-    # Unknown role -> safe default (buyer portal)
+    # Unknown role -> safe default
     return redirect(url_for("main.buyer_dashboard"))
 
 
 # =========================================================
 # Admin Operations Dashboard (ADMIN ONLY)
-# (Your original /dashboard content moved here unchanged)
 # =========================================================
 @main.route("/admin/dashboard")
 @admin_required
@@ -260,9 +416,7 @@ def admin_dashboard():
         "sold": Cattle.query.filter_by(status="sold").count(),
     }
 
-    stats["latest_contacts"] = (
-        ContactMessage.query.order_by(ContactMessage.created_at.desc()).limit(5).all()
-    )
+    stats["latest_contacts"] = ContactMessage.query.order_by(ContactMessage.created_at.desc()).limit(5).all()
     stats["latest_orders"] = OrderRequest.query.order_by(OrderRequest.created_at.desc()).limit(5).all()
 
     return render_template(
@@ -332,7 +486,8 @@ def add_farmer():
             location_notes=request.form.get("location_notes"),
         )
         db.session.add(farmer)
-        db.session.commit()
+        if not _commit_or_rollback("Add farmer"):
+            return redirect(request.url)
         flash("Farmer added successfully", "success")
         return redirect(url_for("main.dashboard"))
 
@@ -389,7 +544,8 @@ def add_goat():
             status="on_farm",
         )
         db.session.add(goat)
-        db.session.commit()
+        if not _commit_or_rollback("Register goat"):
+            return redirect(request.url)
         flash("Goat registered successfully", "success")
         return redirect(url_for("main.dashboard"))
 
@@ -417,7 +573,8 @@ def add_sheep():
             status="on_farm",
         )
         db.session.add(sheep)
-        db.session.commit()
+        if not _commit_or_rollback("Register sheep"):
+            return redirect(request.url)
         flash("Sheep registered successfully", "success")
         return redirect(url_for("main.dashboard"))
 
@@ -445,7 +602,8 @@ def add_cattle():
             status="on_farm",
         )
         db.session.add(cattle)
-        db.session.commit()
+        if not _commit_or_rollback("Register cattle"):
+            return redirect(request.url)
         flash("Cattle registered successfully", "success")
         return redirect(url_for("main.dashboard"))
 
@@ -511,7 +669,7 @@ def aggregation_route(animal_type: str, template_add: str):
                 animal.weight_method = method
                 animal.purchase_price_per_head = price
                 animal.purchase_currency = "KES"
-                animal.aggregated_at = datetime.utcnow()
+                animal.aggregated_at = datetime.utcnow()  # keep consistent with existing schema
                 animal.aggregated_by_user_id = current_user.id
                 animal.status = "aggregated"
                 animal.aggregation_batch = batch
@@ -526,7 +684,9 @@ def aggregation_route(animal_type: str, template_add: str):
                 )
                 return redirect(request.url)
 
-            db.session.commit()
+            if not _commit_or_rollback(f"Create {label} aggregation batch"):
+                return redirect(request.url)
+
             flash(f"{label} aggregation batch created successfully ({attached} animals)", "success")
             return redirect(url_for("main.dashboard"))
 
@@ -552,11 +712,7 @@ def processing_route(animal_type: str, template_add: str):
     @main.route(f"/{animal_type}/processing/add", methods=["GET", "POST"], endpoint=endpoint_name)
     @admin_required
     def add_processing():
-        available_animals = (
-            Model.query.filter(Model.status == "aggregated")
-            .order_by(Model.created_at.desc())
-            .all()
-        )
+        available_animals = Model.query.filter(Model.status == "aggregated").order_by(Model.created_at.desc()).all()
 
         if request.method == "POST":
             facility = (request.form.get("facility") or "").strip()
@@ -609,7 +765,9 @@ def processing_route(animal_type: str, template_add: str):
                 return redirect(request.url)
 
             db.session.add(batch)
-            db.session.commit()
+            if not _commit_or_rollback(f"Create {label} processing batch"):
+                return redirect(request.url)
+
             flash(f"{label} processing batch created successfully ({attached} animals)", "success")
             return redirect(url_for("main.view_invoiceable_batch", batch_id=batch.id))
 
@@ -636,10 +794,10 @@ def submit_contact():
     if not verify_recaptcha(request.form.get("g-recaptcha-response")):
         return jsonify({"success": False, "error": "recaptcha_failed"}), 403
 
-    name = request.form.get("name")
-    email = request.form.get("email")
-    phone = request.form.get("phone")
-    message = request.form.get("message")
+    name = (request.form.get("name") or "").strip()
+    email = (request.form.get("email") or "").strip()
+    phone = (request.form.get("phone") or "").strip()
+    message = (request.form.get("message") or "").strip()
 
     if not name or not email or not message:
         return jsonify({"success": False}), 400
@@ -647,12 +805,13 @@ def submit_contact():
     contact = ContactMessage(
         name=name,
         email=email,
-        subject=f"Website contact form - {phone}",
+        subject=f"Website contact form - {phone}" if phone else "Website contact form",
         message=message,
         status="new",
     )
     db.session.add(contact)
-    db.session.commit()
+    if not _commit_or_rollback("Submit contact"):
+        return jsonify({"success": False}), 500
     return jsonify({"success": True}), 200
 
 
@@ -666,13 +825,13 @@ def submit_order():
     if not verify_recaptcha(request.form.get("g-recaptcha-response")):
         return jsonify({"success": False, "error": "recaptcha_failed"}), 403
 
-    buyer_name = request.form.get("buyerName")
-    email = request.form.get("email")
-    phone = request.form.get("phone")
-    product = request.form.get("product")
+    buyer_name = (request.form.get("buyerName") or "").strip()
+    email = (request.form.get("email") or "").strip()
+    phone = (request.form.get("phone") or "").strip()
+    product = (request.form.get("product") or "").strip()
     quantity = request.form.get("quantity")
-    destination = request.form.get("destination")
-    notes = request.form.get("message")
+    destination = (request.form.get("destination") or "").strip()
+    notes = (request.form.get("message") or "").strip() or None
 
     qty_int = _parse_int(quantity)
     if not all([buyer_name, email, phone, product, qty_int, destination]):
@@ -689,10 +848,218 @@ def submit_order():
         status="new",
     )
     db.session.add(order)
-    db.session.commit()
+    if not _commit_or_rollback("Submit order"):
+        return jsonify({"success": False}), 500
     return jsonify({"success": True}), 200
 
+def _real_ip() -> str:
+    xff = (request.headers.get("X-Forwarded-For") or "").strip()
+    if xff:
+        return xff.split(",")[0].strip() or "0.0.0.0"
+    return request.remote_addr or "0.0.0.0"
 
+
+def _safe_user_agent(maxlen: int = 255) -> str:
+    ua = (request.headers.get("User-Agent") or "").strip()
+    return (ua[:maxlen] if ua else "unknown")
+
+
+def _is_expired(exp, now_utc_aware: datetime, now_utc_naive: datetime) -> bool:
+    """
+    exp can be naive or aware depending on DB column history.
+    Compare safely without crashing.
+    """
+    if not exp:
+        return True
+    try:
+        if getattr(exp, "tzinfo", None) is None:
+            return now_utc_naive > exp
+        return now_utc_aware > exp
+    except Exception:
+        return True
+
+
+@main.route("/sign/<token>", methods=["GET"], endpoint="sign_document_get")
+def sign_document_get(token: str):
+    token = (token or "").strip()
+    if not token:
+        raise NotFound()
+
+    doc = (
+        db.session.query(Document)
+        .options(lazyload("*"))
+        .filter(Document.buyer_sign_token == token)
+        .first()
+    )
+    if not doc:
+        raise NotFound()
+
+    if doc.status in ("buyer_signed", "executed", "void"):
+        return render_template("public/sign_already_done.html", document=doc), 409
+
+    now_aware = utcnow_aware()
+    now_naive = utcnow_naive()
+    if _is_expired(doc.buyer_sign_token_expires_at, now_aware, now_naive):
+        return render_template("public/sign_expired.html"), 410
+
+    if doc.doc_type == "export_sales_contract":
+        now_eat = datetime.now(ZoneInfo("Africa/Nairobi"))
+        return render_template(
+            "public/sign_export_sales_contract.html",
+            document=doc,
+            token=token,
+            now_eat=now_eat,
+        )
+
+    return render_template(
+        "public/sign_document.html",
+        document=doc,
+        token=token,
+        errors=[],
+        full_name="",
+        email="",
+    )
+
+
+@main.route("/sign/<token>", methods=["POST"], endpoint="sign_document_post")
+def sign_document_post(token: str):
+    token = (token or "").strip()
+    if not token:
+        raise NotFound()
+
+    # Accept BOTH form styles:
+    # Generic template: full_name/email/accept
+    # Export contract: signer_name/signer_email/consent
+    signer_name = ((request.form.get("signer_name") or "").strip() or (request.form.get("full_name") or "").strip())
+    signer_email_raw = (
+        (request.form.get("signer_email") or "").strip().lower()
+        or (request.form.get("email") or "").strip().lower()
+        or ""
+    )
+    consent_raw = (request.form.get("consent") or request.form.get("accept") or "").strip().lower()
+
+    ip = _real_ip()
+    ua = _safe_user_agent(255)
+
+    now_aware = utcnow_aware()
+    now_naive = utcnow_naive()
+
+    errors: list[str] = []
+    if len(signer_name) < 2:
+        errors.append("Please enter your full name.")
+    if consent_raw not in ("yes", "on", "true", "1"):
+        errors.append("You must confirm you agree to the terms before signing.")
+
+    try:
+        with db.session.begin_nested():
+            # Lock doc row to prevent double-sign
+            doc = (
+                db.session.query(Document)
+                .options(lazyload("*"))
+                .filter(Document.buyer_sign_token == token)
+                .with_for_update(of=Document)
+                .first()
+            )
+            if not doc:
+                raise NotFound()
+
+            if doc.status in ("buyer_signed", "executed", "void"):
+                return render_template("public/sign_already_done.html", document=doc), 409
+
+            if _is_expired(doc.buyer_sign_token_expires_at, now_aware, now_naive):
+                return render_template("public/sign_expired.html"), 410
+
+            # Email rules:
+            # - export_sales_contract allows optional email
+            # - all other docs require valid email
+            if doc.doc_type != "export_sales_contract":
+                if not signer_email_raw or ("@" not in signer_email_raw or "." not in signer_email_raw):
+                    errors.append("Please enter a valid email address.")
+
+            if errors:
+                if doc.doc_type == "export_sales_contract":
+                    now_eat = datetime.now(ZoneInfo("Africa/Nairobi"))
+                    for e in errors:
+                        flash(e, "danger")
+                    return render_template(
+                        "public/sign_export_sales_contract.html",
+                        document=doc,
+                        token=token,
+                        now_eat=now_eat,
+                    ), 400
+
+                return render_template(
+                    "public/sign_document.html",
+                    document=doc,
+                    token=token,
+                    errors=errors,
+                    full_name=signer_name,
+                    email=signer_email_raw,
+                ), 400
+
+            # Prevent duplicate signature insert
+            existing_sig = (
+                db.session.query(DocumentSignature)
+                .filter(
+                    DocumentSignature.document_id == doc.id,
+                    DocumentSignature.signer_type == "buyer",
+                )
+                .first()
+            )
+            if existing_sig:
+                return render_template("public/sign_already_done.html", document=doc), 409
+
+            # Guarantee NOT NULL fields
+            signer_email = signer_email_raw if signer_email_raw else "unknown@example.com"
+
+            sig = DocumentSignature(
+                document_id=doc.id,
+                signer_type="buyer",
+                signed_by_user_id=None,
+                sign_method="typed",
+                signer_name=signer_name,
+                signer_email=signer_email,
+                typed_consent_text="I confirm I have read and agree to the terms.",
+                signed_at=now_naive,  # naive UTC stored
+                ip_address=ip,
+                user_agent=ua,
+            )
+            db.session.add(sig)
+
+            # Stamp doc (always)
+            doc.status = "buyer_signed"
+            doc.buyer_signed_at = now_naive
+            doc.buyer_sign_name = signer_name
+            doc.buyer_sign_email = signer_email
+            doc.buyer_sign_ip = ip
+            doc.buyer_sign_user_agent = ua
+
+            # Snapshot ONLY for export_sales_contract
+            if doc.doc_type == "export_sales_contract":
+                pdf_bytes = render_export_sales_contract_pdf_bytes(doc, base_url=_public_base_url())
+                store_document_pdf_snapshot(doc, pdf_bytes=pdf_bytes, commit=False)
+
+            # Revoke token
+            doc.buyer_sign_token = None
+            doc.buyer_sign_token_expires_at = None
+
+            db.session.add(doc)
+
+        db.session.commit()
+        return render_template("public/sign_success.html", document=doc), 200
+
+    except NotFound:
+        raise
+
+    except IntegrityError:
+        db.session.rollback()
+        return render_template("public/sign_already_done.html", document=None), 409
+
+    except SQLAlchemyError:
+        db.session.rollback()
+        current_app.logger.exception("Buyer signing failed (SQLAlchemyError)")
+        return render_template("public/sign_not_supported.html"), 500
+    
 # ======================
 # Admin: Contact Messages (ADMIN ONLY)
 # ======================
@@ -700,23 +1067,19 @@ def submit_order():
 @admin_required
 def contact_messages():
     messages = ContactMessage.query.order_by(ContactMessage.created_at.desc()).all()
-    return render_template(
-        "admin/contact_messages.html",
-        messages=messages,
-        current_year=datetime.utcnow().year,
-    )
+    return render_template("admin/contact_messages.html", messages=messages, current_year=datetime.utcnow().year)
 
 
 @main.route("/admin/contact-messages/<int:msg_id>/update-status", methods=["POST"])
 @admin_required
 def update_contact_status(msg_id):
-    new_status = request.form.get("status")
+    new_status = (request.form.get("status") or "").strip().lower()
     message = ContactMessage.query.get_or_404(msg_id)
 
-    if new_status in ["new", "reviewed", "closed"]:
+    if new_status in {"new", "reviewed", "closed"}:
         message.status = new_status
-        db.session.commit()
-        flash("Message status updated.", "success")
+        if _commit_or_rollback("Update contact message status"):
+            flash("Message status updated.", "success")
     else:
         flash("Invalid status.", "danger")
 
@@ -737,12 +1100,7 @@ def admin_order_requests():
         qry = qry.filter(OrderRequest.status == qst)
 
     orders = qry.order_by(OrderRequest.created_at.desc()).all()
-
-    return render_template(
-        "admin/order_requests.html",
-        orders=orders,
-        current_year=datetime.utcnow().year,
-    )
+    return render_template("admin/order_requests.html", orders=orders, current_year=datetime.utcnow().year)
 
 
 @main.route("/admin/order-requests/<int:order_id>/status", methods=["POST"], endpoint="order_request_set_status")
@@ -758,8 +1116,8 @@ def order_request_set_status(order_id):
         return redirect(url_for("main.order_requests"))
 
     order.status = new_status
-    db.session.commit()
-    flash(f"Order #{order.id} marked as '{new_status}'.", "success")
+    if _commit_or_rollback("Update order status"):
+        flash(f"Order #{order.id} marked as '{new_status}'.", "success")
 
     nxt = request.form.get("next")
     if nxt:
@@ -780,7 +1138,7 @@ def animal_pipeline_view(animal_type, status):
         flash("Invalid animal type", "danger")
         return redirect(url_for("main.dashboard"))
 
-    allowed_statuses = ["on_farm", "aggregated", "processing", "processed", "sold"]
+    allowed_statuses = {"on_farm", "aggregated", "processing", "processed", "sold"}
     if status not in allowed_statuses:
         flash("Invalid status", "danger")
         return redirect(url_for("main.dashboard"))
@@ -812,8 +1170,13 @@ def _animals_in_processing_batch(batch: ProcessingBatch):
 
 
 def generate_invoice_number() -> str:
+    """
+    Generates a human-friendly invoice number.
+    Note: This is not perfectly concurrency-safe if two invoices are created at the same instant.
+    If you expect high concurrency, we can switch to a DB sequence-based counter.
+    """
     year = datetime.utcnow().year
-    count = Invoice.query.count() + 1
+    count = (db.session.query(sa.func.count(Invoice.id)).scalar() or 0) + 1
     return f"RZ-INV-{year}-{count:04d}"
 
 
@@ -854,16 +1217,13 @@ def record_processing_yield(batch_id):
                 animal.status = "processed"
 
         db.session.add(y)
-        db.session.commit()
+        if not _commit_or_rollback("Record processing yield"):
+            return redirect(request.url)
 
         flash("Processing yield recorded successfully.", "success")
         return redirect(url_for("main.view_invoiceable_batch", batch_id=batch.id))
 
-    return render_template(
-        "processing/yield_add.html",
-        batch=batch,
-        current_year=datetime.utcnow().year,
-    )
+    return render_template("processing/yield_add.html", batch=batch, current_year=datetime.utcnow().year)
 
 
 # ======================
@@ -887,18 +1247,19 @@ def record_processing_batch_sale(batch_id):
     buyers = Buyer.query.order_by(Buyer.name.asc()).all()
 
     if request.method == "POST":
+        # Re-check in POST for race conditions / double submits
         existing_sale = ProcessingBatchSale.query.filter_by(processing_batch_id=batch.id).first()
         if existing_sale:
             flash("Sale already recorded for this batch. You can view the invoice.", "info")
             return redirect(url_for("main.generate_invoice_from_sale", sale_id=existing_sale.id))
 
         buyer_id = _parse_int(request.form.get("buyer_id"))
-        buyer_name = request.form.get("buyer_name")
-        buyer_phone = request.form.get("buyer_phone")
-        buyer_email = request.form.get("buyer_email")
+        buyer_name = (request.form.get("buyer_name") or "").strip() or None
+        buyer_phone = (request.form.get("buyer_phone") or "").strip() or None
+        buyer_email = (request.form.get("buyer_email") or "").strip() or None
         total_sale_price = _parse_float(request.form.get("total_sale_price"))
         sale_date = _parse_date(request.form.get("sale_date"))
-        notes = request.form.get("notes")
+        notes = (request.form.get("notes") or "").strip() or None
 
         if total_sale_price is None:
             flash("Total sale price is required.", "danger")
@@ -913,7 +1274,7 @@ def record_processing_batch_sale(batch_id):
             if not buyer_name:
                 flash("Provide buyer name or select an existing buyer.", "danger")
                 return redirect(request.url)
-            buyer = Buyer(name=buyer_name.strip(), phone=buyer_phone, email=buyer_email)
+            buyer = Buyer(name=buyer_name, phone=buyer_phone, email=buyer_email)
             db.session.add(buyer)
             db.session.flush()
 
@@ -969,44 +1330,56 @@ def generate_invoice_from_sale(sale_id):
         flash("Invoice already exists for this sale.", "info")
         return redirect(url_for("main.view_invoice", invoice_id=existing_invoice.id))
 
-    invoice_number = generate_invoice_number()
+    # If invoice_number uniqueness ever clashes, we retry once.
+    for attempt in range(2):
+        invoice_number = generate_invoice_number()
 
-    inv = Invoice(
-        invoice_number=invoice_number,
-        buyer_id=sale.buyer_id,
-        processing_batch_sale_id=sale.id,
-        issue_date=date.today(),
-        status=InvoiceStatus.ISSUED,  # ✅ Enum
-        issued_at=datetime.utcnow(),
-        subtotal=float(sale.total_sale_price),
-        tax=0.0,
-        total=float(sale.total_sale_price),
-        notes=sale.notes,
-        terms="Payment due as agreed.",
-        issued_by_user_id=current_user.id,
-    )
+        inv = Invoice(
+            invoice_number=invoice_number,
+            buyer_id=sale.buyer_id,
+            processing_batch_sale_id=sale.id,
+            issue_date=date.today(),
+            status=InvoiceStatus.ISSUED,  # Enum
+            issued_at=datetime.utcnow(),
+            subtotal=float(sale.total_sale_price),
+            tax=0.0,
+            total=float(sale.total_sale_price),
+            notes=sale.notes,
+            terms="Payment due as agreed.",
+            issued_by_user_id=current_user.id,
+        )
 
-    carcass_info = ""
-    if y:
-        carcass_info = f" | Carcass weight: {y.total_carcass_weight_kg} kg"
-        if y.parts_notes:
-            carcass_info += f" | Parts: {y.parts_notes}"
+        carcass_info = ""
+        if y:
+            carcass_info = f" | Carcass weight: {y.total_carcass_weight_kg} kg"
+            if y.parts_notes:
+                carcass_info += f" | Parts: {y.parts_notes}"
 
-    item = InvoiceItem(
-        description=f"Processing Batch #{batch.id} ({batch.animal_type}) - 1 lot{carcass_info}",
-        quantity=1.0,
-        unit_price=float(sale.total_sale_price),
-        line_total=float(sale.total_sale_price),
-    )
+        item = InvoiceItem(
+            description=f"Processing Batch #{batch.id} ({batch.animal_type}) - 1 lot{carcass_info}",
+            quantity=1.0,
+            unit_price=float(sale.total_sale_price),
+            line_total=float(sale.total_sale_price),
+        )
 
-    db.session.add(inv)
-    db.session.flush()
-    item.invoice_id = inv.id
-    db.session.add(item)
-    db.session.commit()
+        db.session.add(inv)
+        db.session.flush()
+        item.invoice_id = inv.id
+        db.session.add(item)
 
-    flash("Invoice generated successfully.", "success")
-    return redirect(url_for("main.view_invoice", invoice_id=inv.id))
+        try:
+            db.session.commit()
+            flash("Invoice generated successfully.", "success")
+            return redirect(url_for("main.view_invoice", invoice_id=inv.id))
+        except IntegrityError:
+            db.session.rollback()
+            if attempt == 0:
+                continue
+            flash("Invoice generation failed due to a numbering conflict. Try again.", "danger")
+            return redirect(url_for("main.view_invoiceable_batch", batch_id=batch.id))
+
+    flash("Invoice generation failed.", "danger")
+    return redirect(url_for("main.view_invoiceable_batch", batch_id=batch.id))
 
 
 @main.route("/invoices/<int:invoice_id>")
@@ -1037,7 +1410,6 @@ def view_invoice(invoice_id):
 # Invoice PDF (ADMIN) — no DB writes
 # ======================
 @main.route("/invoices/<int:invoice_id>/pdf", methods=["GET"])
-@login_required
 @admin_required
 def invoice_pdf(invoice_id):
     invoice = Invoice.query.get_or_404(invoice_id)
@@ -1083,11 +1455,7 @@ def buyer_dashboard():
     if resp:
         return resp
 
-    sales = (
-        ProcessingBatchSale.query.filter_by(buyer_id=buyer.id)
-        .order_by(ProcessingBatchSale.sale_date.desc())
-        .all()
-    )
+    sales = ProcessingBatchSale.query.filter_by(buyer_id=buyer.id).order_by(ProcessingBatchSale.sale_date.desc()).all()
 
     invoice_map = {}
     if sales:
@@ -1167,7 +1535,7 @@ def buyer_new_order():
         product = (request.form.get("product") or "").strip()
         quantity = _parse_int(request.form.get("quantity"))
         delivery_location = (request.form.get("delivery_location") or "").strip()
-        notes = request.form.get("notes")
+        notes = (request.form.get("notes") or "").strip() or None
 
         if not product or not quantity or not delivery_location:
             flash("Product, quantity and delivery location are required.", "danger")
@@ -1184,13 +1552,106 @@ def buyer_new_order():
             status="new",
         )
         db.session.add(order)
-        db.session.commit()
+        if not _commit_or_rollback("Submit buyer order"):
+            return redirect(request.url)
 
         flash("Order submitted successfully.", "success")
         return redirect(url_for("main.buyer_dashboard"))
 
-    return render_template(
-        "buyer/order_new.html",
-        buyer=buyer,
-        current_year=datetime.utcnow().year,
+    return render_template("buyer/order_new.html", buyer=buyer, current_year=datetime.utcnow().year)
+
+@main.route("/buyer/documents/<uuid:document_id>/signed.pdf", methods=["GET"])
+@buyer_required
+def buyer_download_signed_contract(document_id):
+    buyer, resp = _get_buyer_for_current_user_or_redirect()
+    if resp:
+        return resp
+
+    # Keep query light (avoid any model-level eager joins)
+    doc = (
+        db.session.query(Document)
+        .options(lazyload("*"))
+        .filter(Document.id == document_id)
+        .first()
     )
+    if not doc:
+        abort(404)
+
+    # Ensure buyer can only download their own doc
+    if doc.buyer_id != buyer.id:
+        abort(403)
+
+    # Must be signed/executed and have a stored snapshot reference
+    if doc.status not in ("buyer_signed", "executed"):
+        abort(404)
+    if not getattr(doc, "storage_key", None):
+        abort(404)
+
+    try:
+        pdf_bytes = load_document_snapshot_bytes(doc.storage_key)
+    except Exception:
+        current_app.logger.exception(
+            "Failed to load snapshot for document %s storage_key=%s",
+            str(doc.id),
+            str(doc.storage_key),
+        )
+        abort(404)
+
+    # Safe filename (avoid spaces/special chars)
+    doc_type = (doc.doc_type or "document").replace(" ", "_")
+    version = (str(doc.version) if doc.version is not None else "1")
+    filename = f"Rizara_{doc_type}_v{version}_SIGNED.pdf"
+
+    resp = make_response(pdf_bytes)
+    resp.headers["Content-Type"] = "application/pdf"
+    # Prefer inline preview in-browser; change to 'attachment' if you want forced download
+    resp.headers["Content-Disposition"] = f'attachment; filename="{filename}"'
+    return resp
+
+@main.route("/admin/documents/<uuid:document_id>/contract.pdf", methods=["GET"])
+@admin_required
+def admin_download_contract_draft_pdf(document_id):
+    doc = Document.query.get_or_404(document_id)
+
+    if doc.doc_type != "export_sales_contract":
+        flash("Draft PDF download is currently supported for Export Sales Contract only.", "warning")
+        return redirect(url_for("main.admin_document_detail", document_id=document_id))
+
+    pdf_bytes = render_export_sales_contract_pdf_bytes(doc, base_url=_weasy_base_url())
+    filename = f"Rizara_Export_Sales_Contract_{doc.id}_v{doc.version}_DRAFT.pdf"
+
+    return current_app.response_class(
+        pdf_bytes,
+        mimetype="application/pdf",
+        headers={"Content-Disposition": f'inline; filename="{filename}"'},
+    )
+
+@main.route("/sign/<token>/download", methods=["GET"])
+def public_download_contract_draft_pdf(token: str):
+    token = (token or "").strip()
+    if not token:
+        raise NotFound()
+
+    doc = (
+        db.session.query(Document)
+        .options(lazyload("*"))
+        .filter(Document.buyer_sign_token == token)
+        .first()
+    )
+    if not doc:
+        raise NotFound()
+
+    # Only allow download for supported doc type
+    if doc.doc_type != "export_sales_contract":
+        return render_template("public/sign_not_supported.html"), 400
+
+    # If token expired, you can still allow preview OR block it.
+    # Since you want "just as LOI", we allow download as long as token exists.
+    pdf_bytes = render_export_sales_contract_pdf_bytes(doc, base_url=_weasy_base_url())
+    filename = f"Rizara_Export_Sales_Contract_{doc.id}_v{doc.version}_DRAFT.pdf"
+
+    return current_app.response_class(
+        pdf_bytes,
+        mimetype="application/pdf",
+        headers={"Content-Disposition": f'inline; filename="{filename}"'},
+    )        

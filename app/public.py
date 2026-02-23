@@ -4,11 +4,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 import secrets
 
-from flask import Blueprint, abort, render_template, request
-
-from .extensions import db
-from .models import Document
-
+from flask import Blueprint, abort, redirect, request, url_for
 
 public = Blueprint("public", __name__)
 
@@ -49,7 +45,7 @@ def _client_ip() -> str:
     xff = (request.headers.get("X-Forwarded-For") or "").strip()
     if xff:
         return xff.split(",")[0].strip()
-    return (request.remote_addr or "").strip()
+    return (request.remote_addr or "").strip() or "0.0.0.0"
 
 
 def _normalize_email(email: str | None) -> str:
@@ -58,7 +54,7 @@ def _normalize_email(email: str | None) -> str:
 
 def _safe_user_agent(maxlen: int = 255) -> str:
     ua = (request.headers.get("User-Agent") or "").strip()
-    return ua[:maxlen]
+    return (ua[:maxlen] if ua else "unknown")
 
 
 # =========================================================
@@ -75,83 +71,21 @@ def generate_buyer_sign_token(days_valid: int = 7) -> tuple[str, datetime]:
 
 
 # =========================================================
-# Public signing route
+# Public signing route (redirect-only)
 # =========================================================
 @public.route("/sign/<token>", methods=["GET", "POST"])
 def sign_document(token: str):
+    """
+    Compatibility shim. The canonical signer lives on `main` in app/routes.py.
+
+    - GET  -> main.sign_document_get
+    - POST -> main.sign_document_post
+    """
     token = (token or "").strip()
     if not token:
         abort(404)
 
-    doc = Document.query.filter(Document.buyer_sign_token == token).first()
-    if not doc:
-        # Do not reveal whether token existed or not
-        return render_template("public/sign_invalid.html", reason="invalid"), 404
+    if request.method == "POST":
+        return redirect(url_for("main.sign_document_post", token=token), code=307)
 
-    # Block signing in terminal states
-    if doc.status in ("buyer_signed", "executed", "void"):
-        # 410 Gone is appropriate for "used/finished" links
-        return render_template("public/sign_invalid.html", reason="already_signed"), 410
-
-    # Must have expiry for a valid signing session
-    expires_at = as_naive_utc(doc.buyer_sign_token_expires_at)
-    if not expires_at:
-        return render_template("public/sign_invalid.html", reason="invalid"), 400
-
-    # Expiry check (naive UTC)
-    now = utcnow_naive()
-    if expires_at <= now:
-        if doc.status not in ("expired", "void", "executed", "buyer_signed"):
-            doc.status = "expired"
-            db.session.commit()
-        return render_template("public/sign_invalid.html", reason="expired"), 410
-
-    # -----------------------------
-    # GET: show signing page
-    # -----------------------------
-    if request.method == "GET":
-        return render_template("public/sign_document.html", document=doc, token=token)
-
-    # -----------------------------
-    # POST: validate + persist signature
-    # -----------------------------
-    full_name = (request.form.get("full_name") or "").strip()
-    email = _normalize_email(request.form.get("email"))
-    accept = request.form.get("accept")
-
-    errors: list[str] = []
-    if len(full_name) < 2:
-        errors.append("Please enter your full name.")
-    if "@" not in email or "." not in email:
-        errors.append("Please enter a valid email address.")
-    if not accept:
-        errors.append("You must accept the terms to sign.")
-
-    if errors:
-        return (
-            render_template(
-                "public/sign_document.html",
-                document=doc,
-                token=token,
-                errors=errors,
-                full_name=full_name,
-                email=email,
-            ),
-            400,
-        )
-
-    # Persist signature (store timestamps consistently)
-    doc.buyer_signed_at = utcnow_aware()
-    doc.buyer_sign_name = full_name
-    doc.buyer_sign_email = email
-    doc.buyer_sign_ip = _client_ip()
-    doc.buyer_sign_user_agent = _safe_user_agent(255)
-    doc.status = "buyer_signed"
-
-    # Invalidate token to prevent reuse
-    doc.buyer_sign_token = None
-    doc.buyer_sign_token_expires_at = None
-
-    db.session.commit()
-
-    return render_template("public/sign_success.html", document=doc)
+    return redirect(url_for("main.sign_document_get", token=token), code=302)

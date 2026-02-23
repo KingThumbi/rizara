@@ -23,3 +23,5 @@ env/
 # Ignore database backups
 *.dump
 *.sql
+# Flask runtime / local-only data
+instance/

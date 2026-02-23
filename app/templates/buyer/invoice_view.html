@@ -1,3 +1,4 @@
+{# app/templates/buyer/invoice_view.html #}
 {% extends "layouts/base.html" %}
 
 {% block title %}Invoice {{ invoice.invoice_number }} | Buyer Portal{% endblock %}
@@ -5,94 +6,185 @@
 {% block body %}
 
 <nav class="bg-jungle text-white px-6 py-4 flex justify-between items-center shadow">
-  <div class="text-xl font-bold tracking-wide">Rizara Meats</div>
+  <div class="flex items-center gap-3">
+    <div class="text-xl font-bold tracking-wide leading-none">Rizara Meats</div>
+    <div class="hidden sm:block text-xs text-white/80 leading-none">Ethical • Traceable • Halal</div>
+  </div>
+
   <div class="flex items-center gap-3">
     <a href="{{ url_for('main.buyer_dashboard') }}"
-       class="bg-gold text-jungle font-semibold px-4 py-2 rounded hover:bg-yellow-400 transition">
-      ← Back to Dashboard
+       class="bg-gold text-jungle font-semibold px-4 py-2 rounded-lg hover:bg-yellow-400 transition">
+      ← Back
     </a>
     <a href="{{ url_for('auth.logout') }}"
-       class="bg-white/10 text-white font-semibold px-4 py-2 rounded hover:bg-white/20 transition">
+       class="bg-white/10 text-white font-semibold px-4 py-2 rounded-lg hover:bg-white/20 transition">
       Logout
     </a>
   </div>
 </nav>
 
-<main class="max-w-4xl mx-auto px-6 py-10">
+<main class="max-w-5xl mx-auto px-4 sm:px-6 py-8 sm:py-10">
 
-  <div class="mb-8">
-    <h1 class="text-3xl font-bold text-jungle">Invoice {{ invoice.invoice_number }}</h1>
-    <p class="text-gray-600 mt-1">
-      Status:
-      <span class="font-semibold">{{ invoice_status_value or invoice.status }}</span>
-      • Issue Date: <b>{{ invoice.issue_date }}</b>
-    </p>
+  <div class="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4 mb-8">
+    <div>
+      <h1 class="text-2xl sm:text-3xl font-bold text-jungle">
+        Invoice <span class="font-mono">{{ invoice.invoice_number }}</span>
+      </h1>
+      <div class="text-gray-600 mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm">
+        <div>
+          Status:
+          <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold
+                       {% if (invoice_status_value or invoice.status|string)|lower in ['paid','settled'] %}
+                         bg-green-100 text-green-800
+                       {% elif (invoice_status_value or invoice.status|string)|lower in ['issued','pending'] %}
+                         bg-yellow-100 text-yellow-800
+                       {% else %}
+                         bg-gray-100 text-gray-800
+                       {% endif %}">
+            {{ invoice_status_value or invoice.status }}
+          </span>
+        </div>
+        <div>Issue date: <b>{{ invoice.issue_date }}</b></div>
+        <div>Total: <b>{{ invoice.total }}</b></div>
+      </div>
+    </div>
+
+    <div class="flex flex-wrap gap-3">
+      <a href="{{ url_for('main.buyer_invoice_pdf', invoice_id=invoice.id) }}"
+         target="_blank" rel="noopener"
+         class="inline-flex items-center justify-center px-4 py-2 rounded-lg bg-jungle text-white font-semibold hover:bg-jungleLight transition">
+        Open PDF
+      </a>
+      <button type="button"
+              class="inline-flex items-center justify-center px-4 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 transition"
+              onclick="navigator.clipboard.writeText(document.getElementById('shareLink').value)">
+        Copy PDF link
+      </button>
+    </div>
   </div>
 
-  <div class="flex flex-wrap gap-3 mb-8">
-    <a href="{{ url_for('main.buyer_invoice_pdf', invoice_id=invoice.id) }}"
-       target="_blank" rel="noopener"
-       class="inline-flex items-center px-4 py-2 rounded-lg bg-jungle text-white font-semibold hover:bg-jungleLight transition">
-      Open Invoice PDF
-    </a>
-  </div>
-
-  <div class="grid grid-cols-1 gap-6">
-
-    <div class="bg-white rounded-xl shadow p-6">
-      <h2 class="text-lg font-bold text-gray-900 mb-2">Buyer</h2>
-      <p class="text-gray-700">
-        {{ buyer.name }}<br/>
-        {% if buyer.phone %}{{ buyer.phone }}<br/>{% endif %}
-        {% if buyer.email %}{{ buyer.email }}<br/>{% endif %}
-        {% if buyer.address %}{{ buyer.address }}<br/>{% endif %}
+  <div class="bg-white rounded-xl shadow p-5 sm:p-6 border border-gray-100 mb-6">
+    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+      <div>
+        <h2 class="text-base font-bold text-gray-900">Share</h2>
+        <p class="text-sm text-gray-600 mt-1">Send the PDF link via Email/WhatsApp.</p>
+      </div>
+      <p class="text-xs text-gray-500">
+        Tip: PDF opens on any device.
       </p>
     </div>
 
-    <div class="bg-white rounded-xl shadow p-6">
-      <h2 class="text-lg font-bold text-gray-900 mb-2">Batch</h2>
-      <p class="text-gray-700">
-        Processing Batch #{{ batch.id }} — {{ batch.animal_type|capitalize }} — Facility: <b>{{ batch.facility }}</b><br/>
+    <div class="mt-4 flex flex-col sm:flex-row gap-3">
+      <input id="shareLink"
+             class="w-full border border-gray-300 rounded-lg px-4 py-2 text-xs sm:text-sm font-mono bg-gray-50"
+             readonly
+             value="{{ url_for('main.buyer_invoice_pdf', invoice_id=invoice.id, _external=True) }}" />
+      <button type="button"
+              class="px-4 py-2 rounded-lg bg-gold text-jungle font-semibold hover:bg-yellow-400 transition"
+              onclick="navigator.clipboard.writeText(document.getElementById('shareLink').value)">
+        Copy
+      </button>
+    </div>
+  </div>
+
+  <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+    <div class="bg-white rounded-xl shadow p-5 sm:p-6 lg:col-span-1">
+      <h2 class="text-lg font-bold text-gray-900 mb-3">Buyer</h2>
+      <div class="text-gray-700 text-sm leading-relaxed break-words">
+        <div class="font-semibold">{{ buyer.name }}</div>
+        {% if buyer.phone %}<div class="mt-1">{{ buyer.phone }}</div>{% endif %}
+        {% if buyer.email %}<div class="mt-1">{{ buyer.email }}</div>{% endif %}
+        {% if buyer.address %}<div class="mt-1">{{ buyer.address }}</div>{% endif %}
+      </div>
+    </div>
+
+    <div class="bg-white rounded-xl shadow p-5 sm:p-6 lg:col-span-2">
+      <h2 class="text-lg font-bold text-gray-900 mb-3">Batch</h2>
+      <div class="text-gray-700 text-sm leading-relaxed break-words">
+        <div>
+          <span class="font-semibold">Processing Batch #{{ batch.id }}</span>
+          <span class="text-gray-500">—</span>
+          {{ batch.animal_type|capitalize }}
+        </div>
+        <div class="mt-1">
+          Facility: <b>{{ batch.facility }}</b>
+        </div>
+
         {% if yield_record %}
-          Carcass Weight: {{ yield_record.total_carcass_weight_kg }} kg<br/>
-          {% if yield_record.parts_notes %}Parts: {{ yield_record.parts_notes }}{% endif %}
+          <div class="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <div class="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2">
+              <div class="text-xs text-gray-500">Carcass weight</div>
+              <div class="font-semibold">{{ yield_record.total_carcass_weight_kg }} kg</div>
+            </div>
+            <div class="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2">
+              <div class="text-xs text-gray-500">Parts</div>
+              <div class="font-semibold break-words">
+                {{ yield_record.parts_notes or "—" }}
+              </div>
+            </div>
+          </div>
         {% endif %}
-      </p>
+      </div>
     </div>
 
-    <div class="bg-white rounded-xl shadow p-6">
-      <h2 class="text-lg font-bold text-gray-900 mb-3">Items</h2>
+    <div class="bg-white rounded-xl shadow p-5 sm:p-6 lg:col-span-3">
+      <div class="flex items-center justify-between gap-3 mb-3">
+        <h2 class="text-lg font-bold text-gray-900">Items</h2>
+        <div class="text-xs text-gray-500">All amounts shown as issued.</div>
+      </div>
+
       <div class="overflow-x-auto">
-        <table class="w-full text-sm border border-gray-200">
+        <table class="w-full text-sm border border-gray-200 table-fixed">
+          <colgroup>
+            <col class="w-[52%]" />
+            <col class="w-[12%]" />
+            <col class="w-[18%]" />
+            <col class="w-[18%]" />
+          </colgroup>
+
           <thead class="bg-gray-50">
             <tr>
               <th class="p-3 text-left font-semibold text-gray-700">Description</th>
-              <th class="p-3 text-left font-semibold text-gray-700">Qty</th>
-              <th class="p-3 text-left font-semibold text-gray-700">Unit Price</th>
-              <th class="p-3 text-left font-semibold text-gray-700">Total</th>
+              <th class="p-3 text-right font-semibold text-gray-700">Qty</th>
+              <th class="p-3 text-right font-semibold text-gray-700">Unit Price</th>
+              <th class="p-3 text-right font-semibold text-gray-700">Total</th>
             </tr>
           </thead>
+
           <tbody>
             {% for it in items %}
-            <tr class="border-t">
-              <td class="p-3">{{ it.description }}</td>
-              <td class="p-3">{{ it.quantity }}</td>
-              <td class="p-3">{{ it.unit_price }}</td>
-              <td class="p-3">{{ it.line_total }}</td>
+            <tr class="border-t align-top">
+              <td class="p-3 break-words whitespace-normal">
+                <div class="font-medium text-gray-900">{{ it.description }}</div>
+              </td>
+              <td class="p-3 text-right whitespace-nowrap tabular-nums">{{ it.quantity }}</td>
+              <td class="p-3 text-right whitespace-nowrap tabular-nums">{{ it.unit_price }}</td>
+              <td class="p-3 text-right whitespace-nowrap tabular-nums font-semibold">{{ it.line_total }}</td>
             </tr>
             {% endfor %}
           </tbody>
         </table>
       </div>
-    </div>
 
-    <div class="bg-white rounded-xl shadow p-6">
-      <h2 class="text-lg font-bold text-gray-900 mb-2">Totals</h2>
-      <p class="text-gray-700">
-        Subtotal: {{ invoice.subtotal }} |
-        Tax: {{ invoice.tax }} |
-        Total: <strong>{{ invoice.total }}</strong>
-      </p>
+      <div class="mt-6 flex flex-col sm:flex-row sm:justify-end gap-4">
+        <div class="w-full sm:w-96 rounded-xl border border-gray-200 bg-gray-50 p-4">
+          <div class="flex items-center justify-between text-sm">
+            <span class="text-gray-600">Subtotal</span>
+            <span class="font-semibold tabular-nums">{{ invoice.subtotal }}</span>
+          </div>
+          <div class="flex items-center justify-between text-sm mt-2">
+            <span class="text-gray-600">Tax</span>
+            <span class="font-semibold tabular-nums">{{ invoice.tax }}</span>
+          </div>
+          <div class="border-t border-gray-200 my-3"></div>
+          <div class="flex items-center justify-between">
+            <span class="text-gray-900 font-bold">Total</span>
+            <span class="text-gray-900 font-bold tabular-nums">{{ invoice.total }}</span>
+          </div>
+        </div>
+      </div>
+
     </div>
 
   </div>
@@ -100,7 +192,7 @@
 </main>
 
 <footer class="text-center text-sm text-gray-500 py-6">
-  © {{ current_year or 2026 }} Rizara Meats Ltd — Secure • Traceable • Halal
+  © {{ current_year or 2026 }} Rizara Meats Ltd — Ethical • Traceable • Halal
 </footer>
 
 {% endblock %}

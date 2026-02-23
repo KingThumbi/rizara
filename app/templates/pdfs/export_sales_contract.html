@@ -1,0 +1,210 @@
+{# app/templates/pdfs/export_sales_contract.html #}
+{% extends "pdfs/_base_pdf.html" %}
+
+{% block content %}
+  {% set p = document.payload or {} %}
+  {% set contract = p.get('contract', {}) %}
+  {% set product  = p.get('product', {}) %}
+  {% set pricing  = p.get('pricing', {}) %}
+  {% set payment  = p.get('payment', {}) %}
+  {% set shipment = p.get('shipment', {}) %}
+
+  {# Prefer Buyer profile (document.buyer) then fallback to payload #}
+  {% set b = document.buyer if document.buyer else None %}
+  {% set buyer_name    = (b.name if b and b.name else contract.get('buyer_name')) %}
+  {% set buyer_email   = (b.email if b and b.email else contract.get('buyer_email')) %}
+  {% set buyer_phone   = (b.phone if b and b.phone else contract.get('buyer_phone')) %}
+  {% set buyer_address = (b.address if b and b.address else contract.get('buyer_location')) %}
+  {% set buyer_company = (contract.get('buyer_company') or None) %}
+
+  <div class="box">
+    <div class="grid">
+      <div class="row">
+        <div class="cell cell-50">
+          <div class="label">Seller</div>
+          <div><strong>{{ company.name if company else "Rizara Meats Ltd" }}</strong></div>
+          <div class="small muted">Republic of Kenya</div>
+          <div class="small">
+            <div class="kv"><span class="k">Address:</span> {{ company.address if company else "—" }}</div>
+            <div class="kv"><span class="k">Email:</span> {{ company.email if company else "—" }}</div>
+            <div class="kv"><span class="k">Phone:</span> {{ company.phone if company else "—" }}</div>
+            <div class="kv"><span class="k">Website:</span> {{ company.website if company else "—" }}</div>
+          </div>
+        </div>
+
+        <div class="cell cell-50">
+          <div class="label">Buyer</div>
+          <div><strong>{{ buyer_name or "—" }}</strong></div>
+          <div class="small">
+            {% if buyer_company %}
+              <div class="kv"><span class="k">Company:</span> {{ buyer_company }}</div>
+            {% endif %}
+            <div class="kv"><span class="k">Email:</span> {{ buyer_email or "—" }}</div>
+            <div class="kv"><span class="k">Phone:</span> {{ buyer_phone or "—" }}</div>
+            <div class="kv"><span class="k">Address/Location:</span> {{ buyer_address or "—" }}</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="tiny muted" style="margin-top:8px;">
+      This document is prepared through the Rizara platform and is intended to serve as a clear written record of the agreement described below.
+    </div>
+  </div>
+
+  <h2>1. Agreement Overview</h2>
+  <p>
+    This Export Sales Contract (“Contract”) is made between the Seller and the Buyer. It sets out the product, pricing,
+    payment terms, delivery terms, and other conditions for the export supply described in this Contract. Once signed by the Buyer,
+    the parties intend the Contract to be binding in accordance with applicable law.
+  </p>
+
+  <h2>2. Product Description</h2>
+  <div class="box">
+    <div class="kv"><span class="k">Product:</span> {{ (product.get('species') or product.get('name') or '—')|title }}</div>
+    <div class="kv"><span class="k">Quantity (kg):</span> {{ product.get('quantity_kg','—') }}</div>
+    <div class="kv"><span class="k">Condition:</span> {{ product.get('condition','Chilled (0–4°C)') }}</div>
+    <div class="kv"><span class="k">Packaging:</span> {{ product.get('packaging','Food-grade export packaging') }}</div>
+    <div class="kv"><span class="k">Certification:</span> {{ product.get('certification','Veterinary Health + Halal Certificate') }}</div>
+  </div>
+  <p class="small muted">
+    The parties acknowledge that product presentation and labeling may be aligned to destination market requirements where reasonably practicable.
+  </p>
+
+  <h2>3. Price and Contract Value</h2>
+  <div class="box">
+    <div class="kv"><span class="k">Price per kg:</span> {{ pricing.get('price_per_kg','—') }}</div>
+    <div class="kv"><span class="k">Currency:</span> {{ pricing.get('currency','USD') }}</div>
+    <div class="kv"><span class="k">Estimated total value:</span> {{ pricing.get('total_value','—') }}</div>
+    <div class="muted tiny">
+      Final invoicing may reflect actual shipped weight where applicable and supported by shipment documentation.
+    </div>
+  </div>
+
+  <h2>4. Payment Terms</h2>
+  <div class="box">
+    <div class="kv"><span class="k">Advance payment:</span> {{ payment.get('advance_percent','—') }}%</div>
+    <div class="kv"><span class="k">Balance payment:</span> {{ payment.get('balance_percent','—') }}%</div>
+    <div class="kv"><span class="k">Payment method:</span> {{ payment.get('method','T/T (bank transfer)') }}</div>
+    <div class="kv"><span class="k">Reference:</span> {{ payment.get('reference','As invoiced') }}</div>
+  </div>
+  <p class="small muted">
+    The Buyer confirms that payments will be made in line with the agreed schedule. Where the outstanding balance has not been confirmed,
+    shipment release may be held until confirmation is received.
+  </p>
+
+  <h2>5. Delivery Terms (Incoterms) and Handover</h2>
+  <div class="box">
+    <div class="kv"><span class="k">Incoterm:</span> {{ contract.get('incoterm','—') }}</div>
+    <div class="kv"><span class="k">Port/Airport / Handover point:</span> {{ shipment.get('handover_point','JKIA / Nairobi') }}</div>
+  </div>
+  <p>
+    Responsibility for handling, costs, and control of the goods transfers according to the selected Incoterm.
+    The Seller is responsible up to the agreed handover point, and the Buyer (or the Buyer’s appointed carrier/agent) is responsible from that point onward.
+  </p>
+
+  <h2>6. Export Documentation</h2>
+  <p>The Seller will provide export documents commonly required for this shipment, which may include:</p>
+  <ul>
+    <li>Commercial Invoice</li>
+    <li>Packing List</li>
+    <li>Air Waybill (AWB) or equivalent transport document</li>
+    <li>Veterinary Health Certificate</li>
+    <li>Halal Certificate</li>
+    <li>Certificate of Origin (where requested/required)</li>
+  </ul>
+
+  <h2>7. Halal and Quality Standards</h2>
+  <p>
+    The Seller confirms that processing is conducted under halal standards and applicable Kenyan export hygiene requirements.
+    Where third-party certification is applicable, the Seller will provide the relevant certificate references as part of the documentation.
+  </p>
+
+  <h2>8. Temperature Handling</h2>
+  <p>
+    The Seller will maintain appropriate temperature control up to the agreed handover point.
+    After handover, the Buyer (or appointed carrier/agent) is responsible for maintaining the required cold chain.
+  </p>
+
+  <h2>9. Inspection and Reporting Window</h2>
+  <p>
+    The Buyer should inspect the goods promptly upon arrival. If there is a concern regarding quantity or condition,
+    the Buyer should notify the Seller as soon as reasonably possible and provide supporting information
+    (for example: official inspection notes, photos, temperature log, or carrier report).
+  </p>
+  <div class="box small">
+    <div class="kv"><span class="k">Quantity concerns:</span> notify within 48 hours of arrival</div>
+    <div class="kv"><span class="k">Condition/temperature concerns:</span> notify within 48 hours of arrival with supporting report/log</div>
+  </div>
+
+  <h2>10. Title and Release</h2>
+  <p>
+    Unless otherwise agreed in writing, title to the goods remains with the Seller until the full amount due under this Contract is received and confirmed.
+  </p>
+
+  <h2>11. Scope of Responsibility</h2>
+  <p>
+    The parties intend their responsibilities under this Contract to be clear and commercially reasonable.
+    If an issue is verified, the parties will work together in good faith to agree a practical outcome aligned with this Contract.
+    Any remedy related to the shipment covered by this Contract will be limited to a level that is fair and predictable for both parties,
+    and will not exceed the amounts paid by the Buyer for that shipment.
+  </p>
+
+  <h2>12. Events Beyond Reasonable Control</h2>
+  <p>
+    Neither party will be considered at fault if performance is delayed or prevented by events beyond reasonable control, such as government restrictions,
+    transport disruptions, public emergencies, or other similar circumstances. The affected party should notify the other party as soon as reasonably possible.
+  </p>
+
+  <h2>13. Governing Law and Resolution</h2>
+  <p>
+    This Contract is governed by the laws of the Republic of Kenya. The parties will first attempt to resolve any disagreement amicably through direct discussion.
+    If unresolved, the matter may be referred to arbitration or a competent forum as agreed between the parties.
+  </p>
+
+  <h2>14. Entire Understanding</h2>
+  <p>
+    This Contract represents the complete understanding between the parties for the subject matter described and supersedes prior communications,
+    unless explicitly incorporated by reference in writing.
+  </p>
+
+  <h2>15. Digital Signing</h2>
+  <p>
+    The parties agree that electronic execution, including typed-name signing and electronic records generated by the Rizara platform,
+    may be relied upon as evidence of signing and agreement.
+  </p>
+
+  <div class="hr"></div>
+
+  <h2>Signatures</h2>
+  <div class="siggrid">
+    <div class="sigcell">
+      <div class="label">For the Seller ({{ company.name if company else "Rizara Meats Ltd" }})</div>
+      <div class="line"></div>
+      <div class="small">
+        <div><span class="label">Name:</span> {{ contract.get('seller_sign_name','Authorized Representative') }}</div>
+        <div><span class="label">Title:</span> {{ contract.get('seller_sign_title','') }}</div>
+        <div><span class="label">Date:</span> {{ contract.get('seller_sign_date','') }}</div>
+      </div>
+    </div>
+
+    <div class="sigcell">
+      <div class="label">For the Buyer</div>
+      <div class="line"></div>
+      <div class="small">
+        <div><span class="label">Name:</span> {{ document.buyer_sign_name or buyer_name or "Buyer" }}</div>
+        <div><span class="label">Email:</span> {{ document.buyer_sign_email or buyer_email or "—" }}</div>
+        <div><span class="label">Signed at (UTC):</span> {{ document.buyer_signed_at or "—" }}</div>
+      </div>
+
+      <div class="stamp tiny">
+        <div class="label">Signing Record (system-generated)</div>
+        <div><span class="label">IP:</span> {{ document.buyer_sign_ip or "—" }}</div>
+        <div><span class="label">User-Agent:</span> {{ document.buyer_sign_user_agent or "—" }}</div>
+        <div class="muted">
+          This record is stored by the system to help keep a clear history of the signing activity for this document.
+        </div>
+      </div>
+    </div>
+  </div>
+{% endblock %}

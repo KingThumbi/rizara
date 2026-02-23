@@ -6,7 +6,9 @@
     <div class="flex items-start justify-between gap-4 mb-6">
       <div>
         <h1 class="text-3xl font-bold text-jungle">New Document</h1>
-        <p class="text-gray-600 mt-1">Create a document for a buyer (draft by default).</p>
+        <p class="text-gray-600 mt-1">
+          Choose a document type so Rizara creates the right payload scaffold and workflow.
+        </p>
       </div>
 
       <a href="{{ url_for('admin.documents_list') }}"
@@ -37,49 +39,81 @@
       {% endif %}
     {% endwith %}
 
-    <form method="POST" class="bg-white rounded-xl shadow p-6 space-y-4">
-      <div>
-        <label class="block text-sm font-semibold text-gray-700 mb-1">Buyer</label>
-        <select name="buyer_id" required
-                class="w-full border border-gray-200 rounded-lg px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-jungle/30">
-          <option value="" selected disabled>Select buyer…</option>
-          {% for b in (buyers or []) %}
-            <option value="{{ b.id }}">{{ b.name }}{% if b.email %} — {{ b.email }}{% endif %}</option>
-          {% endfor %}
-        </select>
+    {# IMPORTANT: explicitly post to the combined GET/POST route to avoid hitting any stale POST handler #}
+    <form method="POST" action="{{ url_for('admin.documents_new') }}" class="bg-white rounded-xl shadow p-6 space-y-4">
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div>
+          <label class="block text-sm font-semibold text-gray-700 mb-1">Buyer</label>
+          <select name="buyer_id" required
+                  class="w-full border border-gray-200 rounded-lg px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-jungle/30">
+            <option value="" selected disabled>Select buyer…</option>
+            {% for b in (buyers or []) %}
+              <option value="{{ b.id }}">{{ b.name }}{% if b.email %} — {{ b.email }}{% endif %}</option>
+            {% endfor %}
+          </select>
+          <p class="text-xs text-gray-500 mt-1">
+            The buyer is required (documents are always tied to a buyer).
+          </p>
+        </div>
+
+        <div>
+          <label class="block text-sm font-semibold text-gray-700 mb-1">Document type</label>
+          <select name="doc_type" required
+                  class="w-full border border-gray-200 rounded-lg px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-jungle/30">
+            <option value="" selected disabled>Select type…</option>
+
+            {% if doc_type_options %}
+              {% for value, label in doc_type_options %}
+                <option value="{{ value }}"
+                        {% if (default_doc_type and default_doc_type == value) %}selected{% endif %}>
+                  {{ label }}
+                </option>
+              {% endfor %}
+            {% else %}
+              <option value="loi">Letter of Intent (LOI)</option>
+              <option value="export_sales_contract">Export Sales Contract</option>
+            {% endif %}
+          </select>
+
+          <p class="text-xs text-gray-500 mt-1">
+            LOI routes you to LOI preview/edit. Export Sales Contract routes you to the contract terms editor.
+          </p>
+        </div>
       </div>
 
       <div>
         <label class="block text-sm font-semibold text-gray-700 mb-1">Title</label>
-        <input name="title" required maxlength="200"
+        <input name="title" maxlength="200"
                class="w-full border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-jungle/30"
-               placeholder="e.g. Rizara Supply Agreement (Feb 2026)" />
+               placeholder="Optional — leave blank to auto-title based on document type" />
+        <p class="text-xs text-gray-500 mt-1">
+          If left blank, Rizara will set a sensible default title for the selected document type.
+        </p>
       </div>
 
       <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>
-          <label class="block text-sm font-semibold text-gray-700 mb-1">Document type</label>
-          <input name="doc_type" required maxlength="50"
-                 class="w-full border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-jungle/30"
-                 placeholder="e.g. contract" />
+          <label class="block text-sm font-semibold text-gray-700 mb-1">Version</label>
+          <input name="version" type="number" min="1" value="{{ (default_version or 1) }}"
+                 class="w-full border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-jungle/30" />
+          <p class="text-xs text-gray-500 mt-1">
+            If a version already exists for this buyer + type, Rizara will auto-bump it.
+          </p>
         </div>
 
         <div>
-          <label class="block text-sm font-semibold text-gray-700 mb-1">Version</label>
-          <input name="version" type="number" min="1" value="1"
-                 class="w-full border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-jungle/30" />
+          <label class="block text-sm font-semibold text-gray-700 mb-1">Status</label>
+          <select name="status"
+                  class="w-full border border-gray-200 rounded-lg px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-jungle/30">
+            {% set statuses = (doc_statuses or ['draft','buyer_signed','executed','expired','void']) %}
+            {% for s in statuses %}
+              <option value="{{ s }}" {% if s == 'draft' %}selected{% endif %}>{{ s }}</option>
+            {% endfor %}
+          </select>
+          <p class="text-xs text-gray-500 mt-1">
+            Normally start with <span class="font-semibold">draft</span>. Signing transitions status automatically.
+          </p>
         </div>
-      </div>
-
-      <div>
-        <label class="block text-sm font-semibold text-gray-700 mb-1">Status</label>
-        <select name="status"
-                class="w-full border border-gray-200 rounded-lg px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-jungle/30">
-          {% set statuses = (doc_statuses or ['draft','buyer_signed','executed','expired','void']) %}
-          {% for s in statuses %}
-            <option value="{{ s }}" {% if s == 'draft' %}selected{% endif %}>{{ s }}</option>
-          {% endfor %}
-        </select>
       </div>
 
       <div class="flex justify-end gap-3 pt-2">
