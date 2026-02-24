@@ -17,6 +17,39 @@
   {% set buyer_address = (b.address if b and b.address else contract.get('buyer_location')) %}
   {% set buyer_company = (contract.get('buyer_company') or None) %}
 
+  {# -------------------------------
+     Representatives (editable via payload.contract.*)
+     ------------------------------- #}
+  {% set seller_agent_name = contract.get('seller_agent_name', 'Mr Paul Wanjama Karuri') %}
+  {% set seller_agent_nationality = contract.get('seller_agent_nationality', 'Kenyan') %}
+  {% set seller_agent_residency = contract.get('seller_agent_residency', 'UAE Resident ') %}
+  {% set seller_agent_id = contract.get('seller_agent_id_number', '784198787618747') %}
+  {% set seller_agent_scope = contract.get(
+      'seller_agent_scope',
+      'the United Arab Emirates and the Middle East for the matters of this transaction'
+    )
+  %}
+  {% set seller_agent_purpose = contract.get(
+      'seller_agent_purpose',
+      'ensure that the customer is well served and improves confidence'
+    )
+  %}
+
+  {% set buyer_rep_name = contract.get('buyer_rep_name', 'Mr Taha Zohaib Rashid') %}
+  {% set buyer_rep_nationality = contract.get('buyer_rep_nationality', 'Pakistani') %}
+  {% set buyer_rep_residency = contract.get('buyer_rep_residency', 'UAE Resident') %}
+  {% set buyer_rep_id = contract.get('buyer_rep_id_number', '784199749706869') %}
+
+  {# -------------------------------
+     Payment banking details (editable via payload.payment.*)
+     ------------------------------- #}
+  {% set pay_account_name = payment.get('account_name', 'DMPOLIN ENTERPRISES') %}
+  {% set pay_account_number = payment.get('account_number', '2045964259') %}
+  {% set pay_branch_code = payment.get('branch_code', '152') %}
+  {% set pay_branch_name = payment.get('branch_name', 'Imaara Mall') %}
+  {% set pay_bank_code = payment.get('bank_code', '03') %}
+  {% set pay_swift_code = payment.get('swift_code', 'BARCKENX') %}
+
   <div class="box">
     <div class="grid">
       <div class="row">
@@ -30,11 +63,23 @@
             <div class="kv"><span class="k">Phone:</span> {{ company.phone if company else "—" }}</div>
             <div class="kv"><span class="k">Website:</span> {{ company.website if company else "—" }}</div>
           </div>
+
+          <div class="small" style="margin-top:8px;">
+            <div class="kv">
+              <span class="k">Appointed representative (UAE & Middle East):</span>
+              {{ seller_agent_name }} ({{ seller_agent_nationality }} National, {{ seller_agent_residency }}, ID: {{ seller_agent_id }})
+            </div>
+          </div>
         </div>
 
         <div class="cell cell-50">
           <div class="label">Buyer</div>
           <div><strong>{{ buyer_name or "—" }}</strong></div>
+
+          <div class="small muted" style="margin-top:2px;">
+            Represented by: {{ buyer_rep_name }} ({{ buyer_rep_nationality }} National, {{ buyer_rep_residency }}, ID: {{ buyer_rep_id }})
+          </div>
+
           <div class="small">
             {% if buyer_company %}
               <div class="kv"><span class="k">Company:</span> {{ buyer_company }}</div>
@@ -57,6 +102,28 @@
     This Export Sales Contract (“Contract”) is made between the Seller and the Buyer. It sets out the product, pricing,
     payment terms, delivery terms, and other conditions for the export supply described in this Contract. Once signed by the Buyer,
     the parties intend the Contract to be binding in accordance with applicable law.
+  </p>
+
+  <h2>1A. Appointed Representatives</h2>
+  <div class="box">
+    <div class="kv">
+      <span class="k">Seller’s appointed representative:</span>
+      {{ seller_agent_name }}, {{ seller_agent_nationality }} National, {{ seller_agent_residency }}, ID No. {{ seller_agent_id }}.
+    </div>
+    <div class="kv">
+      <span class="k">Buyer’s representative:</span>
+      {{ buyer_rep_name }}, {{ buyer_rep_nationality }} National, {{ buyer_rep_residency }}, ID No. {{ buyer_rep_id }}.
+    </div>
+  </div>
+
+  <p>
+    For the purpose of this transaction, the Seller appoints <strong>{{ seller_agent_name }}</strong> as its agent and representative in
+    {{ seller_agent_scope }}. The representative will facilitate communication and coordination between the parties, assist with service and
+    transaction support, and {{ seller_agent_purpose }}.
+  </p>
+  <p class="small muted">
+    For avoidance of doubt, the appointed representative acts as a transaction liaison and does not vary or replace the obligations
+    of the Seller or the Buyer under this Contract unless expressly agreed in writing by the Seller and the Buyer.
   </p>
 
   <h2>2. Product Description</h2>
@@ -86,6 +153,14 @@
     <div class="kv"><span class="k">Advance payment:</span> {{ payment.get('advance_percent','—') }}%</div>
     <div class="kv"><span class="k">Balance payment:</span> {{ payment.get('balance_percent','—') }}%</div>
     <div class="kv"><span class="k">Payment method:</span> {{ payment.get('method','T/T (bank transfer)') }}</div>
+
+    <div class="kv"><span class="k">Payment beneficiary (Account Name):</span> {{ pay_account_name }}</div>
+    <div class="kv"><span class="k">Account Number:</span> {{ pay_account_number }}</div>
+    <div class="kv"><span class="k">Branch Code:</span> {{ pay_branch_code }}</div>
+    <div class="kv"><span class="k">Branch Name:</span> {{ pay_branch_name }}</div>
+    <div class="kv"><span class="k">Bank Code:</span> {{ pay_bank_code }}</div>
+    <div class="kv"><span class="k">SWIFT Code:</span> {{ pay_swift_code }}</div>
+
     <div class="kv"><span class="k">Reference:</span> {{ payment.get('reference','As invoiced') }}</div>
   </div>
   <p class="small muted">
@@ -177,6 +252,11 @@
   <div class="hr"></div>
 
   <h2>Signatures</h2>
+
+  <p class="tiny muted" style="margin-top:-4px;">
+    Seller’s appointed representative for this transaction (UAE & Middle East): {{ seller_agent_name }} (ID: {{ seller_agent_id }}).
+  </p>
+
   <div class="siggrid">
     <div class="sigcell">
       <div class="label">For the Seller ({{ company.name if company else "Rizara Meats Ltd" }})</div>
@@ -195,6 +275,10 @@
         <div><span class="label">Name:</span> {{ document.buyer_sign_name or buyer_name or "Buyer" }}</div>
         <div><span class="label">Email:</span> {{ document.buyer_sign_email or buyer_email or "—" }}</div>
         <div><span class="label">Signed at (UTC):</span> {{ document.buyer_signed_at or "—" }}</div>
+      </div>
+
+      <div class="small" style="margin-top:8px;">
+        <div><span class="label">Buyer representative:</span> {{ buyer_rep_name }} (ID: {{ buyer_rep_id }})</div>
       </div>
 
       <div class="stamp tiny">
