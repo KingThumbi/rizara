@@ -17,38 +17,38 @@
   {% set buyer_address = (b.address if b and b.address else contract.get('buyer_location')) %}
   {% set buyer_company = (contract.get('buyer_company') or None) %}
 
-  {# -------------------------------
-     Representatives (editable via payload.contract.*)
-     ------------------------------- #}
-  {% set seller_agent_name = contract.get('seller_agent_name', 'Mr Paul Wanjama Karuri') %}
-  {% set seller_agent_nationality = contract.get('seller_agent_nationality', 'Kenyan') %}
-  {% set seller_agent_residency = contract.get('seller_agent_residency', 'UAE Resident ') %}
-  {% set seller_agent_id = contract.get('seller_agent_id_number', '784198787618747') %}
-  {% set seller_agent_scope = contract.get(
-      'seller_agent_scope',
-      'the United Arab Emirates and the Middle East for the matters of this transaction'
-    )
-  %}
-  {% set seller_agent_purpose = contract.get(
-      'seller_agent_purpose',
-      'ensure that the customer is well served and improves confidence'
-    )
-  %}
+  {# --- Representatives / Agent (payload-driven) --- #}
+  {% set seller_agent_name        = contract.get('seller_agent_name') %}
+  {% set seller_agent_designation = contract.get('seller_agent_designation') %}
+  {% set seller_agent_nationality = contract.get('seller_agent_nationality') %}
+  {% set seller_agent_residency   = contract.get('seller_agent_residency') %}
+  {% set seller_agent_id_number   = contract.get('seller_agent_id_number') %}
+  {% set seller_agent_scope       = contract.get('seller_agent_scope') %}
+  {% set seller_agent_purpose     = contract.get('seller_agent_purpose') %}
 
-  {% set buyer_rep_name = contract.get('buyer_rep_name', 'Mr Taha Zohaib Rashid') %}
-  {% set buyer_rep_nationality = contract.get('buyer_rep_nationality', 'Pakistani') %}
-  {% set buyer_rep_residency = contract.get('buyer_rep_residency', 'UAE Resident') %}
-  {% set buyer_rep_id = contract.get('buyer_rep_id_number', '784199749706869') %}
+  {% set buyer_rep_name        = contract.get('buyer_rep_name') %}
+  {% set buyer_rep_designation = contract.get('buyer_rep_designation') %}
+  {% set buyer_rep_nationality = contract.get('buyer_rep_nationality') %}
+  {% set buyer_rep_residency   = contract.get('buyer_rep_residency') %}
+  {% set buyer_rep_id_number   = contract.get('buyer_rep_id_number') %}
 
-  {# -------------------------------
-     Payment banking details (editable via payload.payment.*)
-     ------------------------------- #}
-  {% set pay_account_name = payment.get('account_name', 'DMPOLIN ENTERPRISES') %}
-  {% set pay_account_number = payment.get('account_number', '2045964259') %}
-  {% set pay_branch_code = payment.get('branch_code', '152') %}
-  {% set pay_branch_name = payment.get('branch_name', 'Imaara Mall') %}
-  {% set pay_bank_code = payment.get('bank_code', '03') %}
-  {% set pay_swift_code = payment.get('swift_code', 'BARCKENX') %}
+  {# --- Payment (payload-driven) --- #}
+  {% set pay_method        = payment.get('method') %}
+  {% set pay_reference     = payment.get('reference') %}
+  {% set pay_balance_cond  = payment.get('balance_condition') %}
+
+  {% set pay_account_name  = payment.get('account_name') %}
+  {% set pay_account_no    = payment.get('account_number') %}
+  {% set pay_branch_code   = payment.get('branch_code') %}
+  {% set pay_branch_name   = payment.get('branch_name') %}
+  {% set pay_bank_code     = payment.get('bank_code') %}
+  {% set pay_swift_code    = payment.get('swift_code') %}
+
+  {# --- Seller signing (payload-driven) --- #}
+  {% set seller_sign_name  = contract.get('seller_sign_name') %}
+  {% set seller_sign_title = contract.get('seller_sign_title') %}
+  {% set seller_sign_date  = contract.get('seller_sign_date') %}
+  {% set seller_sign_email = contract.get('seller_sign_email') %}
 
   <div class="box">
     <div class="grid">
@@ -63,23 +63,11 @@
             <div class="kv"><span class="k">Phone:</span> {{ company.phone if company else "—" }}</div>
             <div class="kv"><span class="k">Website:</span> {{ company.website if company else "—" }}</div>
           </div>
-
-          <div class="small" style="margin-top:8px;">
-            <div class="kv">
-              <span class="k">Appointed representative (UAE & Middle East):</span>
-              {{ seller_agent_name }} ({{ seller_agent_nationality }} National, {{ seller_agent_residency }}, ID: {{ seller_agent_id }})
-            </div>
-          </div>
         </div>
 
         <div class="cell cell-50">
           <div class="label">Buyer</div>
           <div><strong>{{ buyer_name or "—" }}</strong></div>
-
-          <div class="small muted" style="margin-top:2px;">
-            Represented by: {{ buyer_rep_name }} ({{ buyer_rep_nationality }} National, {{ buyer_rep_residency }}, ID: {{ buyer_rep_id }})
-          </div>
-
           <div class="small">
             {% if buyer_company %}
               <div class="kv"><span class="k">Company:</span> {{ buyer_company }}</div>
@@ -104,81 +92,112 @@
     the parties intend the Contract to be binding in accordance with applicable law.
   </p>
 
-  <h2>1A. Appointed Representatives</h2>
+  <h2>2. Parties, Representatives, and Appointed Agent</h2>
   <div class="box">
-    <div class="kv">
-      <span class="k">Seller’s appointed representative:</span>
-      {{ seller_agent_name }}, {{ seller_agent_nationality }} National, {{ seller_agent_residency }}, ID No. {{ seller_agent_id }}.
-    </div>
-    <div class="kv">
-      <span class="k">Buyer’s representative:</span>
-      {{ buyer_rep_name }}, {{ buyer_rep_nationality }} National, {{ buyer_rep_residency }}, ID No. {{ buyer_rep_id }}.
-    </div>
+    <div class="kv"><span class="k">Seller:</span> {{ company.name if company else "Rizara Meats Ltd" }}</div>
+    <div class="kv"><span class="k">Buyer:</span> {{ buyer_name or "—" }}</div>
+
+    {% if buyer_rep_name or buyer_rep_id_number or buyer_rep_designation or buyer_rep_nationality or buyer_rep_residency %}
+      <div class="hr" style="margin:10px 0;"></div>
+      <div class="label">Buyer Representation</div>
+      <div class="small">
+        <div class="kv"><span class="k">Representative:</span> {{ buyer_rep_name or "—" }}</div>
+        {% if buyer_rep_designation %}<div class="kv"><span class="k">Designation/Role:</span> {{ buyer_rep_designation }}</div>{% endif %}
+        {% if buyer_rep_nationality %}<div class="kv"><span class="k">Nationality:</span> {{ buyer_rep_nationality }}</div>{% endif %}
+        {% if buyer_rep_residency %}<div class="kv"><span class="k">Residency:</span> {{ buyer_rep_residency }}</div>{% endif %}
+        {% if buyer_rep_id_number %}<div class="kv"><span class="k">ID Number:</span> {{ buyer_rep_id_number }}</div>{% endif %}
+      </div>
+    {% endif %}
+
+    {% if seller_agent_name or seller_agent_id_number or seller_agent_designation or seller_agent_nationality or seller_agent_residency or seller_agent_scope or seller_agent_purpose %}
+      <div class="hr" style="margin:10px 0;"></div>
+      <div class="label">Seller Appointed Agent / Representative</div>
+      <div class="small">
+        <div class="kv"><span class="k">Name:</span> {{ seller_agent_name or "—" }}</div>
+        {% if seller_agent_designation %}<div class="kv"><span class="k">Designation/Role:</span> {{ seller_agent_designation }}</div>{% endif %}
+        {% if seller_agent_nationality %}<div class="kv"><span class="k">Nationality:</span> {{ seller_agent_nationality }}</div>{% endif %}
+        {% if seller_agent_residency %}<div class="kv"><span class="k">Residency:</span> {{ seller_agent_residency }}</div>{% endif %}
+        {% if seller_agent_id_number %}<div class="kv"><span class="k">ID Number:</span> {{ seller_agent_id_number }}</div>{% endif %}
+
+        {% if seller_agent_scope %}
+          <div class="kv"><span class="k">Appointment Scope:</span> {{ seller_agent_scope }}</div>
+        {% endif %}
+
+        {% if seller_agent_purpose %}
+          <div class="kv"><span class="k">Purpose:</span> {{ seller_agent_purpose }}</div>
+        {% else %}
+          <div class="tiny muted" style="margin-top:6px;">
+            For avoidance of doubt, the appointed Agent or Representative acts as a transaction liaison and does not vary or replace the obligations
+            of the Seller or the Buyer under this Contract unless expressly agreed in writing by the Seller and the Buyer.
+          </div>
+        {% endif %}
+      </div>
+    {% endif %}
   </div>
 
-  <p>
-    For the purpose of this transaction, the Seller appoints <strong>{{ seller_agent_name }}</strong> as its agent and representative in
-    {{ seller_agent_scope }}. The representative will facilitate communication and coordination between the parties, assist with service and
-    transaction support, and {{ seller_agent_purpose }}.
-  </p>
-  <p class="small muted">
-    For avoidance of doubt, the appointed representative acts as a transaction liaison and does not vary or replace the obligations
-    of the Seller or the Buyer under this Contract unless expressly agreed in writing by the Seller and the Buyer.
-  </p>
-
-  <h2>2. Product Description</h2>
+  <h2>3. Product Description</h2>
   <div class="box">
     <div class="kv"><span class="k">Product:</span> {{ (product.get('species') or product.get('name') or '—')|title }}</div>
-    <div class="kv"><span class="k">Quantity (kg):</span> {{ product.get('quantity_kg','—') }}</div>
-    <div class="kv"><span class="k">Condition:</span> {{ product.get('condition','Chilled (0–4°C)') }}</div>
-    <div class="kv"><span class="k">Packaging:</span> {{ product.get('packaging','Food-grade export packaging') }}</div>
-    <div class="kv"><span class="k">Certification:</span> {{ product.get('certification','Veterinary Health + Halal Certificate') }}</div>
+    <div class="kv"><span class="k">Quantity (kg):</span> {{ product.get('quantity_kg')|default('—', true) }}</div>
+    <div class="kv"><span class="k">Condition:</span> {{ product.get('condition')|default('—', true) }}</div>
+    <div class="kv"><span class="k">Packaging:</span> {{ product.get('packaging')|default('—', true) }}</div>
+    <div class="kv"><span class="k">Certification:</span> {{ product.get('certification')|default('—', true) }}</div>
   </div>
   <p class="small muted">
     The parties acknowledge that product presentation and labeling may be aligned to destination market requirements where reasonably practicable.
   </p>
 
-  <h2>3. Price and Contract Value</h2>
+  <h2>4. Price and Contract Value</h2>
   <div class="box">
-    <div class="kv"><span class="k">Price per kg:</span> {{ pricing.get('price_per_kg','—') }}</div>
-    <div class="kv"><span class="k">Currency:</span> {{ pricing.get('currency','USD') }}</div>
-    <div class="kv"><span class="k">Estimated total value:</span> {{ pricing.get('total_value','—') }}</div>
+    <div class="kv"><span class="k">Price per kg:</span> {{ pricing.get('price_per_kg')|default('—', true) }}</div>
+    <div class="kv"><span class="k">Currency:</span> {{ pricing.get('currency')|default('—', true) }}</div>
+    <div class="kv"><span class="k">Estimated total value:</span> {{ pricing.get('total_value')|default('—', true) }}</div>
     <div class="muted tiny">
       Final invoicing may reflect actual shipped weight where applicable and supported by shipment documentation.
     </div>
   </div>
 
-  <h2>4. Payment Terms</h2>
+  <h2>5. Payment Terms</h2>
   <div class="box">
-    <div class="kv"><span class="k">Advance payment:</span> {{ payment.get('advance_percent','—') }}%</div>
-    <div class="kv"><span class="k">Balance payment:</span> {{ payment.get('balance_percent','—') }}%</div>
-    <div class="kv"><span class="k">Payment method:</span> {{ payment.get('method','T/T (bank transfer)') }}</div>
+    <div class="kv"><span class="k">Advance payment:</span> {{ payment.get('advance_percent')|default('—', true) }}%</div>
+    <div class="kv"><span class="k">Balance payment:</span> {{ payment.get('balance_percent')|default('—', true) }}%</div>
+    <div class="kv"><span class="k">Balance condition:</span> {{ pay_balance_cond|default('—', true) }}</div>
+    <div class="kv"><span class="k">Payment method:</span> {{ pay_method|default('—', true) }}</div>
+    <div class="kv"><span class="k">Reference:</span> {{ pay_reference|default('—', true) }}</div>
 
-    <div class="kv"><span class="k">Payment beneficiary (Account Name):</span> {{ pay_account_name }}</div>
-    <div class="kv"><span class="k">Account Number:</span> {{ pay_account_number }}</div>
-    <div class="kv"><span class="k">Branch Code:</span> {{ pay_branch_code }}</div>
-    <div class="kv"><span class="k">Branch Name:</span> {{ pay_branch_name }}</div>
-    <div class="kv"><span class="k">Bank Code:</span> {{ pay_bank_code }}</div>
-    <div class="kv"><span class="k">SWIFT Code:</span> {{ pay_swift_code }}</div>
-
-    <div class="kv"><span class="k">Reference:</span> {{ payment.get('reference','As invoiced') }}</div>
+    {% if pay_account_name or pay_account_no or pay_branch_code or pay_branch_name or pay_bank_code or pay_swift_code %}
+      <div class="hr" style="margin:10px 0;"></div>
+      <div class="label">Payment Instructions (T/T / Bank Transfer)</div>
+      <div class="small">
+        <div class="kv"><span class="k">Account Name:</span> {{ pay_account_name|default("—", true) }}</div>
+        <div class="kv"><span class="k">Account Number:</span> {{ pay_account_no|default("—", true) }}</div>
+        <div class="kv"><span class="k">Branch Code:</span> {{ pay_branch_code|default("—", true) }}</div>
+        <div class="kv"><span class="k">Branch Name:</span> {{ pay_branch_name|default("—", true) }}</div>
+        <div class="kv"><span class="k">Bank Code:</span> {{ pay_bank_code|default("—", true) }}</div>
+        <div class="kv"><span class="k">Swift Code:</span> {{ pay_swift_code|default("—", true) }}</div>
+      </div>
+      <div class="tiny muted" style="margin-top:6px;">
+        The Buyer shall ensure the transfer reference includes the invoice number or contract reference where applicable.
+      </div>
+    {% endif %}
   </div>
+
   <p class="small muted">
     The Buyer confirms that payments will be made in line with the agreed schedule. Where the outstanding balance has not been confirmed,
     shipment release may be held until confirmation is received.
   </p>
 
-  <h2>5. Delivery Terms (Incoterms) and Handover</h2>
+  <h2>6. Delivery Terms (Incoterms) and Handover</h2>
   <div class="box">
-    <div class="kv"><span class="k">Incoterm:</span> {{ contract.get('incoterm','—') }}</div>
-    <div class="kv"><span class="k">Port/Airport / Handover point:</span> {{ shipment.get('handover_point','JKIA / Nairobi') }}</div>
+    <div class="kv"><span class="k">Incoterm:</span> {{ contract.get('incoterm')|default('—', true) }}</div>
+    <div class="kv"><span class="k">Port/Airport / Handover point:</span> {{ shipment.get('handover_point')|default('—', true) }}</div>
   </div>
   <p>
     Responsibility for handling, costs, and control of the goods transfers according to the selected Incoterm.
     The Seller is responsible up to the agreed handover point, and the Buyer (or the Buyer’s appointed carrier/agent) is responsible from that point onward.
   </p>
 
-  <h2>6. Export Documentation</h2>
+  <h2>7. Export Documentation</h2>
   <p>The Seller will provide export documents commonly required for this shipment, which may include:</p>
   <ul>
     <li>Commercial Invoice</li>
@@ -189,35 +208,35 @@
     <li>Certificate of Origin (where requested/required)</li>
   </ul>
 
-  <h2>7. Halal and Quality Standards</h2>
+  <h2>8. Halal and Quality Standards</h2>
   <p>
     The Seller confirms that processing is conducted under halal standards and applicable Kenyan export hygiene requirements.
     Where third-party certification is applicable, the Seller will provide the relevant certificate references as part of the documentation.
   </p>
 
-  <h2>8. Temperature Handling</h2>
+  <h2>9. Temperature Handling</h2>
   <p>
     The Seller will maintain appropriate temperature control up to the agreed handover point.
     After handover, the Buyer (or appointed carrier/agent) is responsible for maintaining the required cold chain.
   </p>
 
-  <h2>9. Inspection and Reporting Window</h2>
+  <h2>10. Inspection and Reporting Window</h2>
   <p>
     The Buyer should inspect the goods promptly upon arrival. If there is a concern regarding quantity or condition,
     the Buyer should notify the Seller as soon as reasonably possible and provide supporting information
     (for example: official inspection notes, photos, temperature log, or carrier report).
   </p>
   <div class="box small">
-    <div class="kv"><span class="k">Quantity concerns:</span> notify within 48 hours of arrival</div>
-    <div class="kv"><span class="k">Condition/temperature concerns:</span> notify within 48 hours of arrival with supporting report/log</div>
+    <div class="kv"><span class="k">Quantity concerns:</span> notify within {{ contract.get('inspection_qty_window')|default('48 hours', true) }}</div>
+    <div class="kv"><span class="k">Condition/temperature concerns:</span> notify within {{ contract.get('inspection_condition_window')|default('48 hours', true) }} with supporting report/log</div>
   </div>
 
-  <h2>10. Title and Release</h2>
+  <h2>11. Title and Release</h2>
   <p>
     Unless otherwise agreed in writing, title to the goods remains with the Seller until the full amount due under this Contract is received and confirmed.
   </p>
 
-  <h2>11. Scope of Responsibility</h2>
+  <h2>12. Scope of Responsibility</h2>
   <p>
     The parties intend their responsibilities under this Contract to be clear and commercially reasonable.
     If an issue is verified, the parties will work together in good faith to agree a practical outcome aligned with this Contract.
@@ -225,25 +244,25 @@
     and will not exceed the amounts paid by the Buyer for that shipment.
   </p>
 
-  <h2>12. Events Beyond Reasonable Control</h2>
+  <h2>13. Events Beyond Reasonable Control</h2>
   <p>
     Neither party will be considered at fault if performance is delayed or prevented by events beyond reasonable control, such as government restrictions,
     transport disruptions, public emergencies, or other similar circumstances. The affected party should notify the other party as soon as reasonably possible.
   </p>
 
-  <h2>13. Governing Law and Resolution</h2>
+  <h2>14. Governing Law and Resolution</h2>
   <p>
     This Contract is governed by the laws of the Republic of Kenya. The parties will first attempt to resolve any disagreement amicably through direct discussion.
     If unresolved, the matter may be referred to arbitration or a competent forum as agreed between the parties.
   </p>
 
-  <h2>14. Entire Understanding</h2>
+  <h2>15. Entire Understanding</h2>
   <p>
     This Contract represents the complete understanding between the parties for the subject matter described and supersedes prior communications,
     unless explicitly incorporated by reference in writing.
   </p>
 
-  <h2>15. Digital Signing</h2>
+  <h2>16. Digital Signing</h2>
   <p>
     The parties agree that electronic execution, including typed-name signing and electronic records generated by the Rizara platform,
     may be relied upon as evidence of signing and agreement.
@@ -252,19 +271,17 @@
   <div class="hr"></div>
 
   <h2>Signatures</h2>
-
-  <p class="tiny muted" style="margin-top:-4px;">
-    Seller’s appointed representative for this transaction (UAE & Middle East): {{ seller_agent_name }} (ID: {{ seller_agent_id }}).
-  </p>
-
   <div class="siggrid">
     <div class="sigcell">
       <div class="label">For the Seller ({{ company.name if company else "Rizara Meats Ltd" }})</div>
       <div class="line"></div>
       <div class="small">
-        <div><span class="label">Name:</span> {{ contract.get('seller_sign_name','Authorized Representative') }}</div>
-        <div><span class="label">Title:</span> {{ contract.get('seller_sign_title','') }}</div>
-        <div><span class="label">Date:</span> {{ contract.get('seller_sign_date','') }}</div>
+        <div><span class="label">Name:</span> {{ seller_sign_name|default("—", true) }}</div>
+        <div><span class="label">Designation:</span> {{ seller_sign_title|default("—", true) }}</div>
+        <div><span class="label">Signed at (UTC):</span> {{ seller_sign_date|default("—", true) }}</div>
+        {% if seller_sign_email %}
+          <div><span class="label">System User:</span> {{ seller_sign_email }}</div>
+        {% endif %}
       </div>
     </div>
 
@@ -272,13 +289,9 @@
       <div class="label">For the Buyer</div>
       <div class="line"></div>
       <div class="small">
-        <div><span class="label">Name:</span> {{ document.buyer_sign_name or buyer_name or "Buyer" }}</div>
+        <div><span class="label">Name:</span> {{ document.buyer_sign_name or buyer_name or "—" }}</div>
         <div><span class="label">Email:</span> {{ document.buyer_sign_email or buyer_email or "—" }}</div>
         <div><span class="label">Signed at (UTC):</span> {{ document.buyer_signed_at or "—" }}</div>
-      </div>
-
-      <div class="small" style="margin-top:8px;">
-        <div><span class="label">Buyer representative:</span> {{ buyer_rep_name }} (ID: {{ buyer_rep_id }})</div>
       </div>
 
       <div class="stamp tiny">

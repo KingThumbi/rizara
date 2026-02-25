@@ -6,7 +6,7 @@ import secrets
 from datetime import datetime, timedelta, timezone
 
 import sqlalchemy as sa
-from flask import Blueprint, flash, jsonify, make_response, redirect, render_template, request, url_for, abort, current_app, make_response
+from flask import Blueprint, flash, jsonify, make_response, redirect, render_template, request, url_for, abort, current_app
 from flask_login import current_user
 from sqlalchemy import desc
 from sqlalchemy.exc import IntegrityError
@@ -499,65 +499,14 @@ def send_document_for_signing(document_id):
 @admin_required
 def documents_view(document_id):
     doc = Document.query.get_or_404(document_id)
-    # Choose an ordering column safely.
-    # If the runtime model has signed_at, use it; otherwise fall back to id.
-    sig_order_col = getattr(DocumentSignature, "signed_at", None) or getattr(DocumentSignature, "id")
 
     signatures = (
         DocumentSignature.query
         .filter(DocumentSignature.document_id == doc.id)
-        .order_by(DocumentSignature.signed_at.asc())
+        .order_by(DocumentSignature.signed_at.asc(), DocumentSignature.id.asc())
         .all()
-    )    
-    # ----------------------------
-    # Audit timeline (events)
-    # ----------------------------
-    events = []
-
-    if doc.created_at:
-        events.append({
-            "at": doc.created_at,
-            "label": "Created",
-            "meta": f"Type: {doc.doc_type} · v{doc.version}",
-        })
-
-    if doc.buyer_sign_token_expires_at:
-        # Token is generated for 7 days in generate_buyer_sign_token()
-        issued_at = doc.buyer_sign_token_expires_at - timedelta(days=7)
-        events.append({
-            "at": issued_at,
-            "label": "Signing link issued",
-            "meta": f"Expires: {doc.buyer_sign_token_expires_at}",
-        })
-
-    if doc.buyer_signed_at:
-        who = " ".join([doc.buyer_sign_name or "", doc.buyer_sign_email or ""]).strip() or "Buyer"
-        events.append({
-            "at": doc.buyer_signed_at,
-            "label": "Buyer signed",
-            "meta": who,
-        })
-
-    for s in signatures:
-        if s.signed_at:
-            events.append({
-                "at": s.signed_at,
-                "label": f"Signature recorded ({s.signer_type})",
-                "meta": f"{s.signer_name or '—'} · {s.sign_method or '—'}",
-            })
-
-    events = sorted([e for e in events if e.get("at")], key=lambda x: x["at"])
-
-    return render_template(
-        "admin/documents_view.html",
-        document=doc,
-        signatures=signatures,
-        doc_statuses=sorted(DOC_STATUSES),
-        events=events,
     )
-    # ----------------------------
-    # Audit timeline (events)
-    # ----------------------------
+
     events = []
 
     if doc.created_at:
@@ -574,6 +523,7 @@ def documents_view(document_id):
             "label": "Signing link issued",
             "meta": f"Expires: {doc.buyer_sign_token_expires_at}",
         })
+
     if doc.buyer_signed_at:
         who = " ".join([doc.buyer_sign_name or "", doc.buyer_sign_email or ""]).strip() or "Buyer"
         events.append({
@@ -663,9 +613,6 @@ def documents_contract_edit(document_id):
         flash("This document can no longer be edited.", "danger")
         return redirect(url_for("admin.documents_view", document_id=str(doc.id)))
 
-    # IMPORTANT:
-    # Do NOT do payload = dict(doc.payload) here.
-    # We want SQLAlchemy to track changes (MutableDict), and we also force-change detection via flag_modified.
     if doc.payload is None:
         doc.payload = {}
 
@@ -690,24 +637,71 @@ def documents_contract_edit(document_id):
         except Exception:
             return None
 
-    incoterm = _clean_str(request.form.get("incoterm"))
+    def _s(key: str) -> str:
+        return _clean_str(request.form.get(key))
 
-    # NEW: product selection + currency
-    product_species = _clean_str(request.form.get("product_species")).lower()
-    currency = (_clean_str(request.form.get("currency")).upper() or "USD")
+    incoterm = _s("incoterm")
+
+    product_species = _s("product_species").lower()
+    currency = (_s("currency").upper() or "USD")
 
     quantity_kg = _to_int(request.form.get("quantity_kg"))
     price_per_kg = _to_float(request.form.get("price_per_kg"))
 
     advance_percent = _to_int(request.form.get("advance_percent"))
     balance_percent = _to_int(request.form.get("balance_percent"))
-    balance_condition = _clean_str(request.form.get("balance_condition"))
+    balance_condition = _s("balance_condition")
 
+    # Optional product fields
+    condition = _s("condition") or "Chilled (0–4°C)"
+    packaging = _s("packaging") or "Food-grade export packaging"
+    certification = _s("certification") or "Veterinary Health + Halal Certificate"
+
+    # Optional notes
+    contract_notes = _s("contract_notes")
+    delivery_notes = _s("delivery_notes")
+    handover_point = _s("handover_point") or "JKIA / Nairobi"
+
+    # Optional payment extra fields
+    payment_method = _s("payment_method") or "T/T (bank transfer)"
+    payment_reference = _s("payment_reference") or "As invoiced"
+
+    # NEW: payment instructions (T/T)
+    pay_account_name = _s("payment_account_name")
+    pay_account_number = _s("payment_account_number")
+    pay_branch_code = _s("payment_branch_code")
+    pay_branch_name = _s("payment_branch_name")
+    pay_bank_code = _s("payment_bank_code")
+    pay_swift_code = _s("payment_swift_code")
+
+    # NEW: representatives / appointed agent
+    buyer_rep_name = _s("contract_buyer_rep_name")
+    buyer_rep_designation = _s("contract_buyer_rep_designation")
+    buyer_rep_nationality = _s("contract_buyer_rep_nationality")
+    buyer_rep_residency = _s("contract_buyer_rep_residency")
+    buyer_rep_id_number = _s("contract_buyer_rep_id_number")
+
+    seller_agent_name = _s("contract_seller_agent_name")
+    seller_agent_designation = _s("contract_seller_agent_designation")
+    seller_agent_nationality = _s("contract_seller_agent_nationality")
+    seller_agent_residency = _s("contract_seller_agent_residency")
+    seller_agent_id_number = _s("contract_seller_agent_id_number")
+    seller_agent_scope = _s("contract_seller_agent_scope")
+    seller_agent_purpose = _s("contract_seller_agent_purpose")
+
+    # NEW: seller sign-off (admin signing)
+    seller_sign_name = _s("contract_seller_sign_name")
+    seller_sign_title = _s("contract_seller_sign_title")
+    seller_sign_date = _s("contract_seller_sign_date")
+    seller_sign_email = _s("contract_seller_sign_email")
+
+    # ----------------------------
+    # Core validations (keep strict only where needed)
+    # ----------------------------
     if not incoterm:
         flash("Incoterm is required.", "danger")
         return render_template("admin/document_contract_edit.html", document=doc, payload=payload)
 
-    # NEW: require Goat/Lamb/Beef selection
     if product_species not in ("goat", "lamb", "beef"):
         flash("Product selection is required (Goat / Lamb / Beef).", "danger")
         return render_template("admin/document_contract_edit.html", document=doc, payload=payload)
@@ -736,38 +730,84 @@ def documents_contract_edit(document_id):
         flash("Balance condition is required (e.g. Against Air Waybill copy).", "danger")
         return render_template("admin/document_contract_edit.html", document=doc, payload=payload)
 
-    # NEW: compute total server-side (do not rely on readonly input posting)
+    # Compute total server-side
     total_value = round(float(quantity_kg) * float(price_per_kg), 2)
 
     # ----------------------------
-    # Update payload safely
-    # NOTE: nested dict edits are not always tracked; we force it with flag_modified().
+    # Update payload (nested keys)
     # ----------------------------
     payload.setdefault("contract", {})
     payload.setdefault("product", {})
     payload.setdefault("pricing", {})
     payload.setdefault("payment", {})
-    payload.setdefault("shipment", {})  # safe, even if you don't use it yet
+    payload.setdefault("shipment", {})
 
+    # Contract basics
     payload["contract"]["incoterm"] = incoterm
+    payload["contract"]["notes"] = contract_notes
 
-    # NEW: persist product selection used by PDF
+    # Product
     payload["product"]["species"] = product_species
     payload["product"]["quantity_kg"] = quantity_kg
+    payload["product"]["condition"] = condition
+    payload["product"]["packaging"] = packaging
+    payload["product"]["certification"] = certification
 
+    # Pricing
     payload["pricing"]["price_per_kg"] = round(float(price_per_kg), 4)
     payload["pricing"]["currency"] = currency
     payload["pricing"]["total_value"] = total_value
 
+    # Payment terms
     payload["payment"]["advance_percent"] = int(advance_percent)
     payload["payment"]["balance_percent"] = int(balance_percent)
     payload["payment"]["balance_condition"] = balance_condition
+    payload["payment"]["method"] = payment_method
+    payload["payment"]["reference"] = payment_reference
 
-    # optional toggles (checkboxes)
+    # Optional toggles (checkboxes)
     payload["payment"]["no_cod"] = bool(request.form.get("no_cod"))
     payload["payment"]["no_payment_after_arrival"] = bool(request.form.get("no_payment_after_arrival"))
 
-    # FORCE SQLAlchemy to persist JSON changes even if nested mutation isn't detected
+    # NEW: Payment instructions (T/T)
+    payload["payment"]["account_name"] = pay_account_name
+    payload["payment"]["account_number"] = pay_account_number
+    payload["payment"]["branch_code"] = pay_branch_code
+    payload["payment"]["branch_name"] = pay_branch_name
+    payload["payment"]["bank_code"] = pay_bank_code
+    payload["payment"]["swift_code"] = pay_swift_code
+
+    # Shipment / Delivery
+    payload["shipment"]["handover_point"] = handover_point
+    payload["shipment"]["notes"] = delivery_notes
+
+    # NEW: Buyer representative
+    payload["contract"]["buyer_rep_name"] = buyer_rep_name
+    payload["contract"]["buyer_rep_designation"] = buyer_rep_designation
+    payload["contract"]["buyer_rep_nationality"] = buyer_rep_nationality
+    payload["contract"]["buyer_rep_residency"] = buyer_rep_residency
+    payload["contract"]["buyer_rep_id_number"] = buyer_rep_id_number
+
+    # NEW: Seller appointed agent
+    payload["contract"]["seller_agent_name"] = seller_agent_name
+    payload["contract"]["seller_agent_designation"] = seller_agent_designation
+    payload["contract"]["seller_agent_nationality"] = seller_agent_nationality
+    payload["contract"]["seller_agent_residency"] = seller_agent_residency
+    payload["contract"]["seller_agent_id_number"] = seller_agent_id_number
+    payload["contract"]["seller_agent_scope"] = seller_agent_scope
+    payload["contract"]["seller_agent_purpose"] = seller_agent_purpose
+
+    # NEW: Seller sign-off (admin side) — store if provided
+    if seller_sign_name:
+        payload["contract"]["seller_sign_name"] = seller_sign_name
+    if seller_sign_title:
+        payload["contract"]["seller_sign_title"] = seller_sign_title
+    if seller_sign_date:
+        payload["contract"]["seller_sign_date"] = seller_sign_date
+    if seller_sign_email:
+        payload["contract"]["seller_sign_email"] = seller_sign_email
+
+    # Force SQLAlchemy to persist JSON changes
     flag_modified(doc, "payload")
 
     db.session.add(doc)
@@ -833,6 +873,24 @@ def documents_execute(document_id):
         signed_by_user_id=getattr(current_user, "id", None),
     )
     db.session.add(sig)
+
+    # ✅ NEW: Persist seller sign-off into payload (for PDF bottom)
+    if doc.payload is None:
+        doc.payload = {}
+    doc.payload.setdefault("contract", {})
+
+    now_utc = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    c = doc.payload["contract"]
+
+    # Only set if not already filled (editor can override)
+    c.setdefault("seller_sign_name", signer_name)
+    c.setdefault("seller_sign_email", signer_email or "")
+    if not c.get("seller_sign_title"):
+        c["seller_sign_title"] = "Authorized Representative"
+    c.setdefault("seller_sign_date", now_utc)
+
+    flag_modified(doc, "payload")
+    # ✅ end new block
 
     doc.status = "executed"
     db.session.add(doc)
