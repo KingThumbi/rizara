@@ -1,0 +1,267 @@
+{% extends "layouts/base.html" %}
+
+{% block title %}New Market Purchase{% endblock %}
+
+{% block body %}
+<div class="max-w-5xl mx-auto px-6 py-8">
+
+  <!-- Header -->
+  <div class="mb-8">
+    <div class="flex items-center gap-3 mb-2">
+      <a
+        href="{{ url_for('main.market_purchase_list') }}"
+        class="text-sm text-jungle hover:underline"
+      >
+        ← Back to Market Purchases
+      </a>
+    </div>
+
+    <h1 class="text-3xl font-bold text-jungle">Create Market Purchase</h1>
+    <p class="text-gray-600 mt-1">
+      Record direct market procurement and either attach it to an existing aggregation batch
+      or create a new aggregation batch from this purchase.
+    </p>
+  </div>
+
+  <!-- Flash Messages -->
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      <div class="mb-6 space-y-3">
+        {% for category, message in messages %}
+          <div class="px-4 py-3 rounded-lg
+            {% if category == 'success' %}
+              bg-green-100 text-green-800
+            {% elif category in ['danger', 'error'] %}
+              bg-red-100 text-red-800
+            {% elif category == 'warning' %}
+              bg-yellow-100 text-yellow-800
+            {% else %}
+              bg-gray-100 text-gray-800
+            {% endif %}
+          ">
+            {{ message }}
+          </div>
+        {% endfor %}
+      </div>
+    {% endif %}
+  {% endwith %}
+
+  <section class="bg-white rounded-xl shadow p-6 md:p-8">
+    <form method="POST" action="{{ url_for('main.market_purchase_new') }}" class="space-y-8">
+
+      <!-- Aggregation choice -->
+      <div>
+        <h2 class="text-xl font-semibold text-jungle mb-4">Aggregation Batch</h2>
+
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <!-- Existing batch -->
+          <div class="rounded-xl border border-gray-200 p-5">
+            <div class="flex items-center justify-between mb-3">
+              <h3 class="font-semibold text-gray-900">Use Existing Batch</h3>
+              <span class="text-xs uppercase text-gray-500">Optional</span>
+            </div>
+
+            <label class="block text-sm font-medium text-gray-700 mb-1">
+              Existing Aggregation Batch
+            </label>
+            <select
+              name="aggregation_batch_id"
+              class="w-full border border-gray-300 rounded-lg px-3 py-3 focus:outline-none focus:ring-2 focus:ring-jungle"
+            >
+              <option value="">Select existing batch</option>
+              {% for batch in batches %}
+                <option value="{{ batch.id }}">
+                  #{{ batch.id }} — {{ batch.animal_type|title }} — {{ batch.site_name }}
+                  {% if batch.date_received %}
+                    — {{ batch.date_received.strftime('%Y-%m-%d') }}
+                  {% endif %}
+                </option>
+              {% endfor %}
+            </select>
+
+            <p class="text-xs text-gray-500 mt-2">
+              Choose this if the purchase is topping up a batch that already exists.
+            </p>
+          </div>
+
+          <!-- Create new batch -->
+          <div class="rounded-xl border border-emerald-200 bg-emerald-50 p-5">
+            <div class="flex items-center justify-between mb-3">
+              <h3 class="font-semibold text-gray-900">Create New Batch</h3>
+              <span class="text-xs uppercase text-emerald-700">Recommended</span>
+            </div>
+
+            <label class="flex items-center gap-3 mb-4">
+              <input
+                type="checkbox"
+                name="create_new_batch"
+                value="yes"
+                class="h-4 w-4 rounded border-gray-300 text-jungle focus:ring-jungle"
+              >
+              <span class="text-sm font-medium text-gray-800">
+                Create a new aggregation batch from this market purchase
+              </span>
+            </label>
+
+            <div class="grid grid-cols-1 gap-4">
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">
+                  New Batch Site Name
+                </label>
+                <input
+                  type="text"
+                  name="site_name"
+                  placeholder="e.g. Garissa Holding Yard"
+                  class="w-full border border-gray-300 rounded-lg px-3 py-3 focus:outline-none focus:ring-2 focus:ring-jungle"
+                >
+              </div>
+
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">
+                  Date Received
+                </label>
+                <input
+                  type="date"
+                  name="date_received"
+                  value="{{ date.today().isoformat() if date else '' }}"
+                  class="w-full border border-gray-300 rounded-lg px-3 py-3 focus:outline-none focus:ring-2 focus:ring-jungle"
+                >
+              </div>
+            </div>
+
+            <p class="text-xs text-gray-600 mt-2">
+              Use this when the market purchase is starting a brand new aggregation batch.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Purchase details -->
+      <div>
+        <h2 class="text-xl font-semibold text-jungle mb-4">Purchase Details</h2>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">
+              Animal Type *
+            </label>
+            <select
+              name="animal_type"
+              required
+              class="w-full border border-gray-300 rounded-lg px-3 py-3 focus:outline-none focus:ring-2 focus:ring-jungle"
+            >
+              <option value="">Select animal type</option>
+              <option value="goat">Goat</option>
+              <option value="sheep">Sheep</option>
+              <option value="cattle">Cattle</option>
+            </select>
+          </div>
+
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">
+              Purchase Date *
+            </label>
+            <input
+              type="date"
+              name="purchase_date"
+              value="{{ date.today().isoformat() if date else '' }}"
+              required
+              class="w-full border border-gray-300 rounded-lg px-3 py-3 focus:outline-none focus:ring-2 focus:ring-jungle"
+            >
+          </div>
+
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">
+              Market Name *
+            </label>
+            <input
+              type="text"
+              name="market_name"
+              required
+              placeholder="e.g. Garissa Market"
+              class="w-full border border-gray-300 rounded-lg px-3 py-3 focus:outline-none focus:ring-2 focus:ring-jungle"
+            >
+          </div>
+
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">
+              Vendor Name
+            </label>
+            <input
+              type="text"
+              name="vendor_name"
+              placeholder="Optional"
+              class="w-full border border-gray-300 rounded-lg px-3 py-3 focus:outline-none focus:ring-2 focus:ring-jungle"
+            >
+          </div>
+
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">
+              Broker Name
+            </label>
+            <input
+              type="text"
+              name="broker_name"
+              placeholder="Optional"
+              class="w-full border border-gray-300 rounded-lg px-3 py-3 focus:outline-none focus:ring-2 focus:ring-jungle"
+            >
+          </div>
+
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">
+              Reference
+            </label>
+            <input
+              type="text"
+              name="reference"
+              placeholder="Optional code / deal ref"
+              class="w-full border border-gray-300 rounded-lg px-3 py-3 focus:outline-none focus:ring-2 focus:ring-jungle"
+            >
+          </div>
+
+          <div class="md:col-span-2">
+            <label class="block text-sm font-medium text-gray-700 mb-1">
+              Notes
+            </label>
+            <textarea
+              name="notes"
+              rows="4"
+              placeholder="Optional notes about the market procurement"
+              class="w-full border border-gray-300 rounded-lg px-3 py-3 focus:outline-none focus:ring-2 focus:ring-jungle"
+            ></textarea>
+          </div>
+        </div>
+      </div>
+
+      <!-- Help -->
+      <div class="rounded-xl border border-blue-200 bg-blue-50 px-4 py-4">
+        <h3 class="text-sm font-semibold text-blue-900 mb-1">What happens next?</h3>
+        <p class="text-sm text-blue-800">
+          After saving this market purchase, you will open its detail page and add
+          bulk purchase lines such as quantity, price, estimated live weight,
+          and estimated carcass weight. You will also record related expenses like
+          transport, documentation, broker fees, and accommodation.
+        </p>
+      </div>
+
+      <!-- Actions -->
+      <div class="flex flex-col sm:flex-row gap-3 pt-2">
+        <button
+          type="submit"
+          class="bg-jungle text-white px-6 py-3 rounded-lg font-semibold hover:bg-jungleLight transition"
+        >
+          Create Market Purchase
+        </button>
+
+        <a
+          href="{{ url_for('main.market_purchase_list') }}"
+          class="bg-gray-100 text-gray-800 px-6 py-3 rounded-lg font-semibold hover:bg-gray-200 transition text-center"
+        >
+          Cancel
+        </a>
+      </div>
+    </form>
+  </section>
+
+</div>
+{% endblock %}

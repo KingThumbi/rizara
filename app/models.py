@@ -262,6 +262,16 @@ ALLOWED_TRANSITIONS = {
     "void": set(),
 }
 
+# =========================================================
+# Market Purchase Statuses
+# =========================================================
+MARKET_PURCHASE_STATUSES = {
+    "draft",
+    "confirmed",
+    "received",
+    "cancelled",
+}
+
 
 def can_transition(current: str, target: str) -> bool:
     return target in ALLOWED_TRANSITIONS.get(current, set())
@@ -389,24 +399,104 @@ class AggregationBatch(db.Model):
     __tablename__ = "aggregation_batch"
 
     id = db.Column(db.Integer, primary_key=True)
+
+    # Batch identity
     animal_type = db.Column(db.String(20), nullable=False)  # goat, sheep, cattle
     site_name = db.Column(db.String(120), nullable=False)
-    date_received = db.Column(db.Date, default=date.today)
+    date_received = db.Column(db.Date, default=date.today, nullable=False)
 
-    is_locked = db.Column(db.Boolean, default=False)
+    # Lifecycle
+    is_locked = db.Column(db.Boolean, default=False, nullable=False)
     locked_at = db.Column(db.DateTime, nullable=True)
 
-    created_at = db.Column(db.DateTime, default=utcnow_naive)
+    # Audit
+    created_at = db.Column(db.DateTime, default=utcnow_naive, nullable=False)
 
-    created_by_user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
-    created_by = db.relationship("User", foreign_keys=[created_by_user_id], lazy="joined")
+    created_by_user_id = db.Column(
+        db.Integer,
+        db.ForeignKey("user.id"),
+        nullable=False,
+    )
+    created_by = db.relationship(
+        "User",
+        foreign_keys=[created_by_user_id],
+        lazy="joined",
+    )
 
-    goats = db.relationship("Goat", back_populates="aggregation_batch", lazy="select")
-    sheep = db.relationship("Sheep", back_populates="aggregation_batch", lazy="select")
-    cattle = db.relationship("Cattle", back_populates="aggregation_batch", lazy="select")
+    # On-farm animals aggregated into this batch
+    goats = db.relationship(
+        "Goat",
+        back_populates="aggregation_batch",
+        lazy="select",
+    )
+    sheep = db.relationship(
+        "Sheep",
+        back_populates="aggregation_batch",
+        lazy="select",
+    )
+    cattle = db.relationship(
+        "Cattle",
+        back_populates="aggregation_batch",
+        lazy="select",
+    )
+
+    # Direct market procurement attached to this batch
+    market_purchases = db.relationship(
+        "MarketPurchase",
+        back_populates="aggregation_batch",
+        lazy="select",
+        cascade="all, delete-orphan",
+    )
+    market_purchase_expenses = db.relationship(
+        "MarketPurchaseExpense",
+        back_populates="aggregation_batch",
+        lazy="select",
+        cascade="all, delete-orphan",
+    )
+
+    __table_args__ = (
+        db.CheckConstraint(
+            "animal_type in ('goat','sheep','cattle')",
+            name="ck_aggregation_batch_animal_type",
+        ),
+    )
+
+    @property
+    def farm_headcount(self) -> int:
+        if self.animal_type == "goat":
+            return len(self.goats)
+        if self.animal_type == "sheep":
+            return len(self.sheep)
+        if self.animal_type == "cattle":
+            return len(self.cattle)
+        return 0
+
+    @property
+    def market_headcount(self) -> int:
+        return sum((purchase.total_headcount or 0) for purchase in self.market_purchases)
+
+    @property
+    def total_headcount(self) -> int:
+        return self.farm_headcount + self.market_headcount
+
+    @property
+    def market_purchase_cost_total(self) -> float:
+        return float(sum((purchase.total_purchase_cost or 0.0) for purchase in self.market_purchases))
+
+    @property
+    def market_expense_cost_total(self) -> float:
+        return float(sum((purchase.total_expense_cost or 0.0) for purchase in self.market_purchases))
+
+    @property
+    def direct_market_cost_total(self) -> float:
+        return self.market_purchase_cost_total + self.market_expense_cost_total
+
+    @property
+    def estimated_market_carcass_weight_kg(self) -> float:
+        return float(sum((purchase.estimated_total_carcass_weight_kg or 0.0) for purchase in self.market_purchases))
 
     def __repr__(self) -> str:
-        return f"<AggregationBatch {self.id} {self.animal_type}>"
+        return f"<AggregationBatch {self.id} {self.animal_type} {self.site_name}>"
 
 
 # =========================================================
@@ -414,22 +504,51 @@ class AggregationBatch(db.Model):
 # =========================================================
 processing_goats = db.Table(
     "processing_goats",
-    db.Column("processing_batch_id", db.Integer, db.ForeignKey("processing_batch.id"), primary_key=True),
-    db.Column("goat_id", UUID(as_uuid=True), db.ForeignKey("goat.id"), primary_key=True),
+    db.Column(
+        "processing_batch_id",
+        db.Integer,
+        db.ForeignKey("processing_batch.id"),
+        primary_key=True,
+    ),
+    db.Column(
+        "goat_id",
+        UUID(as_uuid=True),
+        db.ForeignKey("goat.id"),
+        primary_key=True,
+    ),
 )
 
 processing_sheep = db.Table(
     "processing_sheep",
-    db.Column("processing_batch_id", db.Integer, db.ForeignKey("processing_batch.id"), primary_key=True),
-    db.Column("sheep_id", UUID(as_uuid=True), db.ForeignKey("sheep.id"), primary_key=True),
+    db.Column(
+        "processing_batch_id",
+        db.Integer,
+        db.ForeignKey("processing_batch.id"),
+        primary_key=True,
+    ),
+    db.Column(
+        "sheep_id",
+        UUID(as_uuid=True),
+        db.ForeignKey("sheep.id"),
+        primary_key=True,
+    ),
 )
 
 processing_cattle = db.Table(
     "processing_cattle",
-    db.Column("processing_batch_id", db.Integer, db.ForeignKey("processing_batch.id"), primary_key=True),
-    db.Column("cattle_id", UUID(as_uuid=True), db.ForeignKey("cattle.id"), primary_key=True),
+    db.Column(
+        "processing_batch_id",
+        db.Integer,
+        db.ForeignKey("processing_batch.id"),
+        primary_key=True,
+    ),
+    db.Column(
+        "cattle_id",
+        UUID(as_uuid=True),
+        db.ForeignKey("cattle.id"),
+        primary_key=True,
+    ),
 )
-
 
 # =========================================================
 # Processing Batch (single animal type per batch)
@@ -804,3 +923,364 @@ class AssetMaintenance(db.Model):
 
     created_by_user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=True)
     created_at = db.Column(db.DateTime, default=utcnow_naive, nullable=False)
+
+# =========================================================
+# MarketPurchase
+# Direct external procurement into an existing aggregation batch
+# =========================================================
+class MarketPurchase(db.Model):
+    __tablename__ = "market_purchase"
+
+    id = db.Column(db.Integer, primary_key=True)
+
+    aggregation_batch_id = db.Column(
+        db.Integer,
+        db.ForeignKey("aggregation_batch.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    aggregation_batch = db.relationship(
+        "AggregationBatch",
+        back_populates="market_purchases",
+        lazy="joined",
+    )
+
+    animal_type = db.Column(db.String(20), nullable=False)  # goat, sheep, cattle
+    purchase_date = db.Column(db.Date, default=date.today, nullable=False)
+
+    market_name = db.Column(db.String(120), nullable=False)
+    vendor_name = db.Column(db.String(160), nullable=True)
+    broker_name = db.Column(db.String(160), nullable=True)
+
+    reference = db.Column(db.String(120), nullable=True)
+
+    status = db.Column(
+        db.String(20),
+        nullable=False,
+        default="draft",
+        index=True,
+    )
+
+    notes = db.Column(db.Text, nullable=True)
+
+    created_by_user_id = db.Column(
+        db.Integer,
+        db.ForeignKey("user.id"),
+        nullable=True,
+    )
+    created_by = db.relationship(
+        "User",
+        foreign_keys=[created_by_user_id],
+        lazy="joined",
+    )
+
+    created_at = db.Column(
+        db.DateTime,
+        default=utcnow_naive,
+        nullable=False,
+    )
+    updated_at = db.Column(
+        db.DateTime,
+        default=utcnow_naive,
+        onupdate=utcnow_naive,
+        nullable=False,
+    )
+
+    lines = db.relationship(
+        "MarketPurchaseLine",
+        back_populates="market_purchase",
+        lazy="select",
+        cascade="all, delete-orphan",
+    )
+
+    expenses = db.relationship(
+        "MarketPurchaseExpense",
+        back_populates="market_purchase",
+        lazy="select",
+        cascade="all, delete-orphan",
+    )
+
+    __table_args__ = (
+        db.CheckConstraint(
+            "animal_type in ('goat','sheep','cattle')",
+            name="ck_market_purchase_animal_type",
+        ),
+        db.CheckConstraint(
+            "status in ('draft','confirmed','received','cancelled')",
+            name="ck_market_purchase_status",
+        ),
+        db.Index(
+            "ix_market_purchase_batch_animal_status",
+            "aggregation_batch_id",
+            "animal_type",
+            "status",
+        ),
+    )
+
+    @property
+    def total_headcount(self) -> int:
+        return sum((line.qty or 0) for line in self.lines)
+
+    @property
+    def total_purchase_cost(self) -> float:
+        return float(sum((line.total_price_kes or 0.0) for line in self.lines))
+
+    @property
+    def total_expense_cost(self) -> float:
+        return float(sum((expense.amount or 0.0) for expense in self.expenses))
+
+    @property
+    def total_cost(self) -> float:
+        return self.total_purchase_cost + self.total_expense_cost
+
+    @property
+    def average_price_per_head(self) -> float:
+        if not self.total_headcount:
+            return 0.0
+        return float(self.total_purchase_cost / self.total_headcount)
+
+    @property
+    def estimated_total_live_weight_kg(self) -> float:
+        return float(
+            sum(
+                (line.qty or 0) * (line.estimated_live_weight_per_head_kg or 0.0)
+                for line in self.lines
+            )
+        )
+
+    @property
+    def estimated_total_carcass_weight_kg(self) -> float:
+        return float(
+            sum(
+                (line.qty or 0) * (line.estimated_carcass_weight_per_head_kg or 0.0)
+                for line in self.lines
+            )
+        )
+
+    def can_transition(self, target: str) -> bool:
+        transitions = {
+            "draft": {"confirmed", "cancelled"},
+            "confirmed": {"received", "cancelled"},
+            "received": set(),
+            "cancelled": set(),
+        }
+        return target in transitions.get(self.status, set())
+
+    def __repr__(self) -> str:
+        return f"<MarketPurchase {self.id} {self.market_name} {self.animal_type} {self.status}>"
+
+# =========================================================
+# MarketPurchaseLine
+# Bulk line items from market buying, linked to one purchase event
+# =========================================================
+class MarketPurchaseLine(db.Model):
+    __tablename__ = "market_purchase_line"
+
+    id = db.Column(db.Integer, primary_key=True)
+
+    market_purchase_id = db.Column(
+        db.Integer,
+        db.ForeignKey("market_purchase.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    market_purchase = db.relationship(
+        "MarketPurchase",
+        back_populates="lines",
+        lazy="joined",
+    )
+
+    qty = db.Column(db.Integer, nullable=False)
+    unit_price_kes = db.Column(db.Float, nullable=False)
+    total_price_kes = db.Column(db.Float, nullable=False)
+
+    estimated_live_weight_per_head_kg = db.Column(db.Float, nullable=True)
+    estimated_carcass_weight_per_head_kg = db.Column(db.Float, nullable=True)
+
+    avg_age_months = db.Column(db.Integer, nullable=True)
+    weight_method = db.Column(
+        db.String(20),
+        nullable=True,
+    )  # estimated | scale | tape | other
+
+    notes = db.Column(db.Text, nullable=True)
+
+    created_at = db.Column(
+        db.DateTime,
+        default=utcnow_naive,
+        nullable=False,
+    )
+    updated_at = db.Column(
+        db.DateTime,
+        default=utcnow_naive,
+        onupdate=utcnow_naive,
+        nullable=False,
+    )
+
+    __table_args__ = (
+        db.CheckConstraint(
+            "qty > 0",
+            name="ck_market_purchase_line_qty_positive",
+        ),
+        db.CheckConstraint(
+            "unit_price_kes >= 0",
+            name="ck_market_purchase_line_unit_price_non_negative",
+        ),
+        db.CheckConstraint(
+            "total_price_kes >= 0",
+            name="ck_market_purchase_line_total_non_negative",
+        ),
+        db.CheckConstraint(
+            "(estimated_live_weight_per_head_kg is null) or (estimated_live_weight_per_head_kg >= 0)",
+            name="ck_market_purchase_line_live_weight_non_negative",
+        ),
+        db.CheckConstraint(
+            "(estimated_carcass_weight_per_head_kg is null) or (estimated_carcass_weight_per_head_kg >= 0)",
+            name="ck_market_purchase_line_carcass_weight_non_negative",
+        ),
+        db.CheckConstraint(
+            "(avg_age_months is null) or (avg_age_months >= 0)",
+            name="ck_market_purchase_line_avg_age_non_negative",
+        ),
+        db.CheckConstraint(
+            "(weight_method is null) or (weight_method in ('estimated','scale','tape','other'))",
+            name="ck_market_purchase_line_weight_method",
+        ),
+    )
+
+    @property
+    def average_price_per_head(self) -> float:
+        if not self.qty:
+            return 0.0
+        return float((self.total_price_kes or 0.0) / self.qty)
+
+    @property
+    def estimated_total_live_weight_kg(self) -> float:
+        if self.estimated_live_weight_per_head_kg is None:
+            return 0.0
+        return float(self.qty * self.estimated_live_weight_per_head_kg)
+
+    @property
+    def estimated_total_carcass_weight_kg(self) -> float:
+        if self.estimated_carcass_weight_per_head_kg is None:
+            return 0.0
+        return float(self.qty * self.estimated_carcass_weight_per_head_kg)
+
+    @property
+    def estimated_live_cost_per_kg(self) -> float:
+        total_live_weight = self.estimated_total_live_weight_kg
+        if total_live_weight <= 0:
+            return 0.0
+        return float((self.total_price_kes or 0.0) / total_live_weight)
+
+    @property
+    def estimated_carcass_cost_per_kg(self) -> float:
+        total_carcass_weight = self.estimated_total_carcass_weight_kg
+        if total_carcass_weight <= 0:
+            return 0.0
+        return float((self.total_price_kes or 0.0) / total_carcass_weight)
+
+    def __repr__(self) -> str:
+        return (
+            f"<MarketPurchaseLine {self.id} "
+            f"qty={self.qty} unit_price_kes={self.unit_price_kes}>"
+        )
+
+
+# =========================================================
+# MarketPurchaseExpense
+# Non-animal direct procurement costs linked to a market purchase
+# =========================================================
+class MarketPurchaseExpense(db.Model):
+    __tablename__ = "market_purchase_expense"
+
+    id = db.Column(db.Integer, primary_key=True)
+
+    aggregation_batch_id = db.Column(
+        db.Integer,
+        db.ForeignKey("aggregation_batch.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    aggregation_batch = db.relationship(
+        "AggregationBatch",
+        back_populates="market_purchase_expenses",
+        lazy="joined",
+    )
+
+    market_purchase_id = db.Column(
+        db.Integer,
+        db.ForeignKey("market_purchase.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    market_purchase = db.relationship(
+        "MarketPurchase",
+        back_populates="expenses",
+        lazy="joined",
+    )
+
+    expense_type = db.Column(
+        db.String(40),
+        nullable=False,
+        index=True,
+    )  # transport, documentation, broker, accommodation, meals, misc
+
+    amount = db.Column(db.Float, nullable=False)
+    currency = db.Column(db.String(10), default="KES", nullable=False)
+
+    incurred_date = db.Column(
+        db.Date,
+        default=date.today,
+        nullable=False,
+    )
+
+    paid_to = db.Column(db.String(160), nullable=True)
+    reference = db.Column(db.String(120), nullable=True)
+    notes = db.Column(db.Text, nullable=True)
+
+    created_by_user_id = db.Column(
+        db.Integer,
+        db.ForeignKey("user.id"),
+        nullable=True,
+    )
+    created_by = db.relationship(
+        "User",
+        foreign_keys=[created_by_user_id],
+        lazy="joined",
+    )
+
+    created_at = db.Column(
+        db.DateTime,
+        default=utcnow_naive,
+        nullable=False,
+    )
+    updated_at = db.Column(
+        db.DateTime,
+        default=utcnow_naive,
+        onupdate=utcnow_naive,
+        nullable=False,
+    )
+
+    __table_args__ = (
+        db.CheckConstraint(
+            "amount >= 0",
+            name="ck_market_purchase_expense_amount_non_negative",
+        ),
+        db.CheckConstraint(
+            "expense_type in ('transport','documentation','broker','accommodation','meals','miscellaneous','loading','offloading','labour','permit','fuel','other')",
+            name="ck_market_purchase_expense_type",
+        ),
+        db.Index(
+            "ix_market_purchase_expense_batch_purchase_type",
+            "aggregation_batch_id",
+            "market_purchase_id",
+            "expense_type",
+        ),
+    )
+
+    def __repr__(self) -> str:
+        return (
+            f"<MarketPurchaseExpense {self.id} "
+            f"{self.expense_type} {self.amount} {self.currency}>"
+        )

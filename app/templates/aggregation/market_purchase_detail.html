@@ -1,0 +1,647 @@
+{% extends "layouts/base.html" %}
+
+{% block title %}Market Purchase #{{ purchase.id }}{% endblock %}
+
+{% block body %}
+<div class="max-w-7xl mx-auto px-6 py-8">
+
+  <!-- Header -->
+  <div class="flex flex-col md:flex-row md:items-start md:justify-between gap-4 mb-8">
+    <div>
+      <div class="flex items-center gap-3 mb-2">
+        <a
+          href="{{ url_for('main.market_purchase_list') }}"
+          class="text-sm text-jungle hover:underline"
+        >
+          ← Back to Market Purchases
+        </a>
+
+        <span
+          class="inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold
+          {% if purchase.status == 'draft' %}
+            bg-yellow-100 text-yellow-800
+          {% elif purchase.status == 'confirmed' %}
+            bg-blue-100 text-blue-800
+          {% elif purchase.status == 'received' %}
+            bg-green-100 text-green-800
+          {% elif purchase.status == 'cancelled' %}
+            bg-red-100 text-red-800
+          {% else %}
+            bg-gray-100 text-gray-700
+          {% endif %}"
+        >
+          {{ purchase.status|replace('_', ' ')|title }}
+        </span>
+      </div>
+
+      <h1 class="text-3xl font-bold text-jungle">
+        Market Purchase #{{ purchase.id }}
+      </h1>
+      <p class="text-gray-600 mt-1">
+        {{ purchase.market_name }} • {{ purchase.animal_type|title }} •
+        {{ purchase.purchase_date.strftime('%Y-%m-%d') if purchase.purchase_date else '-' }}
+      </p>
+    </div>
+
+    <div class="bg-white rounded-xl shadow p-4 min-w-[280px]">
+      <div class="text-sm text-gray-500">Aggregation Batch</div>
+      <div class="text-lg font-semibold text-jungle mt-1">
+        Batch #{{ purchase.aggregation_batch.id if purchase.aggregation_batch else '-' }}
+      </div>
+      <div class="text-sm text-gray-600 mt-1">
+        {{ purchase.aggregation_batch.site_name if purchase.aggregation_batch else '-' }}
+      </div>
+      <div class="text-sm text-gray-500 mt-1">
+        {{ purchase.aggregation_batch.animal_type|title if purchase.aggregation_batch else '-' }}
+      </div>
+    </div>
+  </div>
+
+  <!-- Flash Messages -->
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      <div class="mb-6 space-y-3">
+        {% for category, message in messages %}
+          <div class="px-4 py-3 rounded-lg
+            {% if category == 'success' %}
+              bg-green-100 text-green-800
+            {% elif category in ['danger', 'error'] %}
+              bg-red-100 text-red-800
+            {% elif category == 'warning' %}
+              bg-yellow-100 text-yellow-800
+            {% else %}
+              bg-gray-100 text-gray-800
+            {% endif %}
+          ">
+            {{ message }}
+          </div>
+        {% endfor %}
+      </div>
+    {% endif %}
+  {% endwith %}
+
+  <!-- Purchase Meta -->
+  <section class="bg-white rounded-xl shadow p-6 mb-8">
+    <h2 class="text-xl font-semibold text-jungle mb-4">Purchase Details</h2>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 text-sm">
+      <div>
+        <div class="text-gray-500 uppercase text-xs">Market</div>
+        <div class="font-semibold text-gray-900 mt-1">{{ purchase.market_name or '-' }}</div>
+      </div>
+      <div>
+        <div class="text-gray-500 uppercase text-xs">Animal Type</div>
+        <div class="font-semibold text-gray-900 mt-1">{{ purchase.animal_type|title }}</div>
+      </div>
+      <div>
+        <div class="text-gray-500 uppercase text-xs">Vendor</div>
+        <div class="font-semibold text-gray-900 mt-1">{{ purchase.vendor_name or '-' }}</div>
+      </div>
+      <div>
+        <div class="text-gray-500 uppercase text-xs">Broker</div>
+        <div class="font-semibold text-gray-900 mt-1">{{ purchase.broker_name or '-' }}</div>
+      </div>
+      <div>
+        <div class="text-gray-500 uppercase text-xs">Reference</div>
+        <div class="font-semibold text-gray-900 mt-1">{{ purchase.reference or '-' }}</div>
+      </div>
+      <div>
+        <div class="text-gray-500 uppercase text-xs">Created By</div>
+        <div class="font-semibold text-gray-900 mt-1">
+          {{ purchase.created_by.email if purchase.created_by else '-' }}
+        </div>
+      </div>
+      <div class="md:col-span-2">
+        <div class="text-gray-500 uppercase text-xs">Notes</div>
+        <div class="font-semibold text-gray-900 mt-1 whitespace-pre-line">
+          {{ purchase.notes or '-' }}
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- KPI Cards -->
+  <section class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-6 mb-8">
+    <div class="bg-white rounded-xl shadow p-6 border-l-8 border-jungle">
+      <h3 class="text-gray-500 text-sm uppercase">Headcount</h3>
+      <p class="text-3xl font-bold text-jungle mt-2">{{ purchase.total_headcount }}</p>
+    </div>
+
+    <div class="bg-white rounded-xl shadow p-6 border-l-8 border-gold">
+      <h3 class="text-gray-500 text-sm uppercase">Purchase Cost</h3>
+      <p class="text-3xl font-bold text-jungle mt-2">
+        {{ "{:,.0f}".format(purchase.total_purchase_cost or 0) }}
+      </p>
+      <p class="text-xs text-gray-500 mt-2">KES</p>
+    </div>
+
+    <div class="bg-white rounded-xl shadow p-6 border-l-8 border-purple-500">
+      <h3 class="text-gray-500 text-sm uppercase">Expenses</h3>
+      <p class="text-3xl font-bold text-jungle mt-2">
+        {{ "{:,.0f}".format(purchase.total_expense_cost or 0) }}
+      </p>
+      <p class="text-xs text-gray-500 mt-2">KES</p>
+    </div>
+
+    <div class="bg-white rounded-xl shadow p-6 border-l-8 border-blue-600">
+      <h3 class="text-gray-500 text-sm uppercase">Total Cost</h3>
+      <p class="text-3xl font-bold text-jungle mt-2">
+        {{ "{:,.0f}".format(purchase.total_cost or 0) }}
+      </p>
+      <p class="text-xs text-gray-500 mt-2">KES</p>
+    </div>
+
+    <div class="bg-white rounded-xl shadow p-6 border-l-8 border-orange-500">
+      <h3 class="text-gray-500 text-sm uppercase">Est. Live Weight</h3>
+      <p class="text-3xl font-bold text-jungle mt-2">
+        {{ "{:,.1f}".format(purchase.estimated_total_live_weight_kg or 0) }}
+      </p>
+      <p class="text-xs text-gray-500 mt-2">kg</p>
+    </div>
+
+    <div class="bg-white rounded-xl shadow p-6 border-l-8 border-emerald-600">
+      <h3 class="text-gray-500 text-sm uppercase">Est. Carcass</h3>
+      <p class="text-3xl font-bold text-jungle mt-2">
+        {{ "{:,.1f}".format(purchase.estimated_total_carcass_weight_kg or 0) }}
+      </p>
+      <p class="text-xs text-gray-500 mt-2">kg</p>
+    </div>
+  </section>
+
+  <!-- Add Forms -->
+  <section class="grid grid-cols-1 xl:grid-cols-2 gap-6 mb-8">
+
+    <!-- Add Purchase Line -->
+    <div class="bg-white rounded-xl shadow p-6">
+      <h2 class="text-xl font-semibold text-jungle mb-4">Add Purchase Line</h2>
+
+      <form method="POST" action="{{ url_for('main.market_purchase_detail', purchase_id=purchase.id) }}" class="space-y-4">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Quantity *</label>
+            <input
+              type="number"
+              name="qty"
+              min="1"
+              required
+              class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-jungle"
+            >
+          </div>
+
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Unit Price (KES) *</label>
+            <input
+              type="number"
+              name="unit_price_kes"
+              min="0"
+              step="0.01"
+              required
+              class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-jungle"
+            >
+          </div>
+
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Est. Live Weight / Head (kg)</label>
+            <input
+              type="number"
+              name="live_weight"
+              min="0"
+              step="0.01"
+              class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-jungle"
+            >
+          </div>
+
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Est. Carcass / Head (kg)</label>
+            <input
+              type="number"
+              name="carcass_weight"
+              min="0"
+              step="0.01"
+              class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-jungle"
+            >
+          </div>
+
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Avg Age (Months)</label>
+            <input
+              type="number"
+              name="avg_age_months"
+              min="0"
+              step="1"
+              class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-jungle"
+            >
+          </div>
+
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Weight Method</label>
+            <select
+              name="weight_method"
+              class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-jungle"
+            >
+              <option value="">Select method</option>
+              <option value="estimated">Estimated</option>
+              <option value="scale">Scale</option>
+              <option value="tape">Tape</option>
+              <option value="other">Other</option>
+            </select>
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">Notes</label>
+          <textarea
+            name="notes"
+            rows="3"
+            class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-jungle"
+          ></textarea>
+        </div>
+
+        <div class="pt-2">
+          <button
+            type="submit"
+            class="bg-jungle text-white px-5 py-3 rounded-lg font-semibold hover:bg-jungleLight transition"
+          >
+            + Add Purchase Line
+          </button>
+        </div>
+      </form>
+    </div>
+
+    <!-- Add Expense -->
+    <div class="bg-white rounded-xl shadow p-6">
+      <h2 class="text-xl font-semibold text-jungle mb-4">Add Expense</h2>
+
+      <form method="POST" action="{{ url_for('main.market_purchase_add_expense', purchase_id=purchase.id) }}" class="space-y-4">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Expense Type *</label>
+            <select
+              name="expense_type"
+              required
+              class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-jungle"
+            >
+              <option value="">Select type</option>
+              <option value="transport">Transport</option>
+              <option value="documentation">Documentation</option>
+              <option value="broker">Broker</option>
+              <option value="accommodation">Accommodation</option>
+              <option value="meals">Meals</option>
+              <option value="miscellaneous">Miscellaneous</option>
+              <option value="loading">Loading</option>
+              <option value="offloading">Offloading</option>
+              <option value="labour">Labour</option>
+              <option value="permit">Permit</option>
+              <option value="fuel">Fuel</option>
+              <option value="other">Other</option>
+            </select>
+          </div>
+
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Amount (KES) *</label>
+            <input
+              type="number"
+              name="amount"
+              min="0"
+              step="0.01"
+              required
+              class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-jungle"
+            >
+          </div>
+
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Date</label>
+            <input
+              type="date"
+              name="incurred_date"
+              class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-jungle"
+            >
+          </div>
+
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Paid To</label>
+            <input
+              type="text"
+              name="paid_to"
+              class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-jungle"
+            >
+          </div>
+
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Reference</label>
+            <input
+              type="text"
+              name="reference"
+              class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-jungle"
+            >
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">Notes</label>
+          <textarea
+            name="notes"
+            rows="3"
+            class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-jungle"
+          ></textarea>
+        </div>
+
+        <div class="pt-2">
+          <button
+            type="submit"
+            class="bg-gold text-jungle px-5 py-3 rounded-lg font-semibold hover:bg-yellow-400 transition"
+          >
+            + Add Expense
+          </button>
+        </div>
+      </form>
+    </div>
+  </section>
+
+  <!-- Purchase Lines Table -->
+  <section class="bg-white rounded-xl shadow p-6 mb-8">
+    <div class="flex items-center justify-between mb-4">
+      <h2 class="text-xl font-semibold text-jungle">Purchase Lines</h2>
+      <div class="text-sm text-gray-500">{{ purchase.lines|length }} line(s)</div>
+    </div>
+
+    {% if purchase.lines %}
+      <div class="overflow-x-auto">
+        <table class="min-w-full text-sm">
+          <thead>
+            <tr class="border-b bg-gray-50">
+              <th class="text-left px-3 py-3">#</th>
+              <th class="text-left px-3 py-3">Qty</th>
+              <th class="text-left px-3 py-3">Unit Price</th>
+              <th class="text-left px-3 py-3">Total</th>
+              <th class="text-left px-3 py-3">Live / Head</th>
+              <th class="text-left px-3 py-3">Carcass / Head</th>
+              <th class="text-left px-3 py-3">Total Carcass</th>
+              <th class="text-left px-3 py-3">Weight / Notes</th>
+              <th class="text-left px-3 py-3">Actions</th>
+            </tr>
+          </thead>
+
+          <tbody>
+            {% for line in purchase.lines %}
+              <tr class="border-b hover:bg-gray-50 align-top">
+                <form method="POST" action="{{ url_for('main.market_purchase_edit_line', purchase_id=purchase.id, line_id=line.id) }}">
+                  <td class="px-3 py-3">{{ loop.index }}</td>
+
+                  <td class="px-3 py-3">
+                    <input
+                      type="number"
+                      name="qty"
+                      min="1"
+                      value="{{ line.qty }}"
+                      class="w-20 border border-gray-300 rounded px-2 py-1"
+                    >
+                  </td>
+
+                  <td class="px-3 py-3">
+                    <input
+                      type="number"
+                      name="unit_price_kes"
+                      min="0"
+                      step="0.01"
+                      value="{{ line.unit_price_kes }}"
+                      class="w-28 border border-gray-300 rounded px-2 py-1"
+                    >
+                  </td>
+
+                  <td class="px-3 py-3 font-semibold">
+                    KES {{ "{:,.0f}".format(line.total_price_kes or 0) }}
+                  </td>
+
+                  <td class="px-3 py-3">
+                    <input
+                      type="number"
+                      name="live_weight"
+                      min="0"
+                      step="0.01"
+                      value="{{ line.estimated_live_weight_per_head_kg if line.estimated_live_weight_per_head_kg is not none else '' }}"
+                      class="w-24 border border-gray-300 rounded px-2 py-1"
+                    >
+                  </td>
+
+                  <td class="px-3 py-3">
+                    <input
+                      type="number"
+                      name="carcass_weight"
+                      min="0"
+                      step="0.01"
+                      value="{{ line.estimated_carcass_weight_per_head_kg if line.estimated_carcass_weight_per_head_kg is not none else '' }}"
+                      class="w-24 border border-gray-300 rounded px-2 py-1"
+                    >
+                  </td>
+
+                  <td class="px-3 py-3 font-semibold">
+                    {{ "{:,.2f}".format(line.estimated_total_carcass_weight_kg or 0) }}
+                  </td>
+
+                  <td class="px-3 py-3">
+                    <select name="weight_method" class="w-28 border border-gray-300 rounded px-2 py-1">
+                      <option value="" {% if not line.weight_method %}selected{% endif %}>-</option>
+                      <option value="estimated" {% if line.weight_method == 'estimated' %}selected{% endif %}>Estimated</option>
+                      <option value="scale" {% if line.weight_method == 'scale' %}selected{% endif %}>Scale</option>
+                      <option value="tape" {% if line.weight_method == 'tape' %}selected{% endif %}>Tape</option>
+                      <option value="other" {% if line.weight_method == 'other' %}selected{% endif %}>Other</option>
+                    </select>
+
+                    <input
+                      type="number"
+                      name="avg_age_months"
+                      min="0"
+                      step="1"
+                      value="{{ line.avg_age_months if line.avg_age_months is not none else '' }}"
+                      placeholder="Age"
+                      class="w-20 border border-gray-300 rounded px-2 py-1 mt-2"
+                    >
+
+                    <textarea
+                      name="notes"
+                      rows="2"
+                      placeholder="Notes"
+                      class="w-full border border-gray-300 rounded px-2 py-1 mt-2"
+                    >{{ line.notes or '' }}</textarea>
+                  </td>
+
+                  <td class="px-3 py-3">
+                    <div class="flex flex-col gap-2">
+                      <button
+                        type="submit"
+                        class="bg-jungle text-white px-3 py-2 rounded text-xs font-semibold hover:bg-jungleLight transition"
+                      >
+                        Save
+                      </button>
+                </form>
+
+                      <form
+                        method="POST"
+                        action="{{ url_for('main.market_purchase_delete_line', purchase_id=purchase.id, line_id=line.id) }}"
+                        onsubmit="return confirm('Delete this purchase line?');"
+                      >
+                        <button
+                          type="submit"
+                          class="bg-red-600 text-white px-3 py-2 rounded text-xs font-semibold hover:bg-red-500 transition"
+                        >
+                          Delete
+                        </button>
+                      </form>
+                    </div>
+                  </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+
+          <tfoot>
+            <tr class="bg-gray-50 font-semibold">
+              <td class="px-3 py-3" colspan="1">Totals</td>
+              <td class="px-3 py-3">{{ purchase.total_headcount }}</td>
+              <td class="px-3 py-3">—</td>
+              <td class="px-3 py-3">KES {{ "{:,.0f}".format(purchase.total_purchase_cost or 0) }}</td>
+              <td class="px-3 py-3">—</td>
+              <td class="px-3 py-3">—</td>
+              <td class="px-3 py-3">{{ "{:,.2f}".format(purchase.estimated_total_carcass_weight_kg or 0) }}</td>
+              <td class="px-3 py-3">—</td>
+              <td class="px-3 py-3">—</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    {% else %}
+      <div class="rounded-lg border border-dashed border-gray-300 p-8 text-center text-gray-500">
+        No purchase lines added yet.
+      </div>
+    {% endif %}
+  </section>
+
+  <!-- Expenses Table -->
+  <section class="bg-white rounded-xl shadow p-6">
+    <div class="flex items-center justify-between mb-4">
+      <h2 class="text-xl font-semibold text-jungle">Expenses</h2>
+      <div class="text-sm text-gray-500">{{ purchase.expenses|length }} expense(s)</div>
+    </div>
+
+    {% if purchase.expenses %}
+      <div class="overflow-x-auto">
+        <table class="min-w-full text-sm">
+          <thead>
+            <tr class="border-b bg-gray-50">
+              <th class="text-left px-3 py-3">#</th>
+              <th class="text-left px-3 py-3">Type</th>
+              <th class="text-left px-3 py-3">Amount</th>
+              <th class="text-left px-3 py-3">Date</th>
+              <th class="text-left px-3 py-3">Paid To</th>
+              <th class="text-left px-3 py-3">Reference / Notes</th>
+              <th class="text-left px-3 py-3">Actions</th>
+            </tr>
+          </thead>
+
+          <tbody>
+            {% for expense in purchase.expenses %}
+              <tr class="border-b hover:bg-gray-50 align-top">
+                <form method="POST" action="{{ url_for('main.market_purchase_edit_expense', purchase_id=purchase.id, expense_id=expense.id) }}">
+                  <td class="px-3 py-3">{{ loop.index }}</td>
+
+                  <td class="px-3 py-3">
+                    <select name="expense_type" class="w-40 border border-gray-300 rounded px-2 py-1">
+                      {% for opt in ['transport','documentation','broker','accommodation','meals','miscellaneous','loading','offloading','labour','permit','fuel','other'] %}
+                        <option value="{{ opt }}" {% if expense.expense_type == opt %}selected{% endif %}>
+                          {{ opt|replace('_', ' ')|title }}
+                        </option>
+                      {% endfor %}
+                    </select>
+                  </td>
+
+                  <td class="px-3 py-3">
+                    <input
+                      type="number"
+                      name="amount"
+                      min="0"
+                      step="0.01"
+                      value="{{ expense.amount }}"
+                      class="w-28 border border-gray-300 rounded px-2 py-1"
+                    >
+                  </td>
+
+                  <td class="px-3 py-3">
+                    <input
+                      type="date"
+                      name="incurred_date"
+                      value="{{ expense.incurred_date.isoformat() if expense.incurred_date else '' }}"
+                      class="border border-gray-300 rounded px-2 py-1"
+                    >
+                  </td>
+
+                  <td class="px-3 py-3">
+                    <input
+                      type="text"
+                      name="paid_to"
+                      value="{{ expense.paid_to or '' }}"
+                      class="w-32 border border-gray-300 rounded px-2 py-1"
+                    >
+                  </td>
+
+                  <td class="px-3 py-3">
+                    <input
+                      type="text"
+                      name="reference"
+                      value="{{ expense.reference or '' }}"
+                      class="w-32 border border-gray-300 rounded px-2 py-1"
+                    >
+
+                    <textarea
+                      name="notes"
+                      rows="2"
+                      placeholder="Notes"
+                      class="w-full border border-gray-300 rounded px-2 py-1 mt-2"
+                    >{{ expense.notes or '' }}</textarea>
+                  </td>
+
+                  <td class="px-3 py-3">
+                    <div class="flex flex-col gap-2">
+                      <button
+                        type="submit"
+                        class="bg-jungle text-white px-3 py-2 rounded text-xs font-semibold hover:bg-jungleLight transition"
+                      >
+                        Save
+                      </button>
+                </form>
+
+                      <form
+                        method="POST"
+                        action="{{ url_for('main.market_purchase_delete_expense', purchase_id=purchase.id, expense_id=expense.id) }}"
+                        onsubmit="return confirm('Delete this expense?');"
+                      >
+                        <button
+                          type="submit"
+                          class="bg-red-600 text-white px-3 py-2 rounded text-xs font-semibold hover:bg-red-500 transition"
+                        >
+                          Delete
+                        </button>
+                      </form>
+                    </div>
+                  </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+
+          <tfoot>
+            <tr class="bg-gray-50 font-semibold">
+              <td class="px-3 py-3" colspan="2">Total</td>
+              <td class="px-3 py-3">KES {{ "{:,.0f}".format(purchase.total_expense_cost or 0) }}</td>
+              <td class="px-3 py-3" colspan="4">—</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    {% else %}
+      <div class="rounded-lg border border-dashed border-gray-300 p-8 text-center text-gray-500">
+        No expenses added yet.
+      </div>
+    {% endif %}
+  </section>
+
+</div>
+{% endblock %}

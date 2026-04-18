@@ -1,0 +1,260 @@
+{% extends "layouts/base.html" %}
+
+{% block title %}Market Purchases{% endblock %}
+
+{% block body %}
+<div class="max-w-7xl mx-auto px-6 py-8">
+
+  <!-- Header -->
+  <div class="flex flex-col md:flex-row md:items-start md:justify-between gap-4 mb-8">
+    <div>
+      <div class="flex items-center gap-3 mb-2">
+        <a
+          href="{{ url_for('main.admin_dashboard') }}"
+          class="text-sm text-jungle hover:underline"
+        >
+          ← Back to Dashboard
+        </a>
+      </div>
+
+      <h1 class="text-3xl font-bold text-jungle">Market Purchases</h1>
+      <p class="text-gray-600 mt-1">
+        Manage direct market procurement linked to aggregation batches.
+      </p>
+    </div>
+
+    <div class="flex gap-3">
+      <a
+        href="{{ url_for('main.market_purchase_new') }}"
+        class="bg-jungle text-white px-5 py-3 rounded-lg font-semibold hover:bg-jungleLight transition"
+      >
+        + New Market Purchase
+      </a>
+    </div>
+  </div>
+
+  <!-- Flash Messages -->
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      <div class="mb-6 space-y-3">
+        {% for category, message in messages %}
+          <div class="px-4 py-3 rounded-lg
+            {% if category == 'success' %}
+              bg-green-100 text-green-800
+            {% elif category in ['danger', 'error'] %}
+              bg-red-100 text-red-800
+            {% elif category == 'warning' %}
+              bg-yellow-100 text-yellow-800
+            {% else %}
+              bg-gray-100 text-gray-800
+            {% endif %}
+          ">
+            {{ message }}
+          </div>
+        {% endfor %}
+      </div>
+    {% endif %}
+  {% endwith %}
+
+  <!-- Summary Cards -->
+  <section class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+    <div class="bg-white rounded-xl shadow p-6 border-l-8 border-jungle">
+      <h3 class="text-gray-500 text-sm uppercase">Total Purchases</h3>
+      <p class="text-3xl font-bold text-jungle mt-2">{{ purchases|length }}</p>
+    </div>
+
+    <div class="bg-white rounded-xl shadow p-6 border-l-8 border-blue-600">
+      <h3 class="text-gray-500 text-sm uppercase">Draft</h3>
+      <p class="text-3xl font-bold text-jungle mt-2">
+        {{ purchases | selectattr('status', 'equalto', 'draft') | list | length }}
+      </p>
+    </div>
+
+    <div class="bg-white rounded-xl shadow p-6 border-l-8 border-indigo-600">
+      <h3 class="text-gray-500 text-sm uppercase">Confirmed</h3>
+      <p class="text-3xl font-bold text-jungle mt-2">
+        {{ purchases | selectattr('status', 'equalto', 'confirmed') | list | length }}
+      </p>
+    </div>
+
+    <div class="bg-white rounded-xl shadow p-6 border-l-8 border-emerald-600">
+      <h3 class="text-gray-500 text-sm uppercase">Received</h3>
+      <p class="text-3xl font-bold text-jungle mt-2">
+        {{ purchases | selectattr('status', 'equalto', 'received') | list | length }}
+      </p>
+    </div>
+  </section>
+
+  <!-- Table -->
+  <section class="bg-white rounded-xl shadow p-6">
+    <div class="flex items-center justify-between gap-4 mb-4">
+      <h2 class="text-xl font-semibold text-jungle">All Market Purchases</h2>
+      <div class="text-sm text-gray-500">
+        {{ purchases|length }} record(s)
+      </div>
+    </div>
+
+    {% if purchases %}
+      <div class="overflow-x-auto">
+        <table class="min-w-full text-sm">
+          <thead>
+            <tr class="border-b bg-gray-50">
+              <th class="text-left px-3 py-3">ID</th>
+              <th class="text-left px-3 py-3">Date</th>
+              <th class="text-left px-3 py-3">Market</th>
+              <th class="text-left px-3 py-3">Animal</th>
+              <th class="text-left px-3 py-3">Batch</th>
+              <th class="text-left px-3 py-3">Headcount</th>
+              <th class="text-left px-3 py-3">Purchase Cost</th>
+              <th class="text-left px-3 py-3">Expenses</th>
+              <th class="text-left px-3 py-3">Total Cost</th>
+              <th class="text-left px-3 py-3">Status</th>
+              <th class="text-left px-3 py-3">Created By</th>
+              <th class="text-left px-3 py-3">Actions</th>
+            </tr>
+          </thead>
+
+          <tbody>
+            {% for purchase in purchases %}
+              <tr class="border-b hover:bg-gray-50 align-top">
+                <td class="px-3 py-3 font-semibold text-jungle">
+                  #{{ purchase.id }}
+                </td>
+
+                <td class="px-3 py-3">
+                  {{ purchase.purchase_date.strftime('%Y-%m-%d') if purchase.purchase_date else '-' }}
+                </td>
+
+                <td class="px-3 py-3">
+                  <div class="font-semibold text-gray-900">
+                    {{ purchase.market_name or '-' }}
+                  </div>
+                  {% if purchase.vendor_name %}
+                    <div class="text-xs text-gray-500 mt-1">
+                      Vendor: {{ purchase.vendor_name }}
+                    </div>
+                  {% endif %}
+                  {% if purchase.broker_name %}
+                    <div class="text-xs text-gray-500">
+                      Broker: {{ purchase.broker_name }}
+                    </div>
+                  {% endif %}
+                </td>
+
+                <td class="px-3 py-3">
+                  {{ purchase.animal_type|title }}
+                </td>
+
+                <td class="px-3 py-3">
+                  {% if purchase.aggregation_batch %}
+                    <div class="font-semibold text-gray-900">
+                      #{{ purchase.aggregation_batch.id }}
+                    </div>
+                    <div class="text-xs text-gray-500 mt-1">
+                      {{ purchase.aggregation_batch.site_name }}
+                    </div>
+                  {% else %}
+                    -
+                  {% endif %}
+                </td>
+
+                <td class="px-3 py-3 font-semibold">
+                  {{ purchase.total_headcount }}
+                </td>
+
+                <td class="px-3 py-3">
+                  KES {{ "{:,.0f}".format(purchase.total_purchase_cost or 0) }}
+                </td>
+
+                <td class="px-3 py-3">
+                  KES {{ "{:,.0f}".format(purchase.total_expense_cost or 0) }}
+                </td>
+
+                <td class="px-3 py-3 font-semibold">
+                  KES {{ "{:,.0f}".format(purchase.total_cost or 0) }}
+                </td>
+
+                <td class="px-3 py-3">
+                  <span
+                    class="inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold
+                    {% if purchase.status == 'draft' %}
+                      bg-yellow-100 text-yellow-800
+                    {% elif purchase.status == 'confirmed' %}
+                      bg-blue-100 text-blue-800
+                    {% elif purchase.status == 'received' %}
+                      bg-green-100 text-green-800
+                    {% elif purchase.status == 'cancelled' %}
+                      bg-red-100 text-red-800
+                    {% else %}
+                      bg-gray-100 text-gray-700
+                    {% endif %}"
+                  >
+                    {{ purchase.status|replace('_', ' ')|title }}
+                  </span>
+                </td>
+
+                <td class="px-3 py-3">
+                  {{ purchase.created_by.email if purchase.created_by else '-' }}
+                </td>
+
+                <td class="px-3 py-3">
+                  <div class="flex flex-col gap-2 min-w-[140px]">
+                    <a
+                      href="{{ url_for('main.market_purchase_detail', purchase_id=purchase.id) }}"
+                      class="bg-jungle text-white px-3 py-2 rounded text-xs font-semibold text-center hover:bg-jungleLight transition"
+                    >
+                      Open
+                    </a>
+
+                    {% if purchase.aggregation_batch %}
+                      <a
+                        href="{{ url_for('main.market_purchase_detail', purchase_id=purchase.id) }}"
+                        class="bg-gray-100 text-gray-800 px-3 py-2 rounded text-xs font-semibold text-center hover:bg-gray-200 transition"
+                      >
+                        Lines & Expenses
+                      </a>
+                    {% endif %}
+                  </div>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+
+          <tfoot>
+            <tr class="bg-gray-50 font-semibold">
+              <td class="px-3 py-3" colspan="5">Totals</td>
+              <td class="px-3 py-3">
+                {{ purchases | sum(attribute='total_headcount') }}
+              </td>
+              <td class="px-3 py-3">
+                KES {{ "{:,.0f}".format(purchases | sum(attribute='total_purchase_cost')) }}
+              </td>
+              <td class="px-3 py-3">
+                KES {{ "{:,.0f}".format(purchases | sum(attribute='total_expense_cost')) }}
+              </td>
+              <td class="px-3 py-3">
+                KES {{ "{:,.0f}".format(purchases | sum(attribute='total_cost')) }}
+              </td>
+              <td class="px-3 py-3" colspan="3">—</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    {% else %}
+      <div class="rounded-lg border border-dashed border-gray-300 p-10 text-center">
+        <div class="text-lg font-semibold text-gray-700 mb-2">No market purchases yet</div>
+        <p class="text-gray-500 mb-4">
+          Start by creating your first direct market procurement entry.
+        </p>
+        <a
+          href="{{ url_for('main.market_purchase_new') }}"
+          class="inline-flex items-center bg-jungle text-white px-5 py-3 rounded-lg font-semibold hover:bg-jungleLight transition"
+        >
+          + Create Market Purchase
+        </a>
+      </div>
+    {% endif %}
+  </section>
+
+</div>
+{% endblock %}
