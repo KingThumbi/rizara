@@ -1,16 +1,51 @@
 {# app/templates/partials/admin_chrome.html #}
-<nav class="bg-jungle text-white px-6 py-4 flex justify-between items-center shadow">
-  <div class="text-xl font-bold tracking-wide">Rizara Meats</div>
 
-  <div class="flex items-center gap-3">
-    <a href="{{ url_for('main.dashboard') }}"
-       class="bg-gold text-jungle font-semibold px-4 py-2 rounded hover:bg-yellow-400 transition">
-      ← Back to Dashboard
-    </a>
+<nav class="bg-jungle text-white px-6 py-4 shadow-sm border-b border-white/10">
+  <div class="max-w-7xl mx-auto flex flex-col md:flex-row md:items-center md:justify-between gap-4">
 
-    <a href="{{ url_for('auth.logout') }}"
-       class="bg-white/10 text-white font-semibold px-4 py-2 rounded hover:bg-white/20 transition">
-      Logout
-    </a>
+    <div class="flex flex-col md:flex-row md:items-center gap-6">
+      <a href="{{ url_for('main.dashboard') }}" class="text-xl font-bold tracking-wide hover:text-gold transition">
+        Rizara Meats
+      </a>
+
+      <div class="flex flex-wrap items-center gap-5 text-sm font-medium">
+        <a href="{{ url_for('main.dashboard') }}"
+           class="{% if request.path in ['/dashboard', '/admin/dashboard'] %}text-gold{% else %}hover:text-gold{% endif %} transition">
+          Dashboard
+        </a>
+
+        <a href="{{ url_for('pipeline_pages.pipeline_dashboard') }}"
+           class="{% if request.path.startswith('/admin/pipeline') %}text-gold{% else %}hover:text-gold{% endif %} transition">
+          Pipeline
+        </a>
+
+        <a href="{{ url_for('main.dashboard') }}"
+          class="{% if request.path.startswith('/aggregation') %}text-gold{% else %}hover:text-gold{% endif %} transition">
+          Aggregation
+        </a>
+
+        <a href="{{ url_for('main.dashboard') }}"
+          class="{% if request.path.startswith('/processing') %}text-gold{% else %}hover:text-gold{% endif %} transition">
+          Processing
+        </a>
+
+        <a href="/contracts"
+          class="{% if request.path.startswith('/contracts') %}text-gold{% else %}hover:text-gold{% endif %} transition">
+          Contracts
+        </a>        
+      </div>
+    </div>
+
+    <div class="flex items-center gap-3">
+      <a href="{{ url_for('main.dashboard') }}"
+         class="bg-white/10 text-white font-semibold px-4 py-2 rounded-2xl hover:bg-white/20 transition">
+        Dashboard
+      </a>
+
+      <a href="{{ url_for('auth.logout') }}"
+         class="bg-white text-jungle font-semibold px-4 py-2 rounded-2xl hover:bg-gray-100 transition">
+        Logout
+      </a>
+    </div>
   </div>
 </nav>

@@ -1,0 +1,244 @@
+{% extends "layouts/base.html" %}
+
+{% block title %}Pipeline Control Tower - Rizara{% endblock %}
+
+{% block body %}
+<div class="min-h-screen bg-gray-50">
+  {% include "partials/admin_chrome.html" %}
+
+  <main class="max-w-7xl mx-auto px-6 py-8">
+
+    <div class="mb-6">
+      <a href="{{ url_for('main.dashboard') }}"
+         class="inline-flex items-center gap-2 text-sm font-semibold text-gray-500 hover:text-gray-900 transition">
+        ← Back to Dashboard
+      </a>
+    </div>
+
+    <section class="rounded-[2rem] bg-white border border-gray-200 shadow-sm p-6 lg:p-8 mb-8">
+      <div class="flex flex-col md:flex-row md:items-end md:justify-between gap-5">
+        <div>
+          <p class="text-sm font-semibold text-emerald-700 tracking-wide uppercase">
+            Rizara Control Tower
+          </p>
+          <h1 class="text-3xl lg:text-4xl font-bold text-gray-950 mt-2">
+            Unified Pipeline Dashboard
+          </h1>
+          <p class="text-gray-600 mt-3 max-w-2xl">
+            Track contracts, sales, invoicing, payments, delivery, and closure from one operational command view.
+          </p>
+        </div>
+
+        <button onclick="loadPipeline()"
+                class="rounded-2xl bg-gray-950 text-white px-5 py-3 text-sm font-semibold shadow-sm hover:bg-gray-800 transition">
+          Refresh Dashboard
+        </button>
+      </div>
+    </section>
+
+    <div id="summaryCards" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-8"></div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+      <section class="lg:col-span-2 bg-white border border-gray-200 rounded-[2rem] shadow-sm p-5">
+        <div class="flex items-center justify-between mb-4">
+          <div>
+            <h2 class="text-lg font-bold text-gray-950">Pipeline Board</h2>
+            <p class="text-sm text-gray-500">Grouped by current operational stage.</p>
+          </div>
+          <span id="caseCount" class="text-sm text-gray-500"></span>
+        </div>
+
+        <div id="pipelineBoard" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4"></div>
+      </section>
+
+      <aside class="bg-white border border-gray-200 rounded-[2rem] shadow-sm p-5">
+        <h2 class="text-lg font-bold text-gray-950">Action Queue</h2>
+        <p class="text-sm text-gray-500 mb-4">Cases requiring attention.</p>
+        <div id="actionQueue" class="space-y-3"></div>
+      </aside>
+    </div>
+
+    <section class="bg-white border border-gray-200 rounded-[2rem] shadow-sm overflow-hidden">
+      <div class="p-5 border-b border-gray-100">
+        <h2 class="text-lg font-bold text-gray-950">All Pipeline Cases</h2>
+        <p class="text-sm text-gray-500">Full commercial control list.</p>
+      </div>
+
+      <div class="overflow-x-auto">
+        <table class="min-w-full text-sm">
+          <thead class="bg-gray-50 text-gray-600">
+            <tr>
+              <th class="text-left px-5 py-3 font-semibold">Case</th>
+              <th class="text-left px-5 py-3 font-semibold">Buyer</th>
+              <th class="text-left px-5 py-3 font-semibold">Contract</th>
+              <th class="text-left px-5 py-3 font-semibold">Stage</th>
+              <th class="text-left px-5 py-3 font-semibold">Status</th>
+              <th class="text-left px-5 py-3 font-semibold">Output</th>
+              <th class="text-left px-5 py-3 font-semibold">Outstanding</th>
+              <th class="text-left px-5 py-3 font-semibold">Next Action</th>
+            </tr>
+          </thead>
+          <tbody id="casesTable" class="divide-y divide-gray-100"></tbody>
+        </table>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<script>
+const statusLabels = {
+  sourcing: "Sourcing",
+  processing: "Processing",
+  commercial: "Commercial",
+  sale: "Sale",
+  invoicing: "Invoicing",
+  payment: "Payment",
+  fulfillment: "Fulfillment",
+  closure: "Closure",
+  exception: "Exception"
+};
+
+function money(value, currency = "") {
+  const n = Number(value || 0);
+  return `${currency ? currency + " " : ""}${n.toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
+}
+
+function healthClass(health) {
+  if (health === "red") return "bg-red-50 text-red-700 border-red-200";
+  if (health === "amber") return "bg-amber-50 text-amber-700 border-amber-200";
+  if (health === "blue") return "bg-blue-50 text-blue-700 border-blue-200";
+  return "bg-emerald-50 text-emerald-700 border-emerald-200";
+}
+
+function renderSummary(summary) {
+  const cards = [
+    ["Total Cases", summary.total_cases],
+    ["Active Cases", summary.active_cases],
+    ["Exceptions", summary.exception_cases],
+    ["Output Kg", money(summary.total_output_qty)],
+    ["Outstanding", money(summary.total_outstanding_amount)]
+  ];
+
+  document.getElementById("summaryCards").innerHTML = cards.map(([label, value]) => `
+    <div class="bg-white border border-gray-200 rounded-3xl p-5 shadow-sm">
+      <p class="text-sm text-gray-500">${label}</p>
+      <p class="text-2xl font-bold text-gray-950 mt-2">${value}</p>
+    </div>
+  `).join("");
+}
+
+function renderCaseCard(item) {
+  const currency = item.metrics.currency || "";
+
+  return `
+    <a href="/admin/pipeline/cases/${item.id}"
+       class="block border rounded-3xl p-4 ${healthClass(item.statuses.health)} hover:shadow-md transition">
+      <div class="flex items-start justify-between gap-3">
+        <div>
+          <p class="font-bold">${item.case_number}</p>
+          <p class="text-sm opacity-80">${item.buyer.name || "No buyer"}</p>
+        </div>
+        <span class="text-xs border rounded-full px-2 py-1 bg-white/60">${item.statuses.status}</span>
+      </div>
+
+      <div class="mt-4 space-y-1 text-sm">
+        <p><span class="opacity-70">Contract:</span> ${item.contract.contract_number || "—"}</p>
+        <p><span class="opacity-70">Output:</span> ${money(item.metrics.output_qty)} kg</p>
+        <p><span class="opacity-70">Paid:</span> ${money(item.metrics.paid_amount, currency)}</p>
+        <p><span class="opacity-70">Outstanding:</span> ${money(item.metrics.outstanding_amount, currency)}</p>
+      </div>
+
+      <div class="mt-4 bg-white/60 rounded-2xl p-3 text-sm">
+        <p class="font-semibold">Next: ${item.next_action.label || "No action"}</p>
+        ${item.next_action.blocking_reason ? `<p class="mt-1 opacity-80">${item.next_action.blocking_reason}</p>` : ""}
+      </div>
+    </a>
+  `;
+}
+
+function renderBoard(grouped) {
+  const board = document.getElementById("pipelineBoard");
+  const stages = Object.keys(grouped);
+
+  if (!stages.length) {
+    board.innerHTML = `<p class="text-gray-500">No pipeline cases yet.</p>`;
+    return;
+  }
+
+  board.innerHTML = stages.map(stage => `
+    <div>
+      <div class="flex items-center justify-between mb-3">
+        <h3 class="font-bold text-gray-900">${statusLabels[stage] || stage}</h3>
+        <span class="text-xs bg-gray-100 text-gray-600 rounded-full px-2 py-1">${grouped[stage].length}</span>
+      </div>
+      <div class="space-y-3">
+        ${grouped[stage].map(renderCaseCard).join("")}
+      </div>
+    </div>
+  `).join("");
+}
+
+function renderActionQueue(items) {
+  const el = document.getElementById("actionQueue");
+
+  if (!items.length) {
+    el.innerHTML = `<p class="text-sm text-gray-500">No pending actions.</p>`;
+    return;
+  }
+
+  el.innerHTML = items.map(item => `
+    <a href="/admin/pipeline/cases/${item.id}" class="block border border-gray-200 rounded-2xl p-4 hover:bg-gray-50 transition">
+      <p class="font-semibold text-gray-950">${item.next_action.label}</p>
+      <p class="text-sm text-gray-500 mt-1">${item.case_number} · ${item.buyer.name || "No buyer"}</p>
+      <p class="text-xs text-gray-400 mt-2">${item.statuses.status}</p>
+    </a>
+  `).join("");
+}
+
+function renderTable(cases) {
+  const tbody = document.getElementById("casesTable");
+
+  if (!cases.length) {
+    tbody.innerHTML = `<tr><td class="px-5 py-6 text-gray-500" colspan="8">No cases found.</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = cases.map(item => `
+    <tr class="hover:bg-gray-50">
+      <td class="px-5 py-4 font-semibold text-gray-950">
+        <a href="/admin/pipeline/cases/${item.id}" class="hover:underline">${item.case_number}</a>
+      </td>
+      <td class="px-5 py-4">${item.buyer.name || "—"}</td>
+      <td class="px-5 py-4">${item.contract.contract_number || "—"}</td>
+      <td class="px-5 py-4">${item.statuses.stage}</td>
+      <td class="px-5 py-4">
+        <span class="border rounded-full px-2 py-1 text-xs ${healthClass(item.statuses.health)}">${item.statuses.status}</span>
+      </td>
+      <td class="px-5 py-4">${money(item.metrics.output_qty)} kg</td>
+      <td class="px-5 py-4">${money(item.metrics.outstanding_amount, item.metrics.currency || "")}</td>
+      <td class="px-5 py-4">${item.next_action.label || "—"}</td>
+    </tr>
+  `).join("");
+}
+
+async function loadPipeline() {
+  const res = await fetch("/api/pipeline/dashboard", { credentials: "same-origin" });
+  const data = await res.json();
+
+  if (!data.ok) {
+    alert("Could not load pipeline dashboard.");
+    return;
+  }
+
+  renderSummary(data.summary);
+  renderBoard(data.grouped_by_stage || {});
+  renderActionQueue(data.action_queue || []);
+  renderTable(data.cases || []);
+
+  document.getElementById("caseCount").textContent = `${data.summary.total_cases} cases`;
+}
+
+document.addEventListener("DOMContentLoaded", loadPipeline);
+</script>
+{% endblock %}

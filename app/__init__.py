@@ -40,12 +40,32 @@ def create_app() -> Flask:
     # ======================
     # Register Blueprints
     # ======================
-    from .routes import main
+    from .routes_legacy import main   # ✅ FIX: use legacy routes
+
+    # New modular routes (safe to include gradually)
+    from .routes.processing import processing_bp
+    from .routes.market_purchases import market_purchase_bp
+    from .routes.aggregation import aggregation_bp
+    from .routes.pipeline import pipeline_bp
+    from .routes.pipeline_pages import pipeline_pages_bp
+    from app.routes.contracts import bp as contracts_bp
+
     from .auth import auth
     from .admin import admin_bp
-    from .public import public  # public blueprint (signing flow)
+    from .public import public
 
+
+    # Register order matters (main first for compatibility)
     app.register_blueprint(main)
+
+    # New modules (can coexist safely)
+    app.register_blueprint(processing_bp)
+    app.register_blueprint(market_purchase_bp)
+    app.register_blueprint(aggregation_bp)
+    app.register_blueprint(pipeline_bp)
+    app.register_blueprint(pipeline_pages_bp)
+    app.register_blueprint(contracts_bp)
+
     app.register_blueprint(auth)
     app.register_blueprint(admin_bp)
     app.register_blueprint(public)

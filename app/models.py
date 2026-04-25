@@ -21,6 +21,105 @@ def utcnow_naive() -> datetime:
     return datetime.utcnow()
 
 
+class PipelineStage(enum.Enum):
+    SOURCING = "sourcing"
+    PROCESSING = "processing"
+    COMMERCIAL = "commercial"
+    SALE = "sale"
+    INVOICING = "invoicing"
+    PAYMENT = "payment"
+    FULFILLMENT = "fulfillment"
+    CLOSURE = "closure"
+    EXCEPTION = "exception"
+
+
+class PipelineStatus(enum.Enum):
+    DRAFT = "draft"
+    SOURCING = "sourcing"
+    PROCESSING = "processing"
+    COMMERCIAL_PENDING = "commercial_pending"
+    AWAITING_SIGNATURE = "awaiting_signature"
+    AWAITING_AUTHORIZATION = "awaiting_authorization"
+    AUTHORIZED_FOR_PROCESSING = "authorized_for_processing"
+    SALE_READY = "sale_ready"
+    SALE_CREATED = "sale_created"
+    AWAITING_INVOICE = "awaiting_invoice"
+    INVOICED = "invoiced"
+    PARTIALLY_PAID = "partially_paid"
+    PAID = "paid"
+    IN_DELIVERY = "in_delivery"
+    COMPLETED = "completed"
+    CLOSED = "closed"
+    ON_HOLD = "on_hold"
+    EXCEPTION = "exception"
+
+
+class AuthorizationStatus(enum.Enum):
+    NOT_REQUIRED = "not_required"
+    PENDING = "pending"
+    SATISFIED = "satisfied"
+    BLOCKED = "blocked"
+
+
+class PipelinePaymentStatus(enum.Enum):
+    NONE = "none"
+    PENDING = "pending"
+    PARTIAL = "partial"
+    PAID = "paid"
+    OVERDUE = "overdue"
+    FAILED = "failed"
+    REVERSED = "reversed"
+
+
+class PipelineDeliveryStatus(enum.Enum):
+    NOT_STARTED = "not_started"
+    PLANNED = "planned"
+    DISPATCHED = "dispatched"
+    IN_TRANSIT = "in_transit"
+    DELIVERED = "delivered"
+    RECEIVED = "received"
+    CLOSED = "closed"
+    DELAYED = "delayed"
+    CANCELLED = "cancelled"
+
+
+class PipelineHealthStatus(enum.Enum):
+    GREEN = "green"
+    AMBER = "amber"
+    RED = "red"
+    BLUE = "blue"
+
+
+class PipelineNextAction(enum.Enum):
+    CAPTURE_SOURCE = "capture_source"
+    START_PROCESSING = "start_processing"
+    CAPTURE_YIELD = "capture_yield"
+    CREATE_CONTRACT = "create_contract"
+    SEND_CONTRACT = "send_contract"
+    FOLLOW_UP_SIGNATURE = "follow_up_signature"
+    RECORD_PREPAYMENT = "record_prepayment"
+    CONFIRM_LC = "confirm_lc"
+    CREATE_SALE = "create_sale"
+    GENERATE_INVOICE = "generate_invoice"
+    RECORD_PAYMENT = "record_payment"
+    DISPATCH_DELIVERY = "dispatch_delivery"
+    CONFIRM_DELIVERY = "confirm_delivery"
+    CLOSE_CASE = "close_case"
+    REVIEW_EXCEPTION = "review_exception"
+    NONE = "none"
+
+
+class PipelineEventType(enum.Enum):
+    CASE_CREATED = "case_created"
+    CONTRACT_LINKED = "contract_linked"
+    PROCESSING_LINKED = "processing_linked"
+    SALE_LINKED = "sale_linked"
+    INVOICE_LINKED = "invoice_linked"
+    PAYMENT_RECORDED = "payment_recorded"
+    DELIVERY_UPDATED = "delivery_updated"
+    STATUS_RECOMPUTED = "status_recomputed"
+    CASE_CLOSED = "case_closed"
+
 # =========================================================
 # User model (Authentication + Roles)
 # =========================================================
@@ -98,6 +197,508 @@ class Buyer(db.Model):
 
     def __repr__(self) -> str:
         return f"<Buyer {self.id} {self.name}>"
+
+# =========================================================
+# Commercial Contracts / Sales Flow (clean rewrite)
+# Rizara: Contract -> Contract Items/Documents -> Processing -> Sale -> Payment
+# =========================================================
+
+class Contract(db.Model):
+    __tablename__ = "contracts"
+
+    id = db.Column(db.Integer, primary_key=True)
+    contract_number = db.Column(db.String(50), unique=True, nullable=False, index=True)
+
+    buyer_id = db.Column(
+        db.Integer,
+        db.ForeignKey("buyer.id"),
+        nullable=False,
+        index=True,
+    )
+
+    contract_date = db.Column(db.Date, nullable=False)
+    delivery_date = db.Column(db.Date, nullable=True)
+
+    status = db.Column(
+        db.String(30),
+        nullable=False,
+        default="draft",
+        index=True,
+    )
+
+    currency = db.Column(db.String(10), nullable=False, default="USD")
+
+    price_basis = db.Column(db.String(100), nullable=True)
+    payment_terms = db.Column(db.Text, nullable=True)
+    delivery_terms = db.Column(db.Text, nullable=True)
+    destination_country = db.Column(db.String(100), nullable=True)
+
+    payment_security_type = db.Column(
+        db.String(30),
+        nullable=False,
+        default="none",
+    )
+
+    prepayment_required = db.Column(
+        db.Boolean,
+        nullable=False,
+        default=False,
+    )
+    required_prepayment_percent = db.Column(db.Numeric(8, 2), nullable=True)
+    required_prepayment_amount = db.Column(db.Numeric(14, 2), nullable=True)
+
+    lc_required = db.Column(
+        db.Boolean,
+        nullable=False,
+        default=False,
+    )
+    lc_number = db.Column(db.String(100), nullable=True)
+    lc_issuing_bank = db.Column(db.String(150), nullable=True)
+    lc_status = db.Column(db.String(30), nullable=True)
+
+    processing_release_mode = db.Column(
+        db.String(30),
+        nullable=False,
+        default="manual_approval",
+    )
+
+    contracted_quantity_kg = db.Column(db.Numeric(14, 2), nullable=True)
+    contracted_value = db.Column(db.Numeric(14, 2), nullable=True)
+
+    product_type = db.Column(db.String(120), nullable=True)
+    quality_spec = db.Column(db.Text, nullable=True)
+    notes = db.Column(db.Text, nullable=True)
+
+    submitted_for_review_at = db.Column(db.DateTime, nullable=True)
+    reviewed_at = db.Column(db.DateTime, nullable=True)
+    approved_at = db.Column(db.DateTime, nullable=True)
+    signed_at = db.Column(db.DateTime, nullable=True)
+    activated_at = db.Column(db.DateTime, nullable=True)
+    cancelled_at = db.Column(db.DateTime, nullable=True)
+    cancel_reason = db.Column(db.Text, nullable=True)
+
+    created_by_user_id = db.Column(
+        db.Integer,
+        db.ForeignKey("user.id"),
+        nullable=True,
+    )
+    reviewed_by_user_id = db.Column(
+        db.Integer,
+        db.ForeignKey("user.id"),
+        nullable=True,
+    )
+    approved_by_user_id = db.Column(
+        db.Integer,
+        db.ForeignKey("user.id"),
+        nullable=True,
+    )
+
+    created_at = db.Column(db.DateTime, nullable=False, default=utcnow_naive)
+    updated_at = db.Column(
+        db.DateTime,
+        nullable=False,
+        default=utcnow_naive,
+        onupdate=utcnow_naive,
+    )
+
+    buyer = db.relationship("Buyer", foreign_keys=[buyer_id], lazy="joined")
+    created_by = db.relationship("User", foreign_keys=[created_by_user_id], lazy="joined")
+    reviewed_by = db.relationship("User", foreign_keys=[reviewed_by_user_id], lazy="joined")
+    approved_by = db.relationship("User", foreign_keys=[approved_by_user_id], lazy="joined")
+
+    items = db.relationship(
+        "ContractItem",
+        back_populates="contract",
+        cascade="all, delete-orphan",
+        lazy="select",
+    )
+
+    documents = db.relationship(
+        "ContractDocument",
+        back_populates="contract",
+        cascade="all, delete-orphan",
+        lazy="select",
+        order_by="desc(ContractDocument.uploaded_at)",
+    )
+
+    processing_batches = db.relationship(
+        "CommercialProcessingBatch",
+        back_populates="contract",
+        lazy="select",
+    )
+
+    sales = db.relationship(
+        "Sale",
+        back_populates="contract",
+        lazy="select",
+    )
+
+    def __repr__(self) -> str:
+        return f"<Contract {self.id} {self.contract_number} {self.status}>"
+    
+
+class ContractItem(db.Model):
+    __tablename__ = "contract_items"
+
+    id = db.Column(db.Integer, primary_key=True)
+    contract_id = db.Column(
+        db.Integer,
+        db.ForeignKey("contracts.id"),
+        nullable=False,
+        index=True,
+    )
+
+    product_name = db.Column(db.String(120), nullable=False)
+    product_code = db.Column(db.String(50), nullable=True)
+    unit_of_measure = db.Column(db.String(20), nullable=False, default="kg")
+
+    quantity = db.Column(db.Numeric(14, 2), nullable=False)
+    unit_price = db.Column(db.Numeric(14, 2), nullable=False)
+    total_price = db.Column(db.Numeric(14, 2), nullable=False)
+
+    quality_spec = db.Column(db.Text, nullable=True)
+    notes = db.Column(db.Text, nullable=True)
+
+    created_at = db.Column(db.DateTime, nullable=False, default=utcnow_naive)
+    updated_at = db.Column(
+        db.DateTime,
+        nullable=False,
+        default=utcnow_naive,
+        onupdate=utcnow_naive,
+    )
+
+    contract = db.relationship("Contract", back_populates="items", lazy="joined")
+    sale_items = db.relationship("SaleItem", back_populates="contract_item", lazy="select")
+
+    def __repr__(self) -> str:
+        return f"<ContractItem {self.id} {self.product_name}>"
+    
+
+class ContractDocument(db.Model):
+    __tablename__ = "contract_documents"
+
+    id = db.Column(db.Integer, primary_key=True)
+    contract_id = db.Column(
+        db.Integer,
+        db.ForeignKey("contracts.id"),
+        nullable=False,
+        index=True,
+    )
+
+    document_type = db.Column(db.String(50), nullable=False, default="other")
+    title = db.Column(db.String(255), nullable=False)
+
+    file_path = db.Column(db.String(500), nullable=False)
+    original_filename = db.Column(db.String(255), nullable=True)
+    stored_filename = db.Column(db.String(255), nullable=True)
+    mime_type = db.Column(db.String(120), nullable=True)
+    file_size = db.Column(db.Integer, nullable=True)
+
+    version_no = db.Column(db.Integer, nullable=False, default=1)
+    is_primary = db.Column(db.Boolean, nullable=False, default=False)
+
+    notes = db.Column(db.Text, nullable=True)
+
+    uploaded_by_user_id = db.Column(
+        db.Integer,
+        db.ForeignKey("user.id"),
+        nullable=True,
+    )
+    uploaded_at = db.Column(db.DateTime, nullable=False, default=utcnow_naive)
+
+    contract = db.relationship("Contract", back_populates="documents", lazy="joined")
+    uploaded_by = db.relationship("User", foreign_keys=[uploaded_by_user_id], lazy="joined")
+
+    def __repr__(self) -> str:
+        return f"<ContractDocument {self.id} {self.document_type} {self.title}>"
+    
+
+class CommercialProcessingBatch(db.Model):
+    __tablename__ = "commercial_processing_batches"
+
+    id = db.Column(db.Integer, primary_key=True)
+    batch_number = db.Column(db.String(50), nullable=False, unique=True, index=True)
+
+    contract_id = db.Column(
+        db.Integer,
+        db.ForeignKey("contracts.id"),
+        nullable=False,
+        index=True,
+    )
+
+    status = db.Column(db.String(30), nullable=False, default="draft", index=True)
+    processing_date = db.Column(db.Date, nullable=True)
+
+    source_type = db.Column(db.String(30), nullable=True)
+    source_reference_id = db.Column(db.Integer, nullable=True)
+
+    planned_input_qty = db.Column(db.Numeric(14, 2), nullable=True)
+    actual_input_qty = db.Column(db.Numeric(14, 2), nullable=True)
+    output_qty = db.Column(db.Numeric(14, 2), nullable=True)
+    yield_percentage = db.Column(db.Numeric(8, 2), nullable=True)
+
+    processing_authorized = db.Column(db.Boolean, nullable=False, default=False)
+    authorization_status = db.Column(db.String(30), nullable=False, default="pending")
+    authorization_basis = db.Column(db.String(30), nullable=True)
+    authorization_note = db.Column(db.Text, nullable=True)
+    authorized_at = db.Column(db.DateTime, nullable=True)
+
+    notes = db.Column(db.Text, nullable=True)
+
+    created_by_user_id = db.Column(
+        db.Integer,
+        db.ForeignKey("user.id"),
+        nullable=True,
+    )
+
+    created_at = db.Column(db.DateTime, nullable=False, default=utcnow_naive)
+    updated_at = db.Column(
+        db.DateTime,
+        nullable=False,
+        default=utcnow_naive,
+        onupdate=utcnow_naive,
+    )
+
+    contract = db.relationship("Contract", back_populates="processing_batches", lazy="joined")
+    created_by = db.relationship("User", foreign_keys=[created_by_user_id], lazy="joined")
+
+    outputs = db.relationship(
+        "ProcessingBatchOutput",
+        back_populates="processing_batch",
+        cascade="all, delete-orphan",
+        lazy="select",
+    )
+
+    def __repr__(self) -> str:
+        return f"<CommercialProcessingBatch {self.id} {self.batch_number}>"
+    
+
+class ProcessingBatchOutput(db.Model):
+    __tablename__ = "processing_batch_outputs"
+
+    id = db.Column(db.Integer, primary_key=True)
+    processing_batch_id = db.Column(
+        db.Integer,
+        db.ForeignKey("commercial_processing_batches.id"),
+        nullable=False,
+        index=True,
+    )
+
+    product_name = db.Column(db.String(120), nullable=False)
+    product_code = db.Column(db.String(50), nullable=True)
+    quantity = db.Column(db.Numeric(14, 2), nullable=False)
+    unit_of_measure = db.Column(db.String(20), nullable=False, default="kg")
+    grade = db.Column(db.String(50), nullable=True)
+
+    destination_type = db.Column(
+        db.String(30),
+        nullable=True,
+        default="contract_sale",
+    )
+
+    notes = db.Column(db.Text, nullable=True)
+
+    created_at = db.Column(db.DateTime, nullable=False, default=utcnow_naive)
+    updated_at = db.Column(
+        db.DateTime,
+        nullable=False,
+        default=utcnow_naive,
+        onupdate=utcnow_naive,
+    )
+
+    processing_batch = db.relationship(
+        "CommercialProcessingBatch",
+        back_populates="outputs",
+        lazy="joined",
+    )
+    sale_items = db.relationship(
+        "SaleItem",
+        back_populates="processing_batch_output",
+        lazy="select",
+    )
+
+    def __repr__(self) -> str:
+        return f"<ProcessingBatchOutput {self.id} {self.product_name}>"
+    
+
+class Sale(db.Model):
+    __tablename__ = "sales"
+
+    id = db.Column(db.Integer, primary_key=True)
+    sale_number = db.Column(db.String(50), nullable=False, unique=True, index=True)
+
+    contract_id = db.Column(
+        db.Integer,
+        db.ForeignKey("contracts.id"),
+        nullable=False,
+        index=True,
+    )
+    customer_id = db.Column(db.Integer, nullable=False)
+
+    buyer_id = db.Column(
+        db.Integer,
+        db.ForeignKey("buyer.id"),
+        nullable=False,
+        index=True,
+    )
+
+    sale_date = db.Column(db.Date, nullable=False)
+
+    invoice_type = db.Column(db.String(20), nullable=False, default="commercial")
+    status = db.Column(db.String(30), nullable=False, default="draft", index=True)
+    currency = db.Column(db.String(10), nullable=False, default="USD")
+
+    subtotal = db.Column(db.Numeric(14, 2), nullable=False, default=0)
+    discount = db.Column(db.Numeric(14, 2), nullable=False, default=0)
+    tax_amount = db.Column(db.Numeric(14, 2), nullable=False, default=0)
+    total_amount = db.Column(db.Numeric(14, 2), nullable=False, default=0)
+
+    prepaid_amount = db.Column(db.Numeric(14, 2), nullable=False, default=0)
+    amount_paid = db.Column(db.Numeric(14, 2), nullable=False, default=0)
+    balance_due = db.Column(db.Numeric(14, 2), nullable=False, default=0)
+
+    payment_status = db.Column(
+        db.String(30),
+        nullable=False,
+        default="unpaid",
+        index=True,
+    )
+
+    processing_authorized = db.Column(db.Boolean, nullable=False, default=False)
+    authorized_at = db.Column(db.DateTime, nullable=True)
+
+    notes = db.Column(db.Text, nullable=True)
+
+    created_by_user_id = db.Column(
+        db.Integer,
+        db.ForeignKey("user.id"),
+        nullable=True,
+    )
+
+    created_at = db.Column(db.DateTime, nullable=False, default=utcnow_naive)
+    updated_at = db.Column(
+        db.DateTime,
+        nullable=False,
+        default=utcnow_naive,
+        onupdate=utcnow_naive,
+    )
+
+    contract = db.relationship("Contract", back_populates="sales", lazy="joined")
+    buyer = db.relationship("Buyer", foreign_keys=[buyer_id], lazy="joined")
+    created_by = db.relationship("User", foreign_keys=[created_by_user_id], lazy="joined")
+
+    items = db.relationship(
+        "SaleItem",
+        back_populates="sale",
+        cascade="all, delete-orphan",
+        lazy="select",
+    )
+
+    payments = db.relationship(
+        "SalePayment",
+        back_populates="sale",
+        cascade="all, delete-orphan",
+        lazy="select",
+    )
+
+    def __repr__(self) -> str:
+        return f"<Sale {self.id} {self.sale_number}>"
+    
+
+class SaleItem(db.Model):
+    __tablename__ = "sale_items"
+
+    id = db.Column(db.Integer, primary_key=True)
+
+    sale_id = db.Column(
+        db.Integer,
+        db.ForeignKey("sales.id"),
+        nullable=False,
+        index=True,
+    )
+
+    contract_item_id = db.Column(
+        db.Integer,
+        db.ForeignKey("contract_items.id"),
+        nullable=True,
+        index=True,
+    )
+
+    processing_batch_output_id = db.Column(
+        db.Integer,
+        db.ForeignKey("processing_batch_outputs.id"),
+        nullable=True,
+        index=True,
+    )
+
+    product_name = db.Column(db.String(120), nullable=False)
+    product_code = db.Column(db.String(50), nullable=True)
+    quantity = db.Column(db.Numeric(14, 2), nullable=False)
+    unit_of_measure = db.Column(db.String(20), nullable=False, default="kg")
+    unit_price = db.Column(db.Numeric(14, 2), nullable=False)
+    line_total = db.Column(db.Numeric(14, 2), nullable=False)
+
+    notes = db.Column(db.Text, nullable=True)
+
+    created_at = db.Column(db.DateTime, nullable=False, default=utcnow_naive)
+    updated_at = db.Column(
+        db.DateTime,
+        nullable=False,
+        default=utcnow_naive,
+        onupdate=utcnow_naive,
+    )
+
+    sale = db.relationship("Sale", back_populates="items", lazy="joined")
+    contract_item = db.relationship("ContractItem", back_populates="sale_items", lazy="joined")
+    processing_batch_output = db.relationship(
+        "ProcessingBatchOutput",
+        back_populates="sale_items",
+        lazy="joined",
+    )
+
+    def __repr__(self) -> str:
+        return f"<SaleItem {self.id} {self.product_name}>"
+    
+
+class SalePayment(db.Model):
+    __tablename__ = "sale_payments"
+
+    id = db.Column(db.Integer, primary_key=True)
+
+    sale_id = db.Column(
+        db.Integer,
+        db.ForeignKey("sales.id"),
+        nullable=False,
+        index=True,
+    )
+
+    payment_date = db.Column(db.Date, nullable=False)
+
+    # Example values:
+    # payment_type: prepayment, partial_payment, final_payment, lc_settlement
+    payment_type = db.Column(db.String(30), nullable=False)
+
+    # Example values:
+    # payment_method: bank_transfer, swift, cash, cheque, mpesa
+    payment_method = db.Column(db.String(30), nullable=True)
+
+    amount = db.Column(db.Numeric(14, 2), nullable=False)
+    reference_number = db.Column(db.String(100), nullable=True)
+    notes = db.Column(db.Text, nullable=True)
+
+    created_by_user_id = db.Column(
+        db.Integer,
+        db.ForeignKey("user.id"),
+        nullable=True,
+    )
+
+    created_at = db.Column(db.DateTime, nullable=False, default=utcnow_naive)
+
+    sale = db.relationship("Sale", back_populates="payments", lazy="joined")
+    created_by = db.relationship("User", foreign_keys=[created_by_user_id], lazy="joined")
+
+    def __repr__(self) -> str:
+        return f"<SalePayment {self.id} {self.payment_type} {self.amount}>"
 
 
 # =========================================================
@@ -830,7 +1431,142 @@ class InvoiceItem(db.Model):
     unit_price = db.Column(db.Float, default=0.0, nullable=False)
     line_total = db.Column(db.Float, default=0.0, nullable=False)
 
+# =========================================================
+# Unified Pipeline / Control Tower (MATCHES MIGRATION)
+# =========================================================
 
+class PipelineCase(db.Model):
+    __tablename__ = "pipeline_case"
+
+    id = db.Column(db.Integer, primary_key=True)
+    case_number = db.Column(db.String(50), unique=True, nullable=False, index=True)
+
+    buyer_id = db.Column(db.Integer, db.ForeignKey("buyer.id"), nullable=True, index=True)
+    contract_id = db.Column(db.Integer, db.ForeignKey("contracts.id"), nullable=True, index=True)
+
+    # KEEP ONLY ID (NO FK, NO RELATIONSHIP)
+    commercial_processing_batch_id = db.Column(db.Integer, nullable=True, index=True)
+
+    sale_id = db.Column(db.Integer, db.ForeignKey("sales.id"), nullable=True, index=True)
+    invoice_id = db.Column(db.Integer, db.ForeignKey("invoice.id"), nullable=True, index=True)
+
+    current_stage = db.Column(db.String(30), nullable=False, default="sourcing", index=True)
+    current_status = db.Column(db.String(40), nullable=False, default="draft", index=True)
+    authorization_status = db.Column(db.String(30), nullable=False, default="pending", index=True)
+    payment_status = db.Column(db.String(30), nullable=False, default="none", index=True)
+    delivery_status = db.Column(db.String(30), nullable=False, default="not_started", index=True)
+    health_status = db.Column(db.String(20), nullable=False, default="green", index=True)
+    next_action = db.Column(db.String(50), nullable=False, default="capture_source")
+
+    next_action_label = db.Column(db.String(255), nullable=True)
+    blocking_reason = db.Column(db.Text, nullable=True)
+
+    output_qty = db.Column(db.Numeric(14, 2), nullable=False, default=0)
+    sold_qty = db.Column(db.Numeric(14, 2), nullable=False, default=0)
+    invoiced_amount = db.Column(db.Numeric(14, 2), nullable=False, default=0)
+    paid_amount = db.Column(db.Numeric(14, 2), nullable=False, default=0)
+    outstanding_amount = db.Column(db.Numeric(14, 2), nullable=False, default=0)
+
+    currency = db.Column(db.String(10), nullable=True)
+    is_closed = db.Column(db.Boolean, nullable=False, default=False)
+    closed_at = db.Column(db.DateTime, nullable=True)
+
+    created_at = db.Column(db.DateTime, nullable=False, default=utcnow_naive)
+    updated_at = db.Column(db.DateTime, nullable=False, default=utcnow_naive, onupdate=utcnow_naive)
+
+    # SAFE RELATIONSHIPS ONLY
+    buyer = db.relationship("Buyer", lazy="joined")
+    contract = db.relationship("Contract", lazy="joined")
+    sale = db.relationship("Sale", lazy="joined")
+    invoice = db.relationship("Invoice", lazy="joined")
+
+    events = db.relationship(
+        "PipelineEvent",
+        back_populates="pipeline_case",
+        cascade="all, delete-orphan",
+        lazy="select",
+        order_by="desc(PipelineEvent.event_at)",
+    )
+
+    deliveries = db.relationship(
+        "PipelineDelivery",
+        back_populates="pipeline_case",
+        cascade="all, delete-orphan",
+        lazy="select",
+    )
+
+    def __repr__(self):
+        return f"<PipelineCase {self.id} {self.case_number} {self.current_status}>"
+
+
+class PipelineDelivery(db.Model):
+    __tablename__ = "pipeline_delivery"
+
+    id = db.Column(db.Integer, primary_key=True)
+
+    pipeline_case_id = db.Column(
+        db.Integer,
+        db.ForeignKey("pipeline_case.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+
+    sale_id = db.Column(db.Integer, db.ForeignKey("sales.id"), nullable=True, index=True)
+
+    delivery_number = db.Column(db.String(50), nullable=True, index=True)
+    destination = db.Column(db.String(200), nullable=True)
+    shipping_mode = db.Column(db.String(50), nullable=True)
+
+    quantity_kg = db.Column(db.Numeric(14, 2), nullable=False, default=0)
+
+    dispatch_date = db.Column(db.Date, nullable=True)
+    delivery_date = db.Column(db.Date, nullable=True)
+
+    # STRING (matches migration)
+    status = db.Column(db.String(30), nullable=False, default="planned", index=True)
+
+    shipping_docs_uploaded = db.Column(db.Boolean, nullable=False, default=False)
+    proof_of_delivery_uploaded = db.Column(db.Boolean, nullable=False, default=False)
+    notes = db.Column(db.Text, nullable=True)
+
+    created_at = db.Column(db.DateTime, nullable=False, default=utcnow_naive)
+    updated_at = db.Column(db.DateTime, nullable=False, default=utcnow_naive, onupdate=utcnow_naive)
+
+    pipeline_case = db.relationship("PipelineCase", back_populates="deliveries", lazy="joined")
+    sale = db.relationship("Sale", foreign_keys=[sale_id], lazy="joined")
+
+    def __repr__(self):
+        return f"<PipelineDelivery {self.id} {self.delivery_number or ''} {self.status}>"
+
+
+
+class PipelineEvent(db.Model):
+    __tablename__ = "pipeline_event"
+
+    id = db.Column(db.Integer, primary_key=True)
+
+    pipeline_case_id = db.Column(
+        db.Integer,
+        db.ForeignKey("pipeline_case.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+
+    # STRING (matches migration)
+    event_type = db.Column(db.String(50), nullable=False, index=True)
+
+    message = db.Column(db.Text, nullable=True)
+    metadata_json = db.Column(MutableDict.as_mutable(JSONB), nullable=True)
+
+    actor_user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=True, index=True)
+
+    event_at = db.Column(db.DateTime, nullable=False, default=utcnow_naive, index=True)
+
+    pipeline_case = db.relationship("PipelineCase", back_populates="events", lazy="joined")
+    actor_user = db.relationship("User", foreign_keys=[actor_user_id], lazy="joined")
+
+    def __repr__(self):
+        return f"<PipelineEvent {self.id} {self.event_type}>"
 # =========================================================
 # Vendor
 # =========================================================

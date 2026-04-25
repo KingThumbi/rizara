@@ -25,7 +25,7 @@
 
     <div class="flex gap-3">
       <a
-        href="{{ url_for('main.market_purchase_new') }}"
+        href="{{ url_for('market_purchase.market_purchase_new') }}"
         class="bg-jungle text-white px-5 py-3 rounded-lg font-semibold hover:bg-jungleLight transition"
       >
         + New Market Purchase
@@ -200,7 +200,7 @@
                 <td class="px-3 py-3">
                   <div class="flex flex-col gap-2 min-w-[140px]">
                     <a
-                      href="{{ url_for('main.market_purchase_detail', purchase_id=purchase.id) }}"
+                      href="{{ url_for('market_purchase.market_purchase_detail', purchase_id=purchase.id) }}"
                       class="bg-jungle text-white px-3 py-2 rounded text-xs font-semibold text-center hover:bg-jungleLight transition"
                     >
                       Open
@@ -208,7 +208,7 @@
 
                     {% if purchase.aggregation_batch %}
                       <a
-                        href="{{ url_for('main.market_purchase_detail', purchase_id=purchase.id) }}"
+                        href="{{ url_for('market_purchase.market_purchase_detail', purchase_id=purchase.id) }}"
                         class="bg-gray-100 text-gray-800 px-3 py-2 rounded text-xs font-semibold text-center hover:bg-gray-200 transition"
                       >
                         Lines & Expenses
@@ -247,7 +247,7 @@
           Start by creating your first direct market procurement entry.
         </p>
         <a
-          href="{{ url_for('main.market_purchase_new') }}"
+          href="{{ url_for('market_purchase.market_purchase_new') }}"
           class="inline-flex items-center bg-jungle text-white px-5 py-3 rounded-lg font-semibold hover:bg-jungleLight transition"
         >
           + Create Market Purchase

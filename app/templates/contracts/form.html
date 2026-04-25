@@ -1,0 +1,438 @@
+{% extends "layouts/base.html" %}
+
+{% block title %}
+  {% if contract %}Edit Contract{% else %}New Contract{% endif %} - Rizara
+{% endblock %}
+
+{% block body %}
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+  <div class="mb-6">
+    <div class="flex items-center gap-2 text-sm text-gray-500 mb-3">
+      <a href="{{ url_for('contracts.list_contracts') }}" class="hover:text-jungle transition">Contracts</a>
+      <span>/</span>
+      <span class="text-gray-700 font-medium">
+        {% if contract %}Edit{% else %}New{% endif %}
+      </span>
+    </div>
+
+    <div class="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4">
+      <div>
+        <h1 class="text-3xl font-bold tracking-tight text-gray-900">
+          {% if contract %}Edit Contract{% else %}Create Contract{% endif %}
+        </h1>
+        <p class="text-sm text-gray-600 mt-2 max-w-2xl">
+          Capture the commercial agreement cleanly so downstream approvals, sales, payment tracking, and processing decisions stay aligned.
+        </p>
+      </div>
+
+      <div class="flex flex-wrap gap-3">
+        {% if contract %}
+          <a
+            href="{{ url_for('contracts.view_contract', contract_id=contract.id) }}"
+            class="inline-flex items-center justify-center rounded-xl border border-gray-300 px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-100 transition"
+          >
+            View Contract
+          </a>
+        {% endif %}
+        <a
+          href="{{ url_for('contracts.list_contracts') }}"
+          class="inline-flex items-center justify-center rounded-xl border border-gray-300 px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-100 transition"
+        >
+          Back to Contracts
+        </a>
+      </div>
+    </div>
+  </div>
+
+  <form method="post" action="{{ form_action }}">
+    <div class="grid grid-cols-1 xl:grid-cols-3 gap-6">
+      <div class="xl:col-span-2 space-y-6">
+        <div class="bg-white rounded-2xl shadow-sm border border-gray-200">
+          <div class="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+            <div>
+              <h2 class="text-sm font-semibold text-gray-900">Buyer & Timeline</h2>
+              <p class="text-xs text-gray-500 mt-1">Define who the contract is with and the core dates.</p>
+            </div>
+          </div>
+
+          <div class="p-6 grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div class="md:col-span-1">
+              <label for="buyer_id" class="block text-sm font-medium text-gray-700 mb-1">
+                Buyer <span class="text-red-500">*</span>
+              </label>
+              <select
+                id="buyer_id"
+                name="buyer_id"
+                required
+                class="w-full rounded-xl border border-gray-300 px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-jungle"
+              >
+                <option value="">Select buyer</option>
+                {% for buyer in buyers %}
+                  <option value="{{ buyer.id }}" {% if contract and contract.buyer_id == buyer.id %}selected{% endif %}>
+                    {{ buyer.name }}
+                  </option>
+                {% endfor %}
+              </select>
+            </div>
+
+            <div>
+              <label for="contract_date" class="block text-sm font-medium text-gray-700 mb-1">
+                Contract Date <span class="text-red-500">*</span>
+              </label>
+              <input
+                type="date"
+                id="contract_date"
+                name="contract_date"
+                required
+                value="{{ contract.contract_date.strftime('%Y-%m-%d') if contract and contract.contract_date else '' }}"
+                class="w-full rounded-xl border border-gray-300 px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-jungle"
+              >
+            </div>
+
+            <div>
+              <label for="delivery_date" class="block text-sm font-medium text-gray-700 mb-1">Delivery Date</label>
+              <input
+                type="date"
+                id="delivery_date"
+                name="delivery_date"
+                value="{{ contract.delivery_date.strftime('%Y-%m-%d') if contract and contract.delivery_date else '' }}"
+                class="w-full rounded-xl border border-gray-300 px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-jungle"
+              >
+            </div>
+          </div>
+        </div>
+
+        <div class="bg-white rounded-2xl shadow-sm border border-gray-200">
+          <div class="px-6 py-4 border-b border-gray-200">
+            <h2 class="text-sm font-semibold text-gray-900">Commercial Terms</h2>
+            <p class="text-xs text-gray-500 mt-1">Set the commercial basis, value, and product profile.</p>
+          </div>
+
+          <div class="p-6 grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label for="currency" class="block text-sm font-medium text-gray-700 mb-1">Currency</label>
+              {% set selected_currency = contract.currency if contract else 'USD' %}
+              <select
+                id="currency"
+                name="currency"
+                class="w-full rounded-xl border border-gray-300 px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-jungle"
+              >
+                <option value="USD" {% if selected_currency == 'USD' %}selected{% endif %}>USD</option>
+                <option value="KES" {% if selected_currency == 'KES' %}selected{% endif %}>KES</option>
+                <option value="AED" {% if selected_currency == 'AED' %}selected{% endif %}>AED</option>
+              </select>
+            </div>
+
+            <div>
+              <label for="price_basis" class="block text-sm font-medium text-gray-700 mb-1">Price Basis</label>
+              <input
+                type="text"
+                id="price_basis"
+                name="price_basis"
+                value="{{ contract.price_basis if contract else '' }}"
+                placeholder="FOB / CIF / EXW"
+                class="w-full rounded-xl border border-gray-300 px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-jungle"
+              >
+            </div>
+
+            <div>
+              <label for="product_type" class="block text-sm font-medium text-gray-700 mb-1">Product Type</label>
+              <input
+                type="text"
+                id="product_type"
+                name="product_type"
+                value="{{ contract.product_type if contract else '' }}"
+                placeholder="Goat carcass, cuts, offals"
+                class="w-full rounded-xl border border-gray-300 px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-jungle"
+              >
+            </div>
+
+            <div>
+              <label for="destination_country" class="block text-sm font-medium text-gray-700 mb-1">Destination Country</label>
+              <input
+                type="text"
+                id="destination_country"
+                name="destination_country"
+                value="{{ contract.destination_country if contract else '' }}"
+                class="w-full rounded-xl border border-gray-300 px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-jungle"
+              >
+            </div>
+
+            <div>
+              <label for="contracted_quantity_kg" class="block text-sm font-medium text-gray-700 mb-1">Contracted Quantity (Kg)</label>
+              <input
+                type="number"
+                step="0.01"
+                id="contracted_quantity_kg"
+                name="contracted_quantity_kg"
+                value="{{ contract.contracted_quantity_kg if contract else '' }}"
+                class="w-full rounded-xl border border-gray-300 px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-jungle"
+              >
+            </div>
+
+            <div>
+              <label for="contracted_value" class="block text-sm font-medium text-gray-700 mb-1">Contracted Value</label>
+              <input
+                type="number"
+                step="0.01"
+                id="contracted_value"
+                name="contracted_value"
+                value="{{ contract.contracted_value if contract else '' }}"
+                class="w-full rounded-xl border border-gray-300 px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-jungle"
+              >
+            </div>
+
+            <div class="md:col-span-2">
+              <label for="quality_spec" class="block text-sm font-medium text-gray-700 mb-1">Quality Specification</label>
+              <textarea
+                id="quality_spec"
+                name="quality_spec"
+                rows="4"
+                class="w-full rounded-xl border border-gray-300 px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-jungle"
+                placeholder="Define quality, packing, carcass condition, grade, or any export specification"
+              >{{ contract.quality_spec if contract else '' }}</textarea>
+            </div>
+          </div>
+        </div>
+
+        <div class="bg-white rounded-2xl shadow-sm border border-gray-200">
+          <div class="px-6 py-4 border-b border-gray-200">
+            <h2 class="text-sm font-semibold text-gray-900">Payment, Security & Release Conditions</h2>
+            <p class="text-xs text-gray-500 mt-1">Control payment protection and what must happen before processing is allowed.</p>
+          </div>
+
+          <div class="p-6 grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label for="payment_security_type" class="block text-sm font-medium text-gray-700 mb-1">Payment Security</label>
+              {% set selected_security = contract.payment_security_type if contract else 'none' %}
+              <select
+                id="payment_security_type"
+                name="payment_security_type"
+                class="w-full rounded-xl border border-gray-300 px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-jungle"
+              >
+                <option value="none" {% if selected_security == 'none' %}selected{% endif %}>None</option>
+                <option value="prepayment" {% if selected_security == 'prepayment' %}selected{% endif %}>Prepayment</option>
+                <option value="lc" {% if selected_security == 'lc' %}selected{% endif %}>Letter of Credit</option>
+                <option value="partial_prepayment" {% if selected_security == 'partial_prepayment' %}selected{% endif %}>Partial Prepayment</option>
+              </select>
+            </div>
+
+            <div>
+              <label for="processing_release_mode" class="block text-sm font-medium text-gray-700 mb-1">Processing Release Mode</label>
+              {% set release_mode = contract.processing_release_mode if contract else 'manual_approval' %}
+              <select
+                id="processing_release_mode"
+                name="processing_release_mode"
+                class="w-full rounded-xl border border-gray-300 px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-jungle"
+              >
+                <option value="manual_approval" {% if release_mode == 'manual_approval' %}selected{% endif %}>Manual Approval</option>
+                <option value="prepayment_required" {% if release_mode == 'prepayment_required' %}selected{% endif %}>Prepayment Required</option>
+                <option value="lc_confirmation_required" {% if release_mode == 'lc_confirmation_required' %}selected{% endif %}>LC Confirmation Required</option>
+              </select>
+            </div>
+
+            <div class="md:col-span-2 flex flex-wrap items-center gap-6 rounded-xl bg-gray-50 px-4 py-3">
+              <label class="inline-flex items-center gap-2 text-sm text-gray-700">
+                <input
+                  type="checkbox"
+                  id="prepayment_required"
+                  name="prepayment_required"
+                  value="1"
+                  class="rounded border-gray-300 text-jungle focus:ring-jungle"
+                  {% if contract and contract.prepayment_required %}checked{% endif %}
+                >
+                <span>Prepayment Required</span>
+              </label>
+
+              <label class="inline-flex items-center gap-2 text-sm text-gray-700">
+                <input
+                  type="checkbox"
+                  id="lc_required"
+                  name="lc_required"
+                  value="1"
+                  class="rounded border-gray-300 text-jungle focus:ring-jungle"
+                  {% if contract and contract.lc_required %}checked{% endif %}
+                >
+                <span>LC Required</span>
+              </label>
+            </div>
+
+            <div>
+              <label for="required_prepayment_percent" class="block text-sm font-medium text-gray-700 mb-1">Required Prepayment %</label>
+              <input
+                type="number"
+                step="0.01"
+                id="required_prepayment_percent"
+                name="required_prepayment_percent"
+                value="{{ contract.required_prepayment_percent if contract else '' }}"
+                class="w-full rounded-xl border border-gray-300 px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-jungle"
+              >
+            </div>
+
+            <div>
+              <label for="required_prepayment_amount" class="block text-sm font-medium text-gray-700 mb-1">Required Prepayment Amount</label>
+              <input
+                type="number"
+                step="0.01"
+                id="required_prepayment_amount"
+                name="required_prepayment_amount"
+                value="{{ contract.required_prepayment_amount if contract else '' }}"
+                class="w-full rounded-xl border border-gray-300 px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-jungle"
+              >
+            </div>
+
+            <div>
+              <label for="lc_number" class="block text-sm font-medium text-gray-700 mb-1">LC Number</label>
+              <input
+                type="text"
+                id="lc_number"
+                name="lc_number"
+                value="{{ contract.lc_number if contract else '' }}"
+                class="w-full rounded-xl border border-gray-300 px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-jungle"
+              >
+            </div>
+
+            <div>
+              <label for="lc_issuing_bank" class="block text-sm font-medium text-gray-700 mb-1">LC Issuing Bank</label>
+              <input
+                type="text"
+                id="lc_issuing_bank"
+                name="lc_issuing_bank"
+                value="{{ contract.lc_issuing_bank if contract else '' }}"
+                class="w-full rounded-xl border border-gray-300 px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-jungle"
+              >
+            </div>
+
+            <div>
+              <label for="lc_status" class="block text-sm font-medium text-gray-700 mb-1">LC Status</label>
+              <input
+                type="text"
+                id="lc_status"
+                name="lc_status"
+                value="{{ contract.lc_status if contract else '' }}"
+                placeholder="pending / confirmed / available"
+                class="w-full rounded-xl border border-gray-300 px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-jungle"
+              >
+            </div>
+
+            <div></div>
+
+            <div>
+              <label for="payment_terms" class="block text-sm font-medium text-gray-700 mb-1">Payment Terms</label>
+              <textarea
+                id="payment_terms"
+                name="payment_terms"
+                rows="4"
+                class="w-full rounded-xl border border-gray-300 px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-jungle"
+              >{{ contract.payment_terms if contract else '' }}</textarea>
+            </div>
+
+            <div>
+              <label for="delivery_terms" class="block text-sm font-medium text-gray-700 mb-1">Delivery Terms</label>
+              <textarea
+                id="delivery_terms"
+                name="delivery_terms"
+                rows="4"
+                class="w-full rounded-xl border border-gray-300 px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-jungle"
+              >{{ contract.delivery_terms if contract else '' }}</textarea>
+            </div>
+          </div>
+        </div>
+
+        <div class="bg-white rounded-2xl shadow-sm border border-gray-200">
+          <div class="px-6 py-4 border-b border-gray-200">
+            <h2 class="text-sm font-semibold text-gray-900">Internal Notes</h2>
+            <p class="text-xs text-gray-500 mt-1">Capture negotiation context, operations notes, or handling instructions.</p>
+          </div>
+
+          <div class="p-6">
+            <textarea
+              id="notes"
+              name="notes"
+              rows="5"
+              class="w-full rounded-xl border border-gray-300 px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-jungle"
+              placeholder="Add internal notes for commercial, operations, or approvals teams"
+            >{{ contract.notes if contract else '' }}</textarea>
+          </div>
+        </div>
+      </div>
+
+      <div class="space-y-6 xl:sticky xl:top-6 self-start">
+        <div class="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
+          <div class="px-6 py-4 bg-gray-900 text-white">
+            <h2 class="text-sm font-semibold">Contract Summary</h2>
+            <p class="text-xs text-gray-300 mt-1">Live overview of this commercial record.</p>
+          </div>
+
+          <div class="p-6">
+            {% if contract %}
+              <dl class="space-y-4 text-sm">
+                <div class="flex justify-between gap-4">
+                  <dt class="text-gray-500">Contract No</dt>
+                  <dd class="font-semibold text-gray-900">{{ contract.contract_number }}</dd>
+                </div>
+                <div class="flex justify-between gap-4">
+                  <dt class="text-gray-500">Status</dt>
+                  <dd class="font-medium text-gray-900">{{ contract.status|replace('_', ' ')|title }}</dd>
+                </div>
+                <div class="flex justify-between gap-4">
+                  <dt class="text-gray-500">Buyer</dt>
+                  <dd class="font-medium text-gray-900">{{ contract.buyer.name if contract.buyer else '-' }}</dd>
+                </div>
+                <div class="flex justify-between gap-4">
+                  <dt class="text-gray-500">Currency</dt>
+                  <dd class="font-medium text-gray-900">{{ contract.currency }}</dd>
+                </div>
+                <div class="flex justify-between gap-4">
+                  <dt class="text-gray-500">Created</dt>
+                  <dd class="font-medium text-gray-900">{{ contract.created_at or '-' }}</dd>
+                </div>
+              </dl>
+            {% else %}
+              <div class="rounded-xl bg-gray-50 p-4 text-sm text-gray-600">
+                Contract number and workflow state will be assigned after creation.
+              </div>
+            {% endif %}
+          </div>
+        </div>
+
+        <div class="bg-white rounded-2xl shadow-sm border border-gray-200 p-6">
+          <h3 class="text-sm font-semibold text-gray-900">Workflow Guidance</h3>
+          <div class="mt-3 space-y-2 text-sm text-gray-600">
+            <p>1. Create the contract with buyer and terms.</p>
+            <p>2. Add contract items after saving.</p>
+            <p>3. Submit for review and approve.</p>
+            <p>4. Upload signed documentation.</p>
+            <p>5. Activate and create sale from contract.</p>
+          </div>
+        </div>
+
+        <div class="flex flex-col gap-3">
+          <button
+            type="submit"
+            class="w-full rounded-xl bg-jungle px-4 py-3 text-sm font-semibold text-white hover:bg-jungleLight transition shadow-sm"
+          >
+            {% if contract %}Save Changes{% else %}Create Contract{% endif %}
+          </button>
+
+          {% if contract %}
+            <a
+              href="{{ url_for('contracts.view_contract', contract_id=contract.id) }}"
+              class="w-full rounded-xl border border-gray-300 px-4 py-3 text-center text-sm font-medium text-gray-700 hover:bg-gray-100 transition"
+            >
+              Cancel Editing
+            </a>
+          {% else %}
+            <a
+              href="{{ url_for('contracts.list_contracts') }}"
+              class="w-full rounded-xl border border-gray-300 px-4 py-3 text-center text-sm font-medium text-gray-700 hover:bg-gray-100 transition"
+            >
+              Back to Contracts
+            </a>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </form>
+</div>
+{% endblock %}

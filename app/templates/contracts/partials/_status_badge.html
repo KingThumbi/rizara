@@ -1,0 +1,41 @@
+{% if contract.status == 'draft' %}
+  <span class="inline-flex items-center rounded-full bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-700">
+    Draft
+  </span>
+{% elif contract.status == 'under_review' %}
+  <span class="inline-flex items-center rounded-full bg-yellow-100 px-2.5 py-1 text-xs font-medium text-yellow-800">
+    Under Review
+  </span>
+{% elif contract.status == 'approved' %}
+  <span class="inline-flex items-center rounded-full bg-blue-100 px-2.5 py-1 text-xs font-medium text-blue-800">
+    Approved
+  </span>
+{% elif contract.status == 'sent' %}
+  <span class="inline-flex items-center rounded-full bg-gray-800 px-2.5 py-1 text-xs font-medium text-white">
+    Sent
+  </span>
+{% elif contract.status == 'signed' %}
+  <span class="inline-flex items-center rounded-full bg-jungle/10 px-2.5 py-1 text-xs font-medium text-jungle">
+    Signed
+  </span>
+{% elif contract.status == 'active' %}
+  <span class="inline-flex items-center rounded-full bg-green-100 px-2.5 py-1 text-xs font-medium text-green-800">
+    Active
+  </span>
+{% elif contract.status == 'partially_fulfilled' %}
+  <span class="inline-flex items-center rounded-full bg-amber-100 px-2.5 py-1 text-xs font-medium text-amber-800">
+    Partially Fulfilled
+  </span>
+{% elif contract.status == 'fulfilled' %}
+  <span class="inline-flex items-center rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-medium text-emerald-800">
+    Fulfilled
+  </span>
+{% elif contract.status == 'cancelled' %}
+  <span class="inline-flex items-center rounded-full bg-red-100 px-2.5 py-1 text-xs font-medium text-red-800">
+    Cancelled
+  </span>
+{% else %}
+  <span class="inline-flex items-center rounded-full bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-700">
+    {{ contract.status|replace('_', ' ')|title }}
+  </span>
+{% endif %}

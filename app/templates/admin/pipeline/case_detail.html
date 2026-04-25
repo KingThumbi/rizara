@@ -1,0 +1,405 @@
+{% extends "layouts/base.html" %}
+
+{% block title %}Pipeline Case Detail - Rizara{% endblock %}
+
+{% block body %}
+<div class="min-h-screen bg-gray-50">
+  {% include "partials/admin_chrome.html" %}
+
+  <main class="max-w-7xl mx-auto px-6 py-8">
+    <div class="mb-6">
+      <a href="{{ url_for('pipeline_pages.pipeline_dashboard') }}"
+         class="inline-flex items-center gap-2 text-sm font-semibold text-gray-500 hover:text-gray-900 transition">
+        ← Back to Pipeline
+      </a>
+
+      <div class="mt-4 rounded-[2rem] bg-white border border-gray-200 shadow-sm p-6 lg:p-8">
+        <div class="flex flex-col md:flex-row md:items-end md:justify-between gap-4">
+          <div>
+            <p class="text-sm font-semibold text-emerald-700 uppercase tracking-wide">Pipeline Case</p>
+            <h1 id="caseTitle" class="text-3xl lg:text-4xl font-bold text-gray-950 mt-2">Loading...</h1>
+            <p id="caseSubtitle" class="text-gray-600 mt-2"></p>
+          </div>
+
+          <button onclick="loadCase()"
+                  class="rounded-2xl bg-gray-950 text-white px-5 py-3 text-sm font-semibold shadow-sm hover:bg-gray-800 transition">
+            Refresh
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div id="statusStrip" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-8"></div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+      <section class="lg:col-span-2 bg-white border border-gray-200 rounded-[2rem] shadow-sm p-6">
+        <h2 class="text-lg font-bold text-gray-950 mb-4">Commercial Summary</h2>
+        <div id="summaryPanel" class="grid grid-cols-1 md:grid-cols-2 gap-4"></div>
+      </section>
+
+      <aside class="bg-white border border-gray-200 rounded-[2rem] shadow-sm p-6">
+        <h2 class="text-lg font-bold text-gray-950 mb-4">Next Action</h2>
+        <div id="nextActionBox"></div>
+
+        <div class="mt-5">
+          <p class="text-xs uppercase tracking-wide text-gray-500 font-semibold mb-3">
+            Available Actions
+          </p>
+          <div id="smartActions" class="grid grid-cols-1 gap-3"></div>
+        </div>
+      </aside>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <section class="bg-white border border-gray-200 rounded-[2rem] shadow-sm p-6">
+        <h2 class="text-lg font-bold text-gray-950 mb-4">Timeline</h2>
+        <div id="eventsList" class="space-y-4"></div>
+      </section>
+
+      <section class="bg-white border border-gray-200 rounded-[2rem] shadow-sm p-6">
+        <h2 class="text-lg font-bold text-gray-950 mb-4">Deliveries</h2>
+        <div id="deliveriesList" class="space-y-4"></div>
+      </section>
+    </div>
+  </main>
+</div>
+
+<script>
+const CASE_ID = {{ case_id }};
+let CURRENT_CASE = null;
+let ACTION_BUSY = false;
+
+function money(value, currency = "") {
+  const n = Number(value || 0);
+  return `${currency ? currency + " " : ""}${n.toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
+}
+
+function healthClass(health) {
+  if (health === "red") return "bg-red-50 text-red-700 border-red-200";
+  if (health === "amber") return "bg-amber-50 text-amber-700 border-amber-200";
+  if (health === "blue") return "bg-blue-50 text-blue-700 border-blue-200";
+  return "bg-emerald-50 text-emerald-700 border-emerald-200";
+}
+
+function actionClass(color, recommended = false, disabled = false) {
+  const base = "rounded-2xl px-4 py-3 text-sm font-semibold transition text-left";
+  const ring = recommended ? " ring-4 ring-gold/40 shadow-md" : "";
+  const off = disabled ? " opacity-40 cursor-not-allowed" : "";
+
+  const colors = {
+    emerald: "bg-emerald-700 text-white hover:bg-emerald-800",
+    black: "bg-gray-950 text-white hover:bg-gray-800",
+    purple: "bg-purple-700 text-white hover:bg-purple-800",
+    blue: "bg-blue-700 text-white hover:bg-blue-800",
+    amber: "bg-amber-600 text-white hover:bg-amber-700",
+    teal: "bg-teal-700 text-white hover:bg-teal-800",
+    slate: "bg-slate-700 text-white hover:bg-slate-800",
+    gray: "bg-gray-100 text-gray-500",
+  };
+
+  return `${base} ${colors[color] || colors.gray}${ring}${off}`;
+}
+
+function row(label, value) {
+  return `
+    <div class="border border-gray-100 rounded-2xl p-4 bg-gray-50">
+      <p class="text-xs uppercase tracking-wide text-gray-500 font-semibold">${label}</p>
+      <p class="mt-1 text-base font-semibold text-gray-950">${value || "—"}</p>
+    </div>
+  `;
+}
+
+function renderStatusStrip(item) {
+  const statuses = [
+    ["Stage", item.statuses.stage],
+    ["Status", item.statuses.status],
+    ["Authorization", item.statuses.authorization],
+    ["Payment", item.statuses.payment],
+    ["Delivery", item.statuses.delivery],
+  ];
+
+  document.getElementById("statusStrip").innerHTML = statuses.map(([label, value]) => `
+    <div class="border rounded-3xl p-5 ${healthClass(item.statuses.health)}">
+      <p class="text-sm opacity-80">${label}</p>
+      <p class="text-xl font-bold mt-2">${value}</p>
+    </div>
+  `).join("");
+}
+
+function renderSummary(item) {
+  const currency = item.metrics.currency || "";
+
+  document.getElementById("summaryPanel").innerHTML = [
+    row("Buyer", item.buyer.name),
+    row("Contract", item.contract.contract_number),
+    row("Contract Status", item.contract.status),
+    row("Sale", item.sale.sale_number),
+    row("Invoice", item.invoice.invoice_number),
+    row("Output Qty", `${money(item.metrics.output_qty)} kg`),
+    row("Sold Qty", `${money(item.metrics.sold_qty)} kg`),
+    row("Invoiced", money(item.metrics.invoiced_amount, currency)),
+    row("Paid", money(item.metrics.paid_amount, currency)),
+    row("Outstanding", money(item.metrics.outstanding_amount, currency)),
+  ].join("");
+}
+
+function renderNextAction(item) {
+  document.getElementById("nextActionBox").innerHTML = `
+    <div class="rounded-3xl border p-5 ${healthClass(item.statuses.health)}">
+      <p class="text-sm opacity-80">Action Code</p>
+      <p class="font-bold mt-1">${item.next_action.code || "none"}</p>
+
+      <p class="text-sm opacity-80 mt-4">Action</p>
+      <p class="text-lg font-bold mt-1">${item.next_action.label || "No action required"}</p>
+
+      ${item.next_action.blocking_reason ? `
+        <div class="mt-4 bg-white/70 rounded-2xl p-4">
+          <p class="text-sm font-semibold">Blocking Reason</p>
+          <p class="text-sm mt-1">${item.next_action.blocking_reason}</p>
+        </div>
+      ` : ""}
+    </div>
+  `;
+}
+
+function actionButton({ label, hint, color, onclick, enabled, recommended }) {
+  return `
+    <button
+      ${enabled ? `onclick="${onclick}"` : "disabled"}
+      class="${actionClass(color, recommended, !enabled)}"
+    >
+      <span class="block">${recommended ? "★ " : ""}${label}</span>
+      <span class="block text-xs opacity-80 mt-1">${hint}</span>
+    </button>
+  `;
+}
+
+function renderSmartActions(item, deliveries) {
+  const status = item.statuses.status;
+  const next = item.next_action.code;
+  const contractStatus = item.contract.status;
+  const hasSale = !!item.sale.id;
+  const hasInvoice = !!item.invoice.id;
+  const paymentStatus = item.statuses.payment;
+  const deliveryStatus = item.statuses.delivery;
+  const isClosed = status === "closed" || status === "completed";
+  const hasDelivery = deliveries && deliveries.length > 0;
+
+  const actions = [
+    {
+      label: "Mark Contract Signed",
+      hint: "Use when buyer has signed the contract.",
+      color: "emerald",
+      onclick: "markContractSigned()",
+      enabled: !!item.contract.id && !["signed", "active", "approved"].includes((contractStatus || "").toLowerCase()) && !isClosed,
+      recommended: next === "follow_up_signature",
+    },
+    {
+      label: "Create Sale",
+      hint: "Create a commercial sale from this case.",
+      color: "black",
+      onclick: "createSale()",
+      enabled: !hasSale && ["sale_ready", "awaiting_authorization", "awaiting_invoice"].includes(status) && !isClosed,
+      recommended: next === "create_sale",
+    },
+    {
+      label: "Generate Invoice",
+      hint: "Generate invoice from the created sale.",
+      color: "purple",
+      onclick: "generateInvoice()",
+      enabled: hasSale && !hasInvoice && !isClosed,
+      recommended: next === "generate_invoice",
+    },
+    {
+      label: "Record Payment",
+      hint: "Record partial or final payment.",
+      color: "blue",
+      onclick: "recordPayment()",
+      enabled: hasSale && paymentStatus !== "paid" && !isClosed,
+      recommended: next === "record_payment" || next === "record_prepayment",
+    },
+    {
+      label: "Dispatch Delivery",
+      hint: "Create and dispatch a delivery record.",
+      color: "amber",
+      onclick: "dispatchDelivery()",
+      enabled: hasSale && ["paid", "partial"].includes(paymentStatus) && !hasDelivery && !isClosed,
+      recommended: next === "dispatch_delivery",
+    },
+    {
+      label: "Confirm Delivery",
+      hint: "Mark dispatched delivery as received.",
+      color: "teal",
+      onclick: "confirmDelivery()",
+      enabled: hasDelivery && ["dispatched", "in_transit", "delivered"].includes(deliveryStatus) && !isClosed,
+      recommended: next === "confirm_delivery",
+    },
+    {
+      label: "Close Case",
+      hint: "Close only after payment and delivery are complete.",
+      color: "slate",
+      onclick: "closeCase()",
+      enabled: paymentStatus === "paid" && ["received", "closed"].includes(deliveryStatus) && !isClosed,
+      recommended: next === "close_case",
+    },
+  ];
+
+  const visible = actions.filter(action => action.enabled || action.recommended);
+
+  document.getElementById("smartActions").innerHTML = visible.length
+    ? visible.map(actionButton).join("")
+    : `<div class="rounded-2xl bg-gray-50 border border-gray-100 p-4 text-sm text-gray-500">
+        No available actions for the current state.
+      </div>`;
+}
+
+function renderEvents(events) {
+  const el = document.getElementById("eventsList");
+
+  if (!events.length) {
+    el.innerHTML = `<p class="text-sm text-gray-500">No timeline events yet.</p>`;
+    return;
+  }
+
+  el.innerHTML = events.map(event => `
+    <div class="relative pl-6">
+      <div class="absolute left-0 top-1.5 w-3 h-3 rounded-full bg-gray-950"></div>
+      <p class="font-semibold text-gray-950">${event.event_type}</p>
+      <p class="text-sm text-gray-600 mt-1">${event.message || "—"}</p>
+      <p class="text-xs text-gray-400 mt-1">${event.event_at || ""}</p>
+    </div>
+  `).join("");
+}
+
+function renderDeliveries(deliveries) {
+  const el = document.getElementById("deliveriesList");
+
+  if (!deliveries.length) {
+    el.innerHTML = `<p class="text-sm text-gray-500">No deliveries recorded yet.</p>`;
+    return;
+  }
+
+  el.innerHTML = deliveries.map(delivery => `
+    <div class="border border-gray-100 rounded-2xl p-4 bg-gray-50">
+      <div class="flex items-start justify-between gap-3">
+        <div>
+          <p class="font-bold text-gray-950">${delivery.delivery_number || "Delivery"}</p>
+          <p class="text-sm text-gray-600">${delivery.destination || "No destination"}</p>
+        </div>
+        <span class="text-xs border rounded-full px-2 py-1 bg-white">${delivery.status}</span>
+      </div>
+      <div class="mt-3 text-sm text-gray-600 space-y-1">
+        <p>Quantity: ${money(delivery.quantity_kg)} kg</p>
+        <p>Mode: ${delivery.shipping_mode || "—"}</p>
+        <p>Dispatch: ${delivery.dispatch_date || "—"}</p>
+        <p>Delivery: ${delivery.delivery_date || "—"}</p>
+      </div>
+    </div>
+  `).join("");
+}
+
+async function loadCase() {
+  const res = await fetch(`/api/pipeline/cases/${CASE_ID}`, { credentials: "same-origin" });
+  const data = await res.json();
+
+  if (!data.ok) {
+    alert("Could not load pipeline case.");
+    return;
+  }
+
+  CURRENT_CASE = data.case;
+
+  document.getElementById("caseTitle").textContent = CURRENT_CASE.case_number;
+  document.getElementById("caseSubtitle").textContent =
+    `${CURRENT_CASE.buyer.name || "No buyer"} · ${CURRENT_CASE.contract.contract_number || "No contract"}`;
+
+  renderStatusStrip(CURRENT_CASE);
+  renderSummary(CURRENT_CASE);
+  renderNextAction(CURRENT_CASE);
+  renderSmartActions(CURRENT_CASE, data.deliveries || []);
+  renderEvents(data.events || []);
+  renderDeliveries(data.deliveries || []);
+}
+
+async function postAction(url, payload = {}) {
+  if (ACTION_BUSY) return;
+  ACTION_BUSY = true;
+
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+
+    const data = await res.json();
+
+    if (!data.ok) {
+      alert(data.error || "Action failed.");
+      return;
+    }
+
+    await loadCase();
+  } finally {
+    ACTION_BUSY = false;
+  }
+}
+
+async function markContractSigned() {
+  if (!confirm("Mark this contract as signed?")) return;
+  await postAction(`/api/pipeline/cases/${CASE_ID}/mark-contract-signed`);
+}
+
+async function createSale() {
+  const total = prompt("Enter sale total amount:", "0");
+  if (total === null) return;
+  await postAction(`/api/pipeline/cases/${CASE_ID}/create-sale`, { total_amount: total });
+}
+
+async function generateInvoice() {
+  if (!confirm("Generate invoice for this sale?")) return;
+  await postAction(`/api/pipeline/cases/${CASE_ID}/generate-invoice`);
+}
+
+async function recordPayment() {
+  const amount = prompt("Enter payment amount:", "0");
+  if (amount === null) return;
+
+  const reference = prompt("Payment reference number:", "");
+
+  await postAction(`/api/pipeline/cases/${CASE_ID}/record-payment`, {
+    amount: amount,
+    payment_type: "partial_payment",
+    payment_method: "bank_transfer",
+    reference_number: reference
+  });
+}
+
+async function dispatchDelivery() {
+  const destination = prompt("Delivery destination:", "");
+  if (destination === null) return;
+
+  const quantity = prompt("Quantity KG:", "0");
+  if (quantity === null) return;
+
+  await postAction(`/api/pipeline/cases/${CASE_ID}/dispatch-delivery`, {
+    destination: destination,
+    quantity_kg: quantity,
+    shipping_mode: "road"
+  });
+}
+
+async function confirmDelivery() {
+  if (!confirm("Confirm this delivery as received?")) return;
+  await postAction(`/api/pipeline/cases/${CASE_ID}/confirm-delivery`);
+}
+
+async function closeCase() {
+  if (!confirm("Close this pipeline case? This should only be done after payment and delivery are complete.")) return;
+  await postAction(`/api/pipeline/cases/${CASE_ID}/close`);
+}
+
+document.addEventListener("DOMContentLoaded", loadCase);
+</script>
+{% endblock %}

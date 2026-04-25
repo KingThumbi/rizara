@@ -1,0 +1,538 @@
+{% extends "layouts/base.html" %}
+
+{% block title %}{{ contract.contract_number }} - Contract Detail{% endblock %}
+
+{% block body %}
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+  <div class="mb-6">
+    <div class="flex items-center gap-2 text-sm text-gray-500 mb-3">
+      <a href="{{ url_for('contracts.list_contracts') }}" class="hover:text-jungle transition">Contracts</a>
+      <span>/</span>
+      <span class="text-gray-700 font-medium">{{ contract.contract_number }}</span>
+    </div>
+
+    <div class="bg-white rounded-3xl border border-gray-200 shadow-sm overflow-hidden">
+      <div class="px-6 py-6 lg:px-8 bg-gradient-to-r from-gray-900 to-gray-800 text-white">
+        <div class="flex flex-col xl:flex-row xl:items-start xl:justify-between gap-5">
+          <div>
+            <div class="flex flex-wrap items-center gap-3 mb-3">
+              <h1 class="text-3xl font-bold tracking-tight">{{ contract.contract_number }}</h1>
+              {% include "contracts/partials/_status_badge.html" %}
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm text-gray-200">
+              <p>
+                Buyer:
+                <span class="font-semibold text-white">{{ contract.buyer.name if contract.buyer else '-' }}</span>
+              </p>
+              <p>
+                Destination:
+                <span class="font-semibold text-white">{{ contract.destination_country or '-' }}</span>
+              </p>
+              <p>
+                Contract Date:
+                <span class="font-semibold text-white">{{ contract.contract_date or '-' }}</span>
+              </p>
+              <p>
+                Delivery Date:
+                <span class="font-semibold text-white">{{ contract.delivery_date or '-' }}</span>
+              </p>
+            </div>
+          </div>
+
+          <div class="flex flex-wrap gap-2">
+            <a
+              href="{{ url_for('contracts.list_contracts') }}"
+              class="rounded-xl border border-white/20 px-4 py-2.5 text-sm font-medium text-white hover:bg-white/10 transition"
+            >
+              Back to Contracts
+            </a>
+
+            <a
+              href="{{ url_for('contracts.edit_contract', contract_id=contract.id) }}"
+              class="rounded-xl border border-jungleLight bg-white px-4 py-2.5 text-sm font-medium text-jungle hover:bg-green-50 transition"
+            >
+              Edit
+            </a>
+
+            {% if contract.status == 'draft' %}
+              <form method="post" action="{{ url_for('contracts.submit_contract_for_review', contract_id=contract.id) }}">
+                <button type="submit" class="rounded-xl bg-white px-4 py-2.5 text-sm font-semibold text-gray-900 hover:bg-gray-100 transition">
+                  Submit for Review
+                </button>
+              </form>
+            {% endif %}
+
+            {% if contract.status == 'under_review' %}
+              <form method="post" action="{{ url_for('contracts.approve_contract', contract_id=contract.id) }}">
+                <button type="submit" class="rounded-xl bg-jungle px-4 py-2.5 text-sm font-semibold text-white hover:bg-jungleLight transition">
+                  Approve
+                </button>
+              </form>
+            {% endif %}
+
+            {% if contract.status == 'approved' %}
+              <form method="post" action="{{ url_for('contracts.mark_contract_sent', contract_id=contract.id) }}">
+                <button type="submit" class="rounded-xl bg-gold px-4 py-2.5 text-sm font-semibold text-gray-900 hover:opacity-90 transition">
+                  Mark Sent
+                </button>
+              </form>
+            {% endif %}
+
+            {% if contract.status in ['approved', 'sent'] %}
+              <form method="post" action="{{ url_for('contracts.mark_contract_signed', contract_id=contract.id) }}">
+                <button type="submit" class="rounded-xl bg-jungle px-4 py-2.5 text-sm font-semibold text-white hover:bg-jungleLight transition">
+                  Mark Signed
+                </button>
+              </form>
+            {% endif %}
+
+            {% if contract.status == 'signed' %}
+              <form method="post" action="{{ url_for('contracts.activate_contract', contract_id=contract.id) }}">
+                <button type="submit" class="rounded-xl bg-gold px-4 py-2.5 text-sm font-semibold text-gray-900 hover:opacity-90 transition">
+                  Activate
+                </button>
+              </form>
+            {% endif %}
+
+            {% if contract.status in ['signed', 'active', 'partially_fulfilled'] %}
+              <a
+                href="{{ url_for('contracts.new_sale_from_contract', contract_id=contract.id) }}"
+                class="rounded-xl bg-jungle px-4 py-2.5 text-sm font-semibold text-white hover:bg-jungleLight transition"
+              >
+                Create Sale
+              </a>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+
+      <div class="px-6 py-5 lg:px-8 bg-gray-50 border-t border-gray-200">
+        <div class="grid grid-cols-2 xl:grid-cols-5 gap-4">
+          <div class="rounded-2xl bg-white border border-gray-200 p-4">
+            <div class="text-xs font-semibold uppercase tracking-wide text-gray-500">Contracted Qty</div>
+            <div class="mt-2 text-2xl font-bold text-gray-900">{{ summary.contracted_qty }}</div>
+          </div>
+          <div class="rounded-2xl bg-white border border-gray-200 p-4">
+            <div class="text-xs font-semibold uppercase tracking-wide text-gray-500">Sold Qty</div>
+            <div class="mt-2 text-2xl font-bold text-gray-900">{{ summary.sold_qty }}</div>
+          </div>
+          <div class="rounded-2xl bg-white border border-gray-200 p-4">
+            <div class="text-xs font-semibold uppercase tracking-wide text-gray-500">Remaining Qty</div>
+            <div class="mt-2 text-2xl font-bold text-gray-900">{{ summary.remaining_qty }}</div>
+          </div>
+          <div class="rounded-2xl bg-white border border-gray-200 p-4">
+            <div class="text-xs font-semibold uppercase tracking-wide text-gray-500">Contract Value</div>
+            <div class="mt-2 text-2xl font-bold text-gray-900">{{ contract.currency }} {{ contract.contracted_value or 0 }}</div>
+          </div>
+          <div class="rounded-2xl bg-white border border-gray-200 p-4">
+            <div class="text-xs font-semibold uppercase tracking-wide text-gray-500">Remaining Value</div>
+            <div class="mt-2 text-2xl font-bold text-gray-900">{{ contract.currency }} {{ summary.remaining_value }}</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="grid grid-cols-1 xl:grid-cols-3 gap-6">
+    <div class="xl:col-span-2 space-y-6">
+      <div class="bg-white rounded-2xl shadow-sm border border-gray-200">
+        <div class="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+          <div>
+            <h2 class="text-sm font-semibold text-gray-900">Commercial Overview</h2>
+            <p class="text-xs text-gray-500 mt-1">Core agreement details used for approvals, sales, and fulfillment.</p>
+          </div>
+        </div>
+
+        <div class="p-6">
+          <dl class="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-5 text-sm">
+            <div>
+              <dt class="text-gray-500">Currency</dt>
+              <dd class="mt-1 font-medium text-gray-900">{{ contract.currency }}</dd>
+            </div>
+            <div>
+              <dt class="text-gray-500">Price Basis</dt>
+              <dd class="mt-1 font-medium text-gray-900">{{ contract.price_basis or '-' }}</dd>
+            </div>
+            <div>
+              <dt class="text-gray-500">Destination Country</dt>
+              <dd class="mt-1 font-medium text-gray-900">{{ contract.destination_country or '-' }}</dd>
+            </div>
+            <div>
+              <dt class="text-gray-500">Product Type</dt>
+              <dd class="mt-1 font-medium text-gray-900">{{ contract.product_type or '-' }}</dd>
+            </div>
+            <div>
+              <dt class="text-gray-500">Contracted Quantity</dt>
+              <dd class="mt-1 font-medium text-gray-900">{{ contract.contracted_quantity_kg or '-' }}</dd>
+            </div>
+            <div>
+              <dt class="text-gray-500">Contracted Value</dt>
+              <dd class="mt-1 font-medium text-gray-900">{{ contract.currency }} {{ contract.contracted_value or '-' }}</dd>
+            </div>
+            <div>
+              <dt class="text-gray-500">Payment Security</dt>
+              <dd class="mt-1 font-medium text-gray-900">{{ contract.payment_security_type|replace('_', ' ')|title }}</dd>
+            </div>
+            <div>
+              <dt class="text-gray-500">Processing Release Mode</dt>
+              <dd class="mt-1 font-medium text-gray-900">{{ contract.processing_release_mode|replace('_', ' ')|title }}</dd>
+            </div>
+          </dl>
+
+          {% if contract.quality_spec %}
+            <div class="mt-6 rounded-2xl bg-gray-50 p-4">
+              <h3 class="text-sm font-semibold text-gray-900 mb-2">Quality Specification</h3>
+              <p class="text-sm text-gray-700 whitespace-pre-line">{{ contract.quality_spec }}</p>
+            </div>
+          {% endif %}
+
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-6">
+            <div class="rounded-2xl bg-gray-50 p-4">
+              <h3 class="text-sm font-semibold text-gray-900 mb-2">Payment Terms</h3>
+              <p class="text-sm text-gray-700 whitespace-pre-line">{{ contract.payment_terms or 'No payment terms captured yet.' }}</p>
+            </div>
+
+            <div class="rounded-2xl bg-gray-50 p-4">
+              <h3 class="text-sm font-semibold text-gray-900 mb-2">Delivery Terms</h3>
+              <p class="text-sm text-gray-700 whitespace-pre-line">{{ contract.delivery_terms or 'No delivery terms captured yet.' }}</p>
+            </div>
+          </div>
+
+          {% if contract.notes %}
+            <div class="mt-6 rounded-2xl bg-gray-50 p-4">
+              <h3 class="text-sm font-semibold text-gray-900 mb-2">Internal Notes</h3>
+              <p class="text-sm text-gray-700 whitespace-pre-line">{{ contract.notes }}</p>
+            </div>
+          {% endif %}
+        </div>
+      </div>
+
+      <div class="bg-white rounded-2xl shadow-sm border border-gray-200">
+        <div class="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+          <div>
+            <h2 class="text-sm font-semibold text-gray-900">Contract Items</h2>
+            <p class="text-xs text-gray-500 mt-1">Products and quantities agreed under this contract.</p>
+          </div>
+        </div>
+
+        <div class="p-6">
+          <form method="post" action="{{ url_for('contracts.add_contract_item', contract_id=contract.id) }}" class="grid grid-cols-1 md:grid-cols-6 gap-4 mb-6">
+            <div class="md:col-span-2">
+              <label class="block text-sm font-medium text-gray-700 mb-1">Product Name</label>
+              <input type="text" name="product_name" required class="w-full rounded-xl border border-gray-300 px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-jungle">
+            </div>
+
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1">Code</label>
+              <input type="text" name="product_code" class="w-full rounded-xl border border-gray-300 px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-jungle">
+            </div>
+
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1">Unit</label>
+              <input type="text" name="unit_of_measure" value="kg" class="w-full rounded-xl border border-gray-300 px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-jungle">
+            </div>
+
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1">Qty</label>
+              <input type="number" step="0.01" name="quantity" required class="w-full rounded-xl border border-gray-300 px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-jungle">
+            </div>
+
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1">Unit Price</label>
+              <input type="number" step="0.01" name="unit_price" required class="w-full rounded-xl border border-gray-300 px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-jungle">
+            </div>
+
+            <div class="md:col-span-5">
+              <label class="block text-sm font-medium text-gray-700 mb-1">Quality / Notes</label>
+              <input type="text" name="quality_spec" class="w-full rounded-xl border border-gray-300 px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-jungle">
+            </div>
+
+            <div class="md:col-span-1 flex items-end">
+              <button type="submit" class="w-full rounded-xl bg-jungle px-4 py-2.5 text-sm font-semibold text-white hover:bg-jungleLight transition">
+                Add Item
+              </button>
+            </div>
+          </form>
+
+          {% if contract.items %}
+            <div class="overflow-x-auto">
+              <table class="min-w-full divide-y divide-gray-200">
+                <thead class="bg-gray-50">
+                  <tr>
+                    <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-600">Product</th>
+                    <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-600">Code</th>
+                    <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-600">Unit</th>
+                    <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-600">Qty</th>
+                    <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-600">Unit Price</th>
+                    <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-600">Total</th>
+                    <th class="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide text-gray-600">Action</th>
+                  </tr>
+                </thead>
+
+                <tbody class="divide-y divide-gray-100">
+                  {% for item in contract.items %}
+                    <tr class="hover:bg-gray-50">
+                      <td class="px-4 py-3 text-sm text-gray-900">{{ item.product_name }}</td>
+                      <td class="px-4 py-3 text-sm text-gray-700">{{ item.product_code or '-' }}</td>
+                      <td class="px-4 py-3 text-sm text-gray-700">{{ item.unit_of_measure }}</td>
+                      <td class="px-4 py-3 text-sm text-gray-700">{{ item.quantity }}</td>
+                      <td class="px-4 py-3 text-sm text-gray-700">{{ contract.currency }} {{ item.unit_price }}</td>
+                      <td class="px-4 py-3 text-sm font-medium text-gray-900">{{ contract.currency }} {{ item.total_price }}</td>
+                      <td class="px-4 py-3 text-sm text-right">
+                        <form
+                          method="post"
+                          action="{{ url_for('contracts.delete_contract_item', contract_id=contract.id, item_id=item.id) }}"
+                          onsubmit="return confirm('Delete this item?');"
+                          class="inline"
+                        >
+                          <button
+                            type="submit"
+                            class="rounded-xl border border-red-300 px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 transition"
+                          >
+                            Delete
+                          </button>
+                        </form>
+                      </td>
+                    </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          {% else %}
+            <div class="rounded-2xl border border-dashed border-gray-300 bg-gray-50 px-5 py-8 text-center">
+              <h3 class="text-sm font-semibold text-gray-900">No contract items yet</h3>
+              <p class="mt-2 text-sm text-gray-500">
+                Add the product lines agreed with the buyer so the contract can move into review and sales.
+              </p>
+            </div>
+          {% endif %}
+        </div>
+      </div>
+
+      <div class="bg-white rounded-2xl shadow-sm border border-gray-200">
+        <div class="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+          <div>
+            <h2 class="text-sm font-semibold text-gray-900">Linked Sales</h2>
+            <p class="text-xs text-gray-500 mt-1">Sales created from this contract for fulfillment and payment tracking.</p>
+          </div>
+        </div>
+
+        <div class="p-6">
+          {% if contract.sales %}
+            <div class="overflow-x-auto">
+              <table class="min-w-full divide-y divide-gray-200">
+                <thead class="bg-gray-50">
+                  <tr>
+                    <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-600">Sale No</th>
+                    <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-600">Date</th>
+                    <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-600">Status</th>
+                    <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-600">Payment Status</th>
+                    <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-600">Total</th>
+                    <th class="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide text-gray-600">Action</th>
+                  </tr>
+                </thead>
+
+                <tbody class="divide-y divide-gray-100">
+                  {% for sale in contract.sales %}
+                    <tr class="hover:bg-gray-50">
+                      <td class="px-4 py-3 text-sm text-gray-900">{{ sale.sale_number }}</td>
+                      <td class="px-4 py-3 text-sm text-gray-700">{{ sale.sale_date }}</td>
+                      <td class="px-4 py-3 text-sm text-gray-700">{{ sale.status|replace('_', ' ')|title }}</td>
+                      <td class="px-4 py-3 text-sm text-gray-700">{{ sale.payment_status|replace('_', ' ')|title }}</td>
+                      <td class="px-4 py-3 text-sm font-medium text-gray-900">{{ sale.currency }} {{ sale.total_amount }}</td>
+                      <td class="px-4 py-3 text-sm text-right">
+                        <a
+                          href="{{ url_for('sales.view_sale', sale_id=sale.id) }}"
+                          class="rounded-xl border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-100 transition"
+                        >
+                          Open
+                        </a>
+                      </td>
+                    </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          {% else %}
+            <div class="rounded-2xl border border-dashed border-gray-300 bg-gray-50 px-5 py-8 text-center">
+              <h3 class="text-sm font-semibold text-gray-900">No sales linked yet</h3>
+              <p class="mt-2 text-sm text-gray-500">
+                Once the contract is signed or active, you can create sales directly from this page.
+              </p>
+            </div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    <div class="space-y-6">
+      <div class="bg-white rounded-2xl shadow-sm border border-gray-200">
+        <div class="px-6 py-4 border-b border-gray-200">
+          <h2 class="text-sm font-semibold text-gray-900">Contract Documents</h2>
+          <p class="text-xs text-gray-500 mt-1">Upload draft contracts, signed copies, PO, proforma, or LC documents.</p>
+        </div>
+
+        <div class="p-6">
+          <form
+            method="post"
+            action="{{ url_for('contracts.upload_contract_document', contract_id=contract.id) }}"
+            enctype="multipart/form-data"
+            class="space-y-4 mb-6"
+          >
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1">Document Type</label>
+              <select name="document_type" class="w-full rounded-xl border border-gray-300 px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-jungle">
+                <option value="draft_contract">Draft Contract</option>
+                <option value="signed_contract">Signed Contract</option>
+                <option value="purchase_order">Purchase Order</option>
+                <option value="proforma_invoice">Proforma Invoice</option>
+                <option value="lc_document">LC Document</option>
+                <option value="other">Other</option>
+              </select>
+            </div>
+
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1">Title</label>
+              <input type="text" name="title" class="w-full rounded-xl border border-gray-300 px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-jungle">
+            </div>
+
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1">File</label>
+              <input type="file" name="document" required class="w-full rounded-xl border border-gray-300 px-3 py-2.5 bg-white focus:outline-none focus:ring-2 focus:ring-jungle">
+            </div>
+
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1">Notes</label>
+              <textarea name="notes" rows="2" class="w-full rounded-xl border border-gray-300 px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-jungle"></textarea>
+            </div>
+
+            <button
+              type="submit"
+              class="w-full rounded-xl bg-jungle px-4 py-2.5 text-sm font-semibold text-white hover:bg-jungleLight transition"
+            >
+              Upload Document
+            </button>
+          </form>
+
+          {% if contract.documents %}
+            <div class="space-y-4">
+              {% for document in contract.documents %}
+                <div class="rounded-2xl border border-gray-200 p-4">
+                  <div class="flex items-start justify-between gap-3">
+                    <div>
+                      <div class="flex items-center gap-2 flex-wrap">
+                        <h3 class="text-sm font-semibold text-gray-900">{{ document.title }}</h3>
+                        {% if document.is_primary %}
+                          <span class="inline-flex items-center rounded-full bg-jungle/10 px-2.5 py-1 text-xs font-medium text-jungle">
+                            Primary
+                          </span>
+                        {% endif %}
+                      </div>
+                      <p class="text-xs text-gray-500 mt-1">{{ document.document_type|replace('_', ' ')|title }}</p>
+                    </div>
+                  </div>
+
+                  <div class="mt-4 flex flex-wrap gap-2">
+                    <a
+                      href="{{ url_for('contracts.download_contract_document', contract_id=contract.id, document_id=document.id) }}"
+                      class="rounded-xl border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-100 transition"
+                    >
+                      Download
+                    </a>
+
+                    <form method="post" action="{{ url_for('contracts.set_primary_contract_document', contract_id=contract.id, document_id=document.id) }}">
+                      <button type="submit" class="rounded-xl border border-jungle px-3 py-1.5 text-xs font-medium text-jungle hover:bg-green-50 transition">
+                        Set Primary
+                      </button>
+                    </form>
+
+                    <form
+                      method="post"
+                      action="{{ url_for('contracts.delete_contract_document', contract_id=contract.id, document_id=document.id) }}"
+                      onsubmit="return confirm('Delete this document?');"
+                    >
+                      <button type="submit" class="rounded-xl border border-red-300 px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 transition">
+                        Delete
+                      </button>
+                    </form>
+                  </div>
+                </div>
+              {% endfor %}
+            </div>
+          {% else %}
+            <div class="rounded-2xl border border-dashed border-gray-300 bg-gray-50 px-5 py-8 text-center">
+              <h3 class="text-sm font-semibold text-gray-900">No documents uploaded yet</h3>
+              <p class="mt-2 text-sm text-gray-500">
+                Upload supporting documents so commercial, finance, and operations teams work from the same source.
+              </p>
+            </div>
+          {% endif %}
+        </div>
+      </div>
+
+      <div class="bg-white rounded-2xl shadow-sm border border-gray-200">
+        <div class="px-6 py-4 border-b border-gray-200">
+          <h2 class="text-sm font-semibold text-gray-900">Workflow Timeline</h2>
+          <p class="text-xs text-gray-500 mt-1">Track progress from draft to activation.</p>
+        </div>
+
+        <div class="p-6">
+          <div class="space-y-4">
+            {% set steps = [
+              ('Created', contract.created_at),
+              ('Submitted', contract.submitted_for_review_at),
+              ('Reviewed', contract.reviewed_at),
+              ('Approved', contract.approved_at),
+              ('Signed', contract.signed_at),
+              ('Activated', contract.activated_at),
+              ('Cancelled', contract.cancelled_at)
+            ] %}
+
+            {% for label, value in steps %}
+              <div class="flex items-start gap-3">
+                <div class="mt-1 h-3 w-3 rounded-full {% if value %}bg-jungle{% else %}bg-gray-300{% endif %}"></div>
+                <div class="flex-1">
+                  <div class="text-sm font-medium text-gray-900">{{ label }}</div>
+                  <div class="text-xs text-gray-500 mt-1">{{ value or '-' }}</div>
+                </div>
+              </div>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+
+      {% if contract.status not in ['fulfilled', 'cancelled'] %}
+        <div class="bg-white rounded-2xl shadow-sm border border-red-200">
+          <div class="px-6 py-4 border-b border-red-200">
+            <h2 class="text-sm font-semibold text-red-700">Danger Zone</h2>
+            <p class="text-xs text-red-500 mt-1">Use only when this contract should no longer proceed.</p>
+          </div>
+
+          <div class="p-6">
+            <form method="post" action="{{ url_for('contracts.cancel_contract', contract_id=contract.id) }}" class="space-y-4">
+              <div>
+                <label for="cancel_reason" class="block text-sm font-medium text-gray-700 mb-1">Cancel Reason</label>
+                <textarea
+                  id="cancel_reason"
+                  name="cancel_reason"
+                  rows="3"
+                  class="w-full rounded-xl border border-gray-300 px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-red-400"
+                ></textarea>
+              </div>
+
+              <button
+                type="submit"
+                onclick="return confirm('Cancel this contract?');"
+                class="w-full rounded-xl border border-red-300 px-4 py-2.5 text-sm font-medium text-red-600 hover:bg-red-50 transition"
+              >
+                Cancel Contract
+              </button>
+            </form>
+          </div>
+        </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}

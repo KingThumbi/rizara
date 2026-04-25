@@ -9,7 +9,7 @@
   <div class="mb-8">
     <div class="flex items-center gap-3 mb-2">
       <a
-        href="{{ url_for('main.market_purchase_list') }}"
+        href="{{ url_for('market_purchase.market_purchase_list') }}"
         class="text-sm text-jungle hover:underline"
       >
         ← Back to Market Purchases
@@ -47,7 +47,7 @@
   {% endwith %}
 
   <section class="bg-white rounded-xl shadow p-6 md:p-8">
-    <form method="POST" action="{{ url_for('main.market_purchase_new') }}" class="space-y-8">
+    <form method="POST" action="{{ url_for('market_purchase.market_purchase_new') }}" class="space-y-8">
 
       <!-- Aggregation choice -->
       <div>
@@ -254,7 +254,7 @@
         </button>
 
         <a
-          href="{{ url_for('main.market_purchase_list') }}"
+          href="{{ url_for('market_purchase.market_purchase_list') }}"
           class="bg-gray-100 text-gray-800 px-6 py-3 rounded-lg font-semibold hover:bg-gray-200 transition text-center"
         >
           Cancel

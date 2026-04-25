@@ -1,0 +1,377 @@
+{% extends "layouts/base.html" %}
+
+{% block title %}Create Sale - {{ contract.contract_number }}{% endblock %}
+
+{% block body %}
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+  <div class="mb-6">
+    <div class="flex items-center gap-2 text-sm text-gray-500 mb-3">
+      <a href="{{ url_for('contracts.list_contracts') }}" class="hover:text-jungle transition">Contracts</a>
+      <span>/</span>
+      <a href="{{ url_for('contracts.view_contract', contract_id=contract.id) }}" class="hover:text-jungle transition">{{ contract.contract_number }}</a>
+      <span>/</span>
+      <span class="text-gray-700 font-medium">Create Sale</span>
+    </div>
+
+    <div class="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4">
+      <div>
+        <h1 class="text-3xl font-bold tracking-tight text-gray-900">Create Sale from Contract</h1>
+        <p class="text-sm text-gray-600 mt-2">
+          Build a sale directly from approved contract items while keeping pricing, fulfillment, and buyer context aligned.
+        </p>
+      </div>
+
+      <div class="flex flex-wrap gap-3">
+        <a
+          href="{{ url_for('contracts.view_contract', contract_id=contract.id) }}"
+          class="inline-flex items-center justify-center rounded-xl border border-gray-300 px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-100 transition"
+        >
+          Back to Contract
+        </a>
+      </div>
+    </div>
+  </div>
+
+  <div class="grid grid-cols-1 xl:grid-cols-3 gap-6">
+    <div class="xl:col-span-2">
+      <form method="post" action="{{ url_for('contracts.create_sale_from_contract', contract_id=contract.id) }}" id="saleForm">
+        <div class="bg-white rounded-2xl shadow-sm border border-gray-200 mb-6">
+          <div class="px-6 py-4 border-b border-gray-200">
+            <h2 class="text-sm font-semibold text-gray-900">Sale Header</h2>
+            <p class="text-xs text-gray-500 mt-1">Set sale date, invoice type, and supporting notes.</p>
+          </div>
+
+          <div class="p-6 grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
+              <label for="sale_date" class="block text-sm font-medium text-gray-700 mb-1">
+                Sale Date <span class="text-red-500">*</span>
+              </label>
+              <input
+                type="date"
+                id="sale_date"
+                name="sale_date"
+                required
+                class="w-full rounded-xl border border-gray-300 px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-jungle"
+              >
+            </div>
+
+            <div>
+              <label for="invoice_type" class="block text-sm font-medium text-gray-700 mb-1">Invoice Type</label>
+              <select
+                id="invoice_type"
+                name="invoice_type"
+                class="w-full rounded-xl border border-gray-300 px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-jungle"
+              >
+                <option value="commercial">Commercial</option>
+                <option value="proforma">Proforma</option>
+              </select>
+            </div>
+
+            <div>
+              <label for="currency_display" class="block text-sm font-medium text-gray-700 mb-1">Currency</label>
+              <input
+                type="text"
+                id="currency_display"
+                value="{{ contract.currency }}"
+                disabled
+                class="w-full rounded-xl border border-gray-200 bg-gray-100 px-3 py-2.5 text-gray-700"
+              >
+            </div>
+
+            <div class="md:col-span-3">
+              <label for="notes" class="block text-sm font-medium text-gray-700 mb-1">Notes</label>
+              <textarea
+                id="notes"
+                name="notes"
+                rows="3"
+                class="w-full rounded-xl border border-gray-300 px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-jungle"
+                placeholder="Optional notes for finance, logistics, or operations"
+              ></textarea>
+            </div>
+          </div>
+        </div>
+
+        <div class="bg-white rounded-2xl shadow-sm border border-gray-200">
+          <div class="px-6 py-4 border-b border-gray-200">
+            <h2 class="text-sm font-semibold text-gray-900">Contract Items to Sell</h2>
+            <p class="text-xs text-gray-500 mt-1">
+              Select the contract items to include, then enter quantities and selling price.
+            </p>
+          </div>
+
+          <div class="p-6">
+            {% if contract.items %}
+              <div class="overflow-x-auto">
+                <table class="min-w-full divide-y divide-gray-200" id="sale-items-table">
+                  <thead class="bg-gray-50">
+                    <tr>
+                      <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-600">Use</th>
+                      <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-600">Product</th>
+                      <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-600">Unit</th>
+                      <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-600">Contract Qty</th>
+                      <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-600">Qty to Sell</th>
+                      <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-600">Unit Price</th>
+                      <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-600">Line Total</th>
+                    </tr>
+                  </thead>
+
+                  <tbody class="divide-y divide-gray-100">
+                    {% for item in contract.items %}
+                      <tr class="hover:bg-gray-50 sale-row">
+                        <td class="px-4 py-3 align-top">
+                          <input
+                            type="checkbox"
+                            class="include-item rounded border-gray-300 text-jungle focus:ring-jungle mt-2"
+                            data-row="{{ loop.index0 }}"
+                          >
+                          <input type="hidden" name="contract_item_id" value="">
+                        </td>
+
+                        <td class="px-4 py-3">
+                          <div class="text-sm font-medium text-gray-900">{{ item.product_name }}</div>
+                          {% if item.product_code %}
+                            <div class="text-xs text-gray-500 mt-1">{{ item.product_code }}</div>
+                          {% endif %}
+                        </td>
+
+                        <td class="px-4 py-3 text-sm text-gray-700">{{ item.unit_of_measure }}</td>
+                        <td class="px-4 py-3 text-sm text-gray-700">{{ item.quantity }}</td>
+
+                        <td class="px-4 py-3">
+                          <input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            name="quantity"
+                            value=""
+                            disabled
+                            class="quantity-input w-32 rounded-xl border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-jungle"
+                          >
+                        </td>
+
+                        <td class="px-4 py-3">
+                          <input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            name="unit_price"
+                            value="{{ item.unit_price }}"
+                            disabled
+                            class="price-input w-36 rounded-xl border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-jungle"
+                          >
+                        </td>
+
+                        <td class="px-4 py-3 text-sm font-semibold text-gray-900 line-total">
+                          {{ contract.currency }} 0.00
+                        </td>
+
+                        <td class="hidden item-id-source">{{ item.id }}</td>
+                      </tr>
+                    {% endfor %}
+                  </tbody>
+                </table>
+              </div>
+
+              <div class="mt-6 flex flex-col sm:flex-row gap-3">
+                <button
+                  type="submit"
+                  class="inline-flex items-center justify-center rounded-xl bg-jungle px-5 py-3 text-sm font-semibold text-white hover:bg-jungleLight transition"
+                >
+                  Create Sale
+                </button>
+
+                <a
+                  href="{{ url_for('contracts.view_contract', contract_id=contract.id) }}"
+                  class="inline-flex items-center justify-center rounded-xl border border-gray-300 px-5 py-3 text-sm font-medium text-gray-700 hover:bg-gray-100 transition"
+                >
+                  Back to Contract
+                </a>
+              </div>
+            {% else %}
+              <div class="rounded-2xl border border-amber-200 bg-amber-50 px-5 py-8 text-center">
+                <h3 class="text-sm font-semibold text-amber-900">No contract items available</h3>
+                <p class="mt-2 text-sm text-amber-800">
+                  Add contract items first, then return here to create a sale.
+                </p>
+                <div class="mt-4">
+                  <a
+                    href="{{ url_for('contracts.view_contract', contract_id=contract.id) }}"
+                    class="inline-flex items-center justify-center rounded-xl border border-amber-300 px-4 py-2 text-sm font-medium text-amber-900 hover:bg-amber-100 transition"
+                  >
+                    Open Contract
+                  </a>
+                </div>
+              </div>
+            {% endif %}
+          </div>
+        </div>
+      </form>
+    </div>
+
+    <div class="space-y-6">
+      <div class="bg-white rounded-2xl shadow-sm border border-gray-200">
+        <div class="px-6 py-4 border-b border-gray-200">
+          <h2 class="text-sm font-semibold text-gray-900">Contract Summary</h2>
+        </div>
+
+        <div class="p-6 space-y-4 text-sm">
+          <div class="flex justify-between gap-4">
+            <span class="text-gray-500">Contract No</span>
+            <span class="font-medium text-gray-900">{{ contract.contract_number }}</span>
+          </div>
+          <div class="flex justify-between gap-4">
+            <span class="text-gray-500">Buyer</span>
+            <span class="font-medium text-gray-900">{{ contract.buyer.name if contract.buyer else '-' }}</span>
+          </div>
+          <div class="flex justify-between gap-4">
+            <span class="text-gray-500">Currency</span>
+            <span class="font-medium text-gray-900">{{ contract.currency }}</span>
+          </div>
+          <div class="flex justify-between gap-4">
+            <span class="text-gray-500">Status</span>
+            <span class="font-medium text-gray-900">{{ contract.status|replace('_', ' ')|title }}</span>
+          </div>
+          <div class="flex justify-between gap-4">
+            <span class="text-gray-500">Destination</span>
+            <span class="font-medium text-gray-900">{{ contract.destination_country or '-' }}</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="bg-white rounded-2xl shadow-sm border border-gray-200">
+        <div class="px-6 py-4 border-b border-gray-200">
+          <h2 class="text-sm font-semibold text-gray-900">Fulfillment Snapshot</h2>
+        </div>
+
+        <div class="p-6 grid grid-cols-1 gap-4">
+          <div class="rounded-2xl bg-gray-50 p-4">
+            <div class="text-xs font-semibold uppercase tracking-wide text-gray-500">Contracted Qty</div>
+            <div class="mt-2 text-xl font-bold text-gray-900">{{ summary.contracted_qty }}</div>
+          </div>
+
+          <div class="rounded-2xl bg-gray-50 p-4">
+            <div class="text-xs font-semibold uppercase tracking-wide text-gray-500">Sold Qty</div>
+            <div class="mt-2 text-xl font-bold text-gray-900">{{ summary.sold_qty }}</div>
+          </div>
+
+          <div class="rounded-2xl bg-gray-50 p-4">
+            <div class="text-xs font-semibold uppercase tracking-wide text-gray-500">Remaining Qty</div>
+            <div class="mt-2 text-xl font-bold text-gray-900">{{ summary.remaining_qty }}</div>
+          </div>
+
+          <div class="rounded-2xl bg-gray-50 p-4">
+            <div class="text-xs font-semibold uppercase tracking-wide text-gray-500">Remaining Value</div>
+            <div class="mt-2 text-xl font-bold text-gray-900">{{ contract.currency }} {{ summary.remaining_value }}</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="bg-white rounded-2xl shadow-sm border border-gray-200">
+        <div class="px-6 py-4 border-b border-gray-200">
+          <h2 class="text-sm font-semibold text-gray-900">Workflow Tips</h2>
+        </div>
+
+        <div class="p-6 text-sm text-gray-600 space-y-3">
+          <p>1. Select only the contract items you are actually selling now.</p>
+          <p>2. Enter the quantity to sell and confirm the selling price.</p>
+          <p>3. Create the sale, then record payment and authorize processing if conditions are met.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  (function () {
+    const table = document.getElementById("sale-items-table");
+    if (!table) return;
+
+    const rows = table.querySelectorAll(".sale-row");
+
+    function formatMoney(value) {
+      const num = Number(value || 0);
+      return num.toFixed(2);
+    }
+
+    function updateRow(row) {
+      const checkbox = row.querySelector(".include-item");
+      const hiddenContractItem = row.querySelector('input[name="contract_item_id"]');
+      const qtyInput = row.querySelector(".quantity-input");
+      const priceInput = row.querySelector(".price-input");
+      const totalCell = row.querySelector(".line-total");
+      const itemIdSource = row.querySelector(".item-id-source");
+      const currency = "{{ contract.currency }}";
+
+      const enabled = checkbox.checked;
+
+      qtyInput.disabled = !enabled;
+      priceInput.disabled = !enabled;
+
+      if (enabled) {
+        hiddenContractItem.value = itemIdSource.textContent.trim();
+      } else {
+        hiddenContractItem.value = "";
+        qtyInput.value = "";
+      }
+
+      const qty = Number(qtyInput.value || 0);
+      const price = Number(priceInput.value || 0);
+      const total = qty * price;
+
+      totalCell.textContent = `${currency} ${formatMoney(total)}`;
+    }
+
+    rows.forEach((row) => {
+      const checkbox = row.querySelector(".include-item");
+      const qtyInput = row.querySelector(".quantity-input");
+      const priceInput = row.querySelector(".price-input");
+
+      checkbox.addEventListener("change", function () {
+        updateRow(row);
+      });
+
+      qtyInput.addEventListener("input", function () {
+        updateRow(row);
+      });
+
+      priceInput.addEventListener("input", function () {
+        updateRow(row);
+      });
+
+      updateRow(row);
+    });
+
+    const form = document.getElementById("saleForm");
+    form.addEventListener("submit", function (event) {
+      const checked = Array.from(document.querySelectorAll(".include-item")).some(cb => cb.checked);
+
+      if (!checked) {
+        event.preventDefault();
+        alert("Select at least one contract item to create a sale.");
+        return;
+      }
+
+      let hasValidQuantity = true;
+
+      rows.forEach((row) => {
+        const checkbox = row.querySelector(".include-item");
+        const qtyInput = row.querySelector(".quantity-input");
+
+        if (checkbox.checked) {
+          const qty = Number(qtyInput.value || 0);
+          if (qty <= 0) {
+            hasValidQuantity = false;
+          }
+        }
+      });
+
+      if (!hasValidQuantity) {
+        event.preventDefault();
+        alert("Every selected item must have a quantity greater than zero.");
+      }
+    });
+  })();
+</script>
+{% endblock %}
