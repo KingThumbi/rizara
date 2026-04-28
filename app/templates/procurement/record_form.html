@@ -1,0 +1,76 @@
+{% extends "layouts/base.html" %}
+
+{% block title %}New Procurement Record{% endblock %}
+
+{% block body %}
+{% include "partials/admin_chrome.html" %}
+
+<div class="max-w-3xl mx-auto py-10 px-4">
+  <h1 class="text-2xl font-bold mb-6">New Procurement Record</h1>
+
+  <form method="POST" class="space-y-4">
+
+    <!-- Source -->
+    <div>
+      <label class="block text-sm font-medium mb-1">Source</label>
+      <select name="source_id" class="w-full border p-2 rounded-lg">
+        {% for s in sources %}
+        <option value="{{ s.id }}">
+          {{ s.name }} ({{ s.source_type }})
+        </option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <!-- Batch -->
+    <div>
+      <label class="block text-sm font-medium mb-1">Aggregation Batch</label>
+      <select name="aggregation_batch_id" class="w-full border p-2 rounded-lg">
+        <option value="">No Batch</option>
+        {% for b in batches %}
+        <option value="{{ b.id }}">
+          Batch {{ b.id }} - {{ b.animal_type }}
+        </option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <!-- Animal Type -->
+    <div>
+      <label class="block text-sm font-medium mb-1">Animal Type</label>
+      <select name="animal_type" class="w-full border p-2 rounded-lg">
+        <option value="goat">Goat</option>
+        <option value="sheep">Sheep</option>
+        <option value="cattle">Cattle</option>
+      </select>
+    </div>
+
+    <!-- Quantity -->
+    <div>
+      <label class="block text-sm font-medium mb-1">Quantity</label>
+      <input type="number" name="quantity" class="w-full border p-2 rounded-lg">
+    </div>
+
+    <!-- Unit Price -->
+    <div>
+      <label class="block text-sm font-medium mb-1">Unit Price</label>
+      <input name="unit_price" class="w-full border p-2 rounded-lg">
+    </div>
+
+    <!-- Weight -->
+    <div>
+      <label class="block text-sm font-medium mb-1">Estimated Total Weight (kg)</label>
+      <input name="estimated_total_weight_kg" class="w-full border p-2 rounded-lg">
+    </div>
+
+    <!-- Submit -->
+    <div class="pt-4">
+      <button class="bg-jungle text-white px-6 py-2 rounded-xl font-semibold hover:bg-jungleLight transition">
+        Save Record
+      </button>
+    </div>
+
+  </form>
+</div>
+
+{% endblock %}

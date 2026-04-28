@@ -1,0 +1,82 @@
+{% extends "layouts/base.html" %}
+
+{% block title %}Procurement Record{% endblock %}
+
+{% block body %}
+{% include "partials/admin_chrome.html" %}
+
+<div class="max-w-4xl mx-auto px-4 py-10">
+
+  <div class="flex justify-between items-center mb-6">
+    <h1 class="text-2xl font-bold">Procurement Record #{{ record.id }}</h1>
+
+    {% if record.status != 'received' %}
+    <form method="POST"
+          action="{{ url_for('procurement.generate_animals', record_id=record.id) }}">
+      <button
+        class="bg-gold text-jungle px-4 py-2 rounded-xl font-semibold hover:opacity-90 transition">
+        Generate Animals
+      </button>
+    </form>
+    {% endif %}
+  </div>
+
+  <div class="bg-white rounded-2xl shadow-sm border p-6 space-y-4">
+
+    <div class="grid grid-cols-2 gap-4">
+      <div>
+        <p class="text-sm text-gray-500">Source</p>
+        <p class="font-semibold">
+          {{ record.source.name if record.source else "-" }}
+        </p>
+      </div>
+
+      <div>
+        <p class="text-sm text-gray-500">Type</p>
+        <p class="font-semibold">
+          {{ record.source.source_type if record.source else "-" }}
+        </p>
+      </div>
+
+      <div>
+        <p class="text-sm text-gray-500">Animal</p>
+        <p class="font-semibold">{{ record.animal_type }}</p>
+      </div>
+
+      <div>
+        <p class="text-sm text-gray-500">Quantity</p>
+        <p class="font-semibold">{{ record.quantity }}</p>
+      </div>
+
+      <div>
+        <p class="text-sm text-gray-500">Total Cost</p>
+        <p class="font-semibold">{{ record.total_cost }}</p>
+      </div>
+
+      <div>
+        <p class="text-sm text-gray-500">Estimated Weight (kg)</p>
+        <p class="font-semibold">{{ record.estimated_total_weight_kg }}</p>
+      </div>
+
+      <div>
+        <p class="text-sm text-gray-500">Status</p>
+        <p class="font-semibold">{{ record.status }}</p>
+      </div>
+
+      <div>
+        <p class="text-sm text-gray-500">Batch</p>
+        <p class="font-semibold">
+          {% if record.aggregation_batch %}
+            Batch {{ record.aggregation_batch.id }}
+          {% else %}
+            -
+          {% endif %}
+        </p>
+      </div>
+    </div>
+
+  </div>
+
+</div>
+
+{% endblock %}

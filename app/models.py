@@ -911,7 +911,7 @@ class BaseAnimal(db.Model):
 
     id = db.Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
 
-    farmer_tag = db.Column(db.String(64), nullable=False)
+    farmer_tag = db.Column(db.String(64), nullable=True)
     rizara_id = db.Column(db.String(64), unique=True, nullable=False)
 
     sex = db.Column(db.String(10), nullable=True)
@@ -942,8 +942,32 @@ class BaseAnimal(db.Model):
 class Goat(BaseAnimal):
     __tablename__ = "goat"
 
-    aggregation_batch_id = db.Column(db.Integer, db.ForeignKey("aggregation_batch.id"), nullable=True)
-    aggregation_batch = db.relationship("AggregationBatch", back_populates="goats")
+    aggregation_batch_id = db.Column(
+        db.Integer,
+        db.ForeignKey("aggregation_batch.id"),
+        nullable=True,
+    )
+    aggregation_batch = db.relationship(
+        "AggregationBatch",
+        back_populates="goats",
+    )
+
+    procurement_record_id = db.Column(
+        db.Integer,
+        db.ForeignKey("procurement_records.id"),
+        nullable=True,
+        index=True,
+    )
+
+    source_type = db.Column(db.String(20), nullable=True)  # farmer, market
+    source_name = db.Column(db.String(160), nullable=True)
+
+    procurement_record = db.relationship(
+        "ProcurementRecord",
+        primaryjoin="Goat.procurement_record_id == ProcurementRecord.id",
+        foreign_keys=[procurement_record_id],
+        lazy="joined",
+    )
 
     processing_batches = db.relationship(
         "ProcessingBatch",
@@ -953,16 +977,39 @@ class Goat(BaseAnimal):
 
     def __repr__(self) -> str:
         return f"<Goat {self.id} {self.rizara_id} {self.status}>"
-
-
+        
 # =========================================================
 # Sheep model
 # =========================================================
 class Sheep(BaseAnimal):
     __tablename__ = "sheep"
 
-    aggregation_batch_id = db.Column(db.Integer, db.ForeignKey("aggregation_batch.id"), nullable=True)
-    aggregation_batch = db.relationship("AggregationBatch", back_populates="sheep")
+    aggregation_batch_id = db.Column(
+        db.Integer,
+        db.ForeignKey("aggregation_batch.id"),
+        nullable=True,
+    )
+    aggregation_batch = db.relationship(
+        "AggregationBatch",
+        back_populates="sheep",
+    )
+
+    procurement_record_id = db.Column(
+        db.Integer,
+        db.ForeignKey("procurement_records.id"),
+        nullable=True,
+        index=True,
+    )
+
+    source_type = db.Column(db.String(20), nullable=True)  # farmer, market
+    source_name = db.Column(db.String(160), nullable=True)
+
+    procurement_record = db.relationship(
+        "ProcurementRecord",
+        primaryjoin="Sheep.procurement_record_id == ProcurementRecord.id",
+        foreign_keys=[procurement_record_id],
+        lazy="joined",
+    )
 
     processing_batches = db.relationship(
         "ProcessingBatch",
@@ -973,15 +1020,38 @@ class Sheep(BaseAnimal):
     def __repr__(self) -> str:
         return f"<Sheep {self.id} {self.rizara_id} {self.status}>"
 
-
 # =========================================================
 # Cattle model
 # =========================================================
 class Cattle(BaseAnimal):
     __tablename__ = "cattle"
 
-    aggregation_batch_id = db.Column(db.Integer, db.ForeignKey("aggregation_batch.id"), nullable=True)
-    aggregation_batch = db.relationship("AggregationBatch", back_populates="cattle")
+    aggregation_batch_id = db.Column(
+        db.Integer,
+        db.ForeignKey("aggregation_batch.id"),
+        nullable=True,
+    )
+    aggregation_batch = db.relationship(
+        "AggregationBatch",
+        back_populates="cattle",
+    )
+
+    procurement_record_id = db.Column(
+        db.Integer,
+        db.ForeignKey("procurement_records.id"),
+        nullable=True,
+        index=True,
+    )
+
+    source_type = db.Column(db.String(20), nullable=True)  # farmer, market
+    source_name = db.Column(db.String(160), nullable=True)
+
+    procurement_record = db.relationship(
+        "ProcurementRecord",
+        primaryjoin="Cattle.procurement_record_id == ProcurementRecord.id",
+        foreign_keys=[procurement_record_id],
+        lazy="joined",
+    )
 
     processing_batches = db.relationship(
         "ProcessingBatch",
@@ -991,7 +1061,6 @@ class Cattle(BaseAnimal):
 
     def __repr__(self) -> str:
         return f"<Cattle {self.id} {self.rizara_id} {self.status}>"
-
 
 # =========================================================
 # Aggregation Batch (single animal type per batch)
@@ -1023,8 +1092,18 @@ class AggregationBatch(db.Model):
         foreign_keys=[created_by_user_id],
         lazy="joined",
     )
+    # =====================================================
+    # PROCUREMENT (UNIFIED: FARMERS + MARKETS)
+    # =====================================================
+    procurement_records = db.relationship(
+        "ProcurementRecord",
+        backref="aggregation_batch",
+        lazy="select",
+    )
 
-    # On-farm animals aggregated into this batch
+    # =====================================================
+    # FARM ANIMALS (PRIMARY SUPPLY)
+    # =====================================================
     goats = db.relationship(
         "Goat",
         back_populates="aggregation_batch",
@@ -1041,13 +1120,26 @@ class AggregationBatch(db.Model):
         lazy="select",
     )
 
-    # Direct market procurement attached to this batch
+    # =====================================================
+    # PROCUREMENT (UNIFIED: FARMERS + MARKETS)
+    # =====================================================
+    procurement_records = db.relationship(
+        "ProcurementRecord",
+        backref="aggregation_batch",
+        lazy="select",
+        cascade="all, delete-orphan",
+    )
+
+    # =====================================================
+    # LEGACY MARKET PURCHASES (TRANSITIONAL)
+    # =====================================================
     market_purchases = db.relationship(
         "MarketPurchase",
         back_populates="aggregation_batch",
         lazy="select",
         cascade="all, delete-orphan",
     )
+
     market_purchase_expenses = db.relationship(
         "MarketPurchaseExpense",
         back_populates="aggregation_batch",
@@ -1055,6 +1147,9 @@ class AggregationBatch(db.Model):
         cascade="all, delete-orphan",
     )
 
+    # =====================================================
+    # CONSTRAINTS
+    # =====================================================
     __table_args__ = (
         db.CheckConstraint(
             "animal_type in ('goat','sheep','cattle')",
@@ -1062,6 +1157,9 @@ class AggregationBatch(db.Model):
         ),
     )
 
+    # =====================================================
+    # HEADCOUNT LOGIC
+    # =====================================================
     @property
     def farm_headcount(self) -> int:
         if self.animal_type == "goat":
@@ -1073,12 +1171,30 @@ class AggregationBatch(db.Model):
         return 0
 
     @property
-    def market_headcount(self) -> int:
-        return sum((purchase.total_headcount or 0) for purchase in self.market_purchases)
+    def procurement_headcount(self) -> int:
+        return sum((r.quantity or 0) for r in self.procurement_records)
 
     @property
     def total_headcount(self) -> int:
-        return self.farm_headcount + self.market_headcount
+        return self.farm_headcount + self.procurement_headcount
+
+    # =====================================================
+    # COST LOGIC (PROCUREMENT-DRIVEN)
+    # =====================================================
+    @property
+    def procurement_cost_total(self) -> float:
+        return float(sum((r.total_cost or 0.0) for r in self.procurement_records))
+
+    @property
+    def estimated_procurement_weight_kg(self) -> float:
+        return float(sum((r.estimated_total_weight_kg or 0.0) for r in self.procurement_records))
+
+    # =====================================================
+    # LEGACY MARKET (OPTIONAL / TRANSITION)
+    # =====================================================
+    @property
+    def market_headcount(self) -> int:
+        return sum((purchase.total_headcount or 0) for purchase in self.market_purchases)
 
     @property
     def market_purchase_cost_total(self) -> float:
@@ -1096,9 +1212,11 @@ class AggregationBatch(db.Model):
     def estimated_market_carcass_weight_kg(self) -> float:
         return float(sum((purchase.estimated_total_carcass_weight_kg or 0.0) for purchase in self.market_purchases))
 
+    # =====================================================
+    # DEBUG
+    # =====================================================
     def __repr__(self) -> str:
         return f"<AggregationBatch {self.id} {self.animal_type} {self.site_name}>"
-
 
 # =========================================================
 # Processing association tables (many-to-many)
@@ -1358,26 +1476,53 @@ class ProcessingBatchSale(db.Model):
 class InvoiceStatus(enum.Enum):
     DRAFT = "draft"
     ISSUED = "issued"
+    PARTIALLY_PAID = "partially_paid"
     PAID = "paid"
+    OVERDUE = "overdue"
     VOID = "void"
 
 
 # =========================================================
 # Invoice
+# References Contract Document + sells from InventoryLot via InvoiceItem
 # =========================================================
 class Invoice(db.Model):
     __tablename__ = "invoice"
 
     id = db.Column(db.Integer, primary_key=True)
-    invoice_number = db.Column(db.String(40), unique=True, nullable=False)
+    invoice_number = db.Column(db.String(40), unique=True, nullable=False, index=True)
 
-    buyer_id = db.Column(db.Integer, db.ForeignKey("buyer.id", ondelete="CASCADE"), nullable=False, index=True)
-    buyer = db.relationship("Buyer", foreign_keys=[buyer_id], lazy="joined")
+    buyer_id = db.Column(
+        db.Integer,
+        db.ForeignKey("buyer.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+
+    contract_document_id = db.Column(
+        db.Integer,
+        db.ForeignKey("contract_documents.id"),
+        nullable=True,
+        index=True,
+    )
+
+    sale_id = db.Column(db.Integer, db.ForeignKey("sales.id"), nullable=True, index=True)
+    contract_id = db.Column(db.Integer, db.ForeignKey("contracts.id"), nullable=True, index=True)
+
+    commercial_processing_batch_id = db.Column(
+        db.Integer,
+        db.ForeignKey("commercial_processing_batches.id"),
+        nullable=True,
+        index=True,
+    )
 
     processing_batch_sale_id = db.Column(
-        db.Integer, db.ForeignKey("processing_batch_sale.id"), unique=True, nullable=False
+        db.Integer,
+        db.ForeignKey("processing_batch_sale.id"),
+        unique=True,
+        nullable=True,
+        index=True,
     )
-    sale = db.relationship("ProcessingBatchSale", foreign_keys=[processing_batch_sale_id], lazy="joined")
 
     issue_date = db.Column(db.Date, default=date.today, nullable=False)
     due_date = db.Column(db.Date, nullable=True)
@@ -1391,46 +1536,196 @@ class Invoice(db.Model):
         ),
         nullable=False,
         default=InvoiceStatus.ISSUED,
+        index=True,
     )
 
     issued_at = db.Column(db.DateTime, nullable=True)
     paid_at = db.Column(db.DateTime, nullable=True)
     voided_at = db.Column(db.DateTime, nullable=True)
 
-    subtotal = db.Column(db.Float, default=0.0, nullable=False)
-    tax = db.Column(db.Float, default=0.0, nullable=False)
-    total = db.Column(db.Float, default=0.0, nullable=False)
+    currency = db.Column(db.String(10), nullable=False, default="USD")
+
+    subtotal = db.Column(db.Numeric(14, 2), nullable=False, default=0)
+    tax = db.Column(db.Numeric(14, 2), nullable=False, default=0)
+    total = db.Column(db.Numeric(14, 2), nullable=False, default=0)
+
+    deposit_paid = db.Column(db.Numeric(14, 2), nullable=False, default=0)
+    balance = db.Column(db.Numeric(14, 2), nullable=False, default=0)
 
     notes = db.Column(db.Text, nullable=True)
     terms = db.Column(db.Text, nullable=True)
 
     issued_by_user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=True)
-    issued_by = db.relationship("User", foreign_keys=[issued_by_user_id], lazy="joined")
-
-    items = db.relationship("InvoiceItem", back_populates="invoice", cascade="all, delete-orphan", lazy="select")
 
     created_at = db.Column(db.DateTime, default=utcnow_naive, nullable=False)
+    updated_at = db.Column(
+        db.DateTime,
+        default=utcnow_naive,
+        onupdate=utcnow_naive,
+        nullable=False,
+    )
+
+    buyer = db.relationship("Buyer", foreign_keys=[buyer_id], lazy="joined")
+
+    contract_document = db.relationship(
+        "ContractDocument",
+        foreign_keys=[contract_document_id],
+        lazy="joined",
+    )
+
+    sale = db.relationship("Sale", foreign_keys=[sale_id], lazy="joined")
+    contract = db.relationship("Contract", foreign_keys=[contract_id], lazy="joined")
+
+    commercial_processing_batch = db.relationship(
+        "CommercialProcessingBatch",
+        foreign_keys=[commercial_processing_batch_id],
+        lazy="joined",
+    )
+
+    legacy_sale = db.relationship(
+        "ProcessingBatchSale",
+        foreign_keys=[processing_batch_sale_id],
+        lazy="joined",
+    )
+
+    issued_by = db.relationship("User", foreign_keys=[issued_by_user_id], lazy="joined")
+
+    items = db.relationship(
+        "InvoiceItem",
+        back_populates="invoice",
+        cascade="all, delete-orphan",
+        lazy="select",
+    )
+
+    payments = db.relationship(
+        "InvoicePayment",
+        back_populates="invoice",
+        cascade="all, delete-orphan",
+        lazy="select",
+        order_by="desc(InvoicePayment.paid_at)",
+    )
+
+    @property
+    def amount_paid(self):
+        return self.deposit_paid or 0
+
+    @property
+    def outstanding_amount(self):
+        return self.balance or 0
+
+    def recalculate_totals(self):
+        self.subtotal = sum((item.line_total or 0) for item in self.items)
+        self.total = (self.subtotal or 0) + (self.tax or 0)
+
+        total_paid = sum((payment.amount or 0) for payment in self.payments)
+
+        if total_paid:
+            self.deposit_paid = total_paid
+
+        self.balance = (self.total or 0) - (self.deposit_paid or 0)
+
+        if self.balance <= 0 and self.total > 0:
+            self.balance = 0
+            self.status = InvoiceStatus.PAID
+            if not self.paid_at:
+                self.paid_at = utcnow_naive()
+        elif self.deposit_paid and self.deposit_paid > 0:
+            self.status = InvoiceStatus.PARTIALLY_PAID
+            self.paid_at = None
+        else:
+            self.status = InvoiceStatus.ISSUED
+            self.paid_at = None
 
     def __repr__(self) -> str:
         return f"<Invoice {self.id} {self.invoice_number} {self.status}>"
-
-
+    
 # =========================================================
-# InvoiceItem
+# Invoice Item
+# Sells from InventoryLot
 # =========================================================
 class InvoiceItem(db.Model):
     __tablename__ = "invoice_item"
 
     id = db.Column(db.Integer, primary_key=True)
-    invoice_id = db.Column(db.Integer, db.ForeignKey("invoice.id"), nullable=False)
 
-    invoice = db.relationship("Invoice", back_populates="items", lazy="joined")
+    invoice_id = db.Column(
+        db.Integer,
+        db.ForeignKey("invoice.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+
+    inventory_lot_id = db.Column(
+        db.Integer,
+        db.ForeignKey("inventory_lot.id"),
+        nullable=True,
+        index=True,
+    )
 
     description = db.Column(db.String(255), nullable=False)
-    quantity = db.Column(db.Float, default=1.0, nullable=False)
-    unit_price = db.Column(db.Float, default=0.0, nullable=False)
-    line_total = db.Column(db.Float, default=0.0, nullable=False)
 
+    quantity = db.Column(db.Numeric(14, 2), nullable=False, default=1)
+    unit = db.Column(db.String(20), default="kg", nullable=False)
+
+    unit_price = db.Column(db.Numeric(14, 2), nullable=False, default=0)
+    line_total = db.Column(db.Numeric(14, 2), nullable=False, default=0)
+
+    invoice = db.relationship(
+        "Invoice",
+        back_populates="items",
+        lazy="joined",
+    )
+
+    inventory_lot = db.relationship(
+        "InventoryLot",
+        back_populates="invoice_items",
+        lazy="joined",
+    )
+
+    def __repr__(self) -> str:
+        return f"<InvoiceItem {self.id} {self.description} qty={self.quantity}>"
+
+# =========================================================
+# Invoice Payment
+# Appended payment/receipt records for invoice settlement
+# =========================================================
+class InvoicePayment(db.Model):
+    __tablename__ = "invoice_payments"
+
+    id = db.Column(db.Integer, primary_key=True)
+
+    receipt_number = db.Column(
+        db.String(40),
+        unique=True,
+        nullable=False,
+        index=True,
+    )
+
+    invoice_id = db.Column(
+        db.Integer,
+        db.ForeignKey("invoice.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+
+    amount = db.Column(db.Numeric(14, 2), nullable=False)
+
+    method = db.Column(db.String(50), nullable=True)
+    reference = db.Column(db.String(120), nullable=True)
+    notes = db.Column(db.Text, nullable=True)
+
+    paid_at = db.Column(db.DateTime, default=utcnow_naive, nullable=False)
+    created_at = db.Column(db.DateTime, default=utcnow_naive, nullable=False)
+
+    invoice = db.relationship(
+        "Invoice",
+        back_populates="payments",
+        lazy="joined",
+    )
+
+    def __repr__(self) -> str:
+        return f"<InvoicePayment {self.receipt_number} invoice={self.invoice_id} amount={self.amount}>"
+        
 # =========================================================
 # Unified Pipeline / Control Tower (MATCHES MIGRATION)
 # =========================================================
@@ -2020,3 +2315,270 @@ class MarketPurchaseExpense(db.Model):
             f"<MarketPurchaseExpense {self.id} "
             f"{self.expense_type} {self.amount} {self.currency}>"
         )
+
+# =========================================================
+# ProcurementSource
+# Unified source: farmers are primary, markets are supplementary
+# =========================================================
+class ProcurementSource(db.Model):
+    __tablename__ = "procurement_sources"
+
+    id = db.Column(db.Integer, primary_key=True)
+
+    source_type = db.Column(db.String(20), nullable=False, index=True)
+    # farmer, market
+
+    name = db.Column(db.String(160), nullable=False, index=True)
+    phone = db.Column(db.String(50), nullable=True)
+    location = db.Column(db.String(160), nullable=True)
+    county = db.Column(db.String(100), nullable=True)
+
+    notes = db.Column(db.Text, nullable=True)
+    is_active = db.Column(db.Boolean, default=True, nullable=False)
+
+    created_at = db.Column(db.DateTime, default=utcnow_naive, nullable=False)
+    updated_at = db.Column(
+        db.DateTime,
+        default=utcnow_naive,
+        onupdate=utcnow_naive,
+        nullable=False,
+    )
+
+    procurement_records = db.relationship(
+        "ProcurementRecord",
+        back_populates="source",
+        lazy="select",
+        cascade="all, delete-orphan",
+    )
+
+    __table_args__ = (
+        db.CheckConstraint(
+            "source_type in ('farmer','market')",
+            name="ck_procurement_source_type",
+        ),
+    )
+
+    def __repr__(self) -> str:
+        return f"<ProcurementSource {self.id} {self.source_type} {self.name}>"
+
+# =========================================================
+# ProcurementRecord
+# Creates animals and attaches them to an aggregation batch
+# =========================================================
+class ProcurementRecord(db.Model):
+    __tablename__ = "procurement_records"
+
+    id = db.Column(db.Integer, primary_key=True)
+
+    source_id = db.Column(
+        db.Integer,
+        db.ForeignKey("procurement_sources.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+
+    aggregation_batch_id = db.Column(
+        db.Integer,
+        db.ForeignKey("aggregation_batch.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+
+    animal_type = db.Column(db.String(20), nullable=False, index=True)
+    quantity = db.Column(db.Integer, nullable=False, default=0)
+
+    unit_price = db.Column(db.Numeric(12, 2), nullable=False, default=0)
+    total_cost = db.Column(db.Numeric(12, 2), nullable=False, default=0)
+
+    estimated_total_weight_kg = db.Column(db.Numeric(12, 2), nullable=False, default=0)
+    estimated_avg_weight_kg = db.Column(db.Numeric(12, 2), nullable=False, default=0)
+
+    purchase_date = db.Column(db.Date, default=date.today, nullable=False)
+
+    status = db.Column(db.String(30), default="draft", nullable=False, index=True)
+    # draft, confirmed, received, cancelled
+
+    reference = db.Column(db.String(100), nullable=True)
+    notes = db.Column(db.Text, nullable=True)
+
+    created_at = db.Column(db.DateTime, default=utcnow_naive, nullable=False)
+    updated_at = db.Column(
+        db.DateTime,
+        default=utcnow_naive,
+        onupdate=utcnow_naive,
+        nullable=False,
+    )
+
+    source = db.relationship(
+        "ProcurementSource",
+        back_populates="procurement_records",
+        lazy="joined",
+    )
+
+    __table_args__ = (
+        db.CheckConstraint(
+            "animal_type in ('goat','sheep','cattle')",
+            name="ck_procurement_record_animal_type",
+        ),
+        db.CheckConstraint(
+            "quantity >= 0",
+            name="ck_procurement_record_quantity_non_negative",
+        ),
+        db.CheckConstraint(
+            "unit_price >= 0",
+            name="ck_procurement_record_unit_price_non_negative",
+        ),
+        db.CheckConstraint(
+            "total_cost >= 0",
+            name="ck_procurement_record_total_cost_non_negative",
+        ),
+        db.CheckConstraint(
+            "status in ('draft','confirmed','received','cancelled')",
+            name="ck_procurement_record_status",
+        ),
+    )
+
+    def generate_animals(self):
+        if not self.aggregation_batch:
+            raise ValueError("Procurement record must be linked to an aggregation batch.")
+
+        if self.animal_type != self.aggregation_batch.animal_type:
+            raise ValueError("Animal type does not match aggregation batch animal type.")
+
+        if self.status == "received":
+            raise ValueError("Animals have already been generated for this procurement record.")
+
+        model_map = {
+            "goat": Goat,
+            "sheep": Sheep,
+            "cattle": Cattle,
+        }
+
+        prefix_map = {
+            "goat": "GOAT",
+            "sheep": "SHEEP",
+            "cattle": "CATTLE",
+        }
+
+        AnimalModel = model_map.get(self.animal_type)
+
+        if not AnimalModel:
+            raise ValueError("Unsupported animal type.")
+
+        created = []
+        year = self.purchase_date.year if self.purchase_date else date.today().year
+
+        existing_count = AnimalModel.query.count()
+
+        for i in range(1, (self.quantity or 0) + 1):
+            sequence = existing_count + i
+
+            animal = AnimalModel(
+                rizara_id=f"RZ-{prefix_map[self.animal_type]}-{year}-P{self.id}-{sequence:04d}",
+                aggregation_batch_id=self.aggregation_batch_id,
+                status="aggregated",
+                source_type=self.source.source_type if self.source else None,
+                source_name=self.source.name if self.source else None,
+                procurement_record_id=self.id,
+            )
+
+            db.session.add(animal)
+            created.append(animal)
+
+        self.status = "received"
+
+        return created
+
+    def __repr__(self) -> str:
+        return f"<ProcurementRecord {self.id} {self.animal_type} qty={self.quantity}>"
+
+# =========================================================
+# InventoryLot
+# Yield declaration becomes saleable inventory
+# =========================================================
+class InventoryLot(db.Model):
+    __tablename__ = "inventory_lot"
+
+    id = db.Column(db.Integer, primary_key=True)
+
+    processing_batch_id = db.Column(
+        db.Integer,
+        db.ForeignKey("processing_batch.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+
+    batch_number = db.Column(db.String(80), nullable=False, index=True)
+
+    product_name = db.Column(db.String(160), nullable=False)
+    product_type = db.Column(db.String(80), nullable=True)
+    animal_type = db.Column(db.String(20), nullable=False, index=True)
+
+    quantity_kg = db.Column(db.Numeric(12, 2), nullable=False, default=0)
+    available_kg = db.Column(db.Numeric(12, 2), nullable=False, default=0)
+
+    unit = db.Column(db.String(20), default="kg", nullable=False)
+
+    status = db.Column(db.String(30), default="available", nullable=False, index=True)
+    # available, partially_sold, sold_out, adjusted, expired
+
+    created_at = db.Column(db.DateTime, default=utcnow_naive, nullable=False)
+    updated_at = db.Column(
+        db.DateTime,
+        default=utcnow_naive,
+        onupdate=utcnow_naive,
+        nullable=False,
+    )
+
+    processing_batch = db.relationship(
+        "ProcessingBatch",
+        lazy="joined",
+    )
+
+    invoice_items = db.relationship(
+        "InvoiceItem",
+        back_populates="inventory_lot",
+        lazy="select",
+    )
+
+    __table_args__ = (
+        db.CheckConstraint(
+            "animal_type in ('goat','sheep','cattle')",
+            name="ck_inventory_lot_animal_type",
+        ),
+        db.CheckConstraint(
+            "quantity_kg >= 0",
+            name="ck_inventory_lot_quantity_non_negative",
+        ),
+        db.CheckConstraint(
+            "available_kg >= 0",
+            name="ck_inventory_lot_available_non_negative",
+        ),
+        db.CheckConstraint(
+            "available_kg <= quantity_kg",
+            name="ck_inventory_lot_available_not_more_than_quantity",
+        ),
+        db.CheckConstraint(
+            "status in ('available','partially_sold','sold_out','adjusted','expired')",
+            name="ck_inventory_lot_status",
+        ),
+    )
+
+    def deduct_stock(self, quantity):
+        if quantity <= 0:
+            raise ValueError("Quantity must be greater than zero.")
+
+        if self.available_kg < quantity:
+            raise ValueError("Insufficient inventory available.")
+
+        self.available_kg -= quantity
+
+        if self.available_kg == 0:
+            self.status = "sold_out"
+        elif self.available_kg < self.quantity_kg:
+            self.status = "partially_sold"
+        else:
+            self.status = "available"
+
+    def __repr__(self) -> str:
+        return f"<InventoryLot {self.id} {self.product_name} available={self.available_kg}>"        

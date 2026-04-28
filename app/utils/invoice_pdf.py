@@ -1,253 +1,298 @@
 # app/utils/invoice_pdf.py
-
 from __future__ import annotations
 
 import io
-from datetime import datetime, date
+from datetime import date, datetime
+from decimal import Decimal
 
-from reportlab.lib.pagesizes import A4
-from reportlab.lib.units import mm
 from reportlab.lib import colors
+from reportlab.lib.enums import TA_LEFT
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+from reportlab.lib.units import mm
 from reportlab.pdfgen import canvas
-from reportlab.platypus import Table, TableStyle
+from reportlab.platypus import Paragraph, Table, TableStyle
 
 
-def _fmt_date(d):
-    if not d:
+def _fmt_date(value):
+    if not value:
         return "-"
-    if isinstance(d, (datetime, date)):
-        return d.strftime("%Y-%m-%d")
-    return str(d)
+    if isinstance(value, (datetime, date)):
+        return value.strftime("%Y-%m-%d")
+    return str(value)
 
 
-def _money(v, currency="KES"):
+def _decimal(value) -> Decimal:
     try:
-        if v is None:
-            return "-"
-        return f"{currency} {float(v):,.2f}"
+        return Decimal(str(value or 0))
     except Exception:
-        return f"{currency} {v}"
+        return Decimal("0")
 
 
-def _safe_enum_value(v):
-    # Enum -> .value else raw
+def _money(value, currency="USD"):
+    return f"{currency} {_decimal(value):,.2f}"
+
+
+def _safe_enum_value(value):
     try:
-        return v.value
+        return value.value
     except Exception:
-        return v
+        return str(value) if value is not None else "-"
+
+
+def _paragraph(text, style):
+    return Paragraph(str(text or "-").replace("&", "&amp;"), style)
 
 
 def render_invoice_pdf(invoice) -> bytes:
-    """
-    Render an Invoice PDF (NO DB writes).
-    Returns PDF bytes.
-    """
-    # Import inside function to avoid circular imports during app boot
-    from app.models import InvoiceItem, ProcessingBatch, ProcessingYield  # noqa
-
     buf = io.BytesIO()
     c = canvas.Canvas(buf, pagesize=A4)
     width, height = A4
 
-    # --- Brand colors (Rizara) ---
     JUNGLE = colors.HexColor("#1f6f54")
-    GOLD = colors.HexColor("#d4af37")
     GRAY = colors.HexColor("#6b7280")
     DARK = colors.HexColor("#111827")
+    LIGHT = colors.HexColor("#f9fafb")
+    BORDER = colors.HexColor("#e5e7eb")
 
-    # --- Header bar ---
+    styles = getSampleStyleSheet()
+
+    ref_label_style = ParagraphStyle(
+        "RefLabel",
+        parent=styles["Normal"],
+        fontName="Helvetica",
+        fontSize=8,
+        leading=10,
+        textColor=GRAY,
+        alignment=TA_LEFT,
+    )
+
+    ref_value_style = ParagraphStyle(
+        "RefValue",
+        parent=styles["Normal"],
+        fontName="Helvetica",
+        fontSize=8,
+        leading=10,
+        textColor=DARK,
+        alignment=TA_LEFT,
+    )
+
+    buyer = getattr(invoice, "buyer", None)
+    contract = getattr(invoice, "contract", None)
+    contract_document = getattr(invoice, "contract_document", None)
+    batch = getattr(invoice, "commercial_processing_batch", None)
+
+    currency = getattr(invoice, "currency", None) or "USD"
+
+    subtotal = _decimal(getattr(invoice, "subtotal", 0))
+    tax = _decimal(getattr(invoice, "tax", 0))
+    total = _decimal(getattr(invoice, "total", 0))
+    deposit_paid = _decimal(getattr(invoice, "deposit_paid", 0))
+    balance_due = _decimal(getattr(invoice, "balance", total - deposit_paid))
+
+    # Header
     c.setFillColor(JUNGLE)
-    c.rect(0, height - 28 * mm, width, 28 * mm, stroke=0, fill=1)
+    c.rect(0, height - 30 * mm, width, 30 * mm, stroke=0, fill=1)
 
     c.setFillColor(colors.white)
     c.setFont("Helvetica-Bold", 16)
-    c.drawString(18 * mm, height - 16 * mm, "Rizara Meats Ltd")
+    c.drawString(18 * mm, height - 15 * mm, "Rizara Meats Ltd")
 
     c.setFont("Helvetica", 9)
-    c.drawString(18 * mm, height - 22 * mm, "Secure • Traceable • Halal")
+    c.drawString(18 * mm, height - 22 * mm, "Ethical • Traceable • Halal")
 
-    # --- Invoice meta (top right) ---
-    c.setFillColor(colors.white)
-    c.setFont("Helvetica-Bold", 12)
-    inv_no = getattr(invoice, "invoice_number", None) or f"INV-{getattr(invoice, 'id', '')}"
-    c.drawRightString(width - 18 * mm, height - 14 * mm, f"INVOICE {inv_no}")
-
-    c.setFont("Helvetica", 9)
+    invoice_number = getattr(invoice, "invoice_number", None) or f"INV-{getattr(invoice, 'id', '')}"
     status = _safe_enum_value(getattr(invoice, "status", "issued"))
     issue_date = _fmt_date(getattr(invoice, "issue_date", None))
-    c.drawRightString(width - 18 * mm, height - 20 * mm, f"Status: {status} • Issue: {issue_date}")
 
-    # --- Body start ---
-    y = height - 38 * mm
+    c.setFont("Helvetica-Bold", 12)
+    c.drawRightString(width - 18 * mm, height - 14 * mm, "COMMERCIAL INVOICE")
+    c.setFont("Helvetica", 9)
+    c.drawRightString(width - 18 * mm, height - 20 * mm, f"No: {invoice_number}")
+    c.drawRightString(width - 18 * mm, height - 25 * mm, f"Status: {status} | Issue: {issue_date}")
 
-    # Buyer info card
-    buyer = getattr(invoice, "buyer", None)
+    y = height - 42 * mm
+
+    # Buyer and commercial references headings
+    c.setFillColor(DARK)
+    c.setFont("Helvetica-Bold", 11)
+    c.drawString(18 * mm, y, "Billed To")
+    c.drawString(width / 2 + 2 * mm, y, "Commercial References")
+    y -= 6 * mm
+
+    left_x = 18 * mm
+    right_x = width / 2 + 2 * mm
+    box_h = 46 * mm
+
+    # Buyer box
+    c.setStrokeColor(BORDER)
+    c.setFillColor(colors.white)
+    c.roundRect(left_x, y - box_h, width / 2 - 24 * mm, box_h, 6, stroke=1, fill=1)
+
     buyer_name = getattr(buyer, "name", "-") if buyer else "-"
     buyer_phone = getattr(buyer, "phone", "") if buyer else ""
     buyer_email = getattr(buyer, "email", "") if buyer else ""
     buyer_addr = getattr(buyer, "address", "") if buyer else ""
 
-    # Related batch/yield (best effort)
-    sale = getattr(invoice, "sale", None)
-    batch = None
-    yrec = None
-    currency = "KES"
-
-    try:
-        if sale:
-            currency = getattr(sale, "currency", None) or currency
-            pb_id = getattr(sale, "processing_batch_id", None)
-            if pb_id:
-                batch = ProcessingBatch.query.get(pb_id)
-                if batch:
-                    yrec = ProcessingYield.query.filter_by(processing_batch_id=batch.id).first()
-    except Exception:
-        # If DB unavailable, just skip batch/yield details.
-        batch = None
-        yrec = None
-
-    # Draw section headings
-    c.setFillColor(DARK)
-    c.setFont("Helvetica-Bold", 11)
-    c.drawString(18 * mm, y, "Billed To")
-    c.drawString(width / 2 + 2 * mm, y, "Batch Details")
-    y -= 6 * mm
-
-    # Left: buyer box
-    c.setStrokeColor(colors.HexColor("#e5e7eb"))
-    c.setFillColor(colors.white)
-    c.roundRect(18 * mm, y - 30 * mm, (width / 2 - 22 * mm), 30 * mm, 6, stroke=1, fill=1)
-
     c.setFillColor(DARK)
     c.setFont("Helvetica-Bold", 10)
-    c.drawString(22 * mm, y - 8 * mm, buyer_name)
+    c.drawString(left_x + 4 * mm, y - 8 * mm, str(buyer_name)[:45])
 
     c.setFont("Helvetica", 9)
     line_y = y - 14 * mm
-    if buyer_phone:
-        c.drawString(22 * mm, line_y, buyer_phone)
-        line_y -= 5 * mm
-    if buyer_email:
-        c.drawString(22 * mm, line_y, buyer_email)
-        line_y -= 5 * mm
-    if buyer_addr:
-        c.setFillColor(GRAY)
-        c.drawString(22 * mm, line_y, buyer_addr[:75])
-        c.setFillColor(DARK)
+    for text in [buyer_phone, buyer_email, buyer_addr]:
+        if text:
+            c.drawString(left_x + 4 * mm, line_y, str(text)[:55])
+            line_y -= 5 * mm
 
-    # Right: batch box
-    right_x = width / 2 + 2 * mm
-    c.setStrokeColor(colors.HexColor("#e5e7eb"))
+    # Commercial references box
+    c.setStrokeColor(BORDER)
     c.setFillColor(colors.white)
-    c.roundRect(right_x, y - 30 * mm, (width - right_x - 18 * mm), 30 * mm, 6, stroke=1, fill=1)
+    ref_box_w = width - right_x - 18 * mm
+    c.roundRect(right_x, y - box_h, ref_box_w, box_h, 6, stroke=1, fill=1)
 
-    c.setFillColor(DARK)
-    c.setFont("Helvetica", 9)
+    contract_ref = getattr(contract, "contract_number", "-") if contract else "-"
 
-    if batch:
-        c.drawString(right_x + 4 * mm, y - 10 * mm, f"Processing Batch: #{batch.id}")
-        c.drawString(right_x + 4 * mm, y - 15 * mm, f"Animal Type: {getattr(batch, 'animal_type', '-')}")
-        c.drawString(right_x + 4 * mm, y - 20 * mm, f"Facility: {getattr(batch, 'facility', '-')}")
-        c.drawString(right_x + 4 * mm, y - 25 * mm, f"Slaughter Date: {_fmt_date(getattr(batch, 'slaughter_date', None))}")
-        if yrec:
-            c.setFillColor(GRAY)
-            cw = getattr(yrec, "total_carcass_weight_kg", None)
-            c.drawString(right_x + 4 * mm, y - 30 * mm + 5 * mm, f"Carcass: {cw} kg" if cw is not None else "Carcass: -")
-            c.setFillColor(DARK)
+    if contract_document:
+        document_ref = (
+            getattr(contract_document, "title", None)
+            or getattr(contract_document, "original_filename", None)
+            or getattr(contract_document, "stored_filename", None)
+            or f"DOC-{contract_document.id}"
+        )
     else:
-        c.drawString(right_x + 4 * mm, y - 12 * mm, "Batch details not available")
+        document_ref = "-"
 
-    y -= 40 * mm
+    batch_ref = getattr(batch, "batch_number", "-") if batch else "-"
 
-    # --- Items table ---
-    items = []
-    try:
-        items = InvoiceItem.query.filter_by(invoice_id=invoice.id).all()
-    except Exception:
-        items = []
+    refs = [
+        ("Contract", contract_ref),
+        ("Document", document_ref),
+        ("Batch", batch_ref),
+        ("Currency", currency),
+    ]
 
+    ref_data = [
+        [
+            _paragraph(f"{label}:", ref_label_style),
+            _paragraph(value, ref_value_style),
+        ]
+        for label, value in refs
+    ]
+
+    ref_table = Table(
+        ref_data,
+        colWidths=[23 * mm, ref_box_w - 31 * mm],
+        hAlign="LEFT",
+    )
+
+    ref_table.setStyle(TableStyle([
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 0),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 2),
+        ("TOPPADDING", (0, 0), (-1, -1), 1),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 1),
+    ]))
+
+    _, ref_table_h = ref_table.wrapOn(c, ref_box_w - 8 * mm, box_h - 8 * mm)
+    ref_table.drawOn(c, right_x + 4 * mm, y - 6 * mm - ref_table_h)
+
+    y -= box_h + 12 * mm
+
+    # Items
     data = [["Description", "Qty", "Unit Price", "Line Total"]]
-    for it in items:
+
+    for item in getattr(invoice, "items", []):
         data.append([
-            getattr(it, "description", "-"),
-            f"{getattr(it, 'quantity', 1.0)}",
-            _money(getattr(it, "unit_price", 0.0), currency),
-            _money(getattr(it, "line_total", 0.0), currency),
+            str(getattr(item, "description", "-"))[:65],
+            f"{_decimal(getattr(item, 'quantity', 0)):,.2f}",
+            _money(getattr(item, "unit_price", 0), currency),
+            _money(getattr(item, "line_total", 0), currency),
         ])
 
     if len(data) == 1:
-        data.append(["(No items found)", "-", "-", "-"])
+        data.append(["No invoice items found", "-", "-", "-"])
 
     table = Table(
         data,
-        colWidths=[98 * mm, 18 * mm, 30 * mm, 30 * mm],
+        colWidths=[90 * mm, 22 * mm, 34 * mm, 34 * mm],
         hAlign="LEFT",
     )
+
     table.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#f3f4f6")),
+        ("BACKGROUND", (0, 0), (-1, 0), LIGHT),
         ("TEXTCOLOR", (0, 0), (-1, 0), DARK),
         ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-        ("FONTSIZE", (0, 0), (-1, -1), 9),
-        ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#e5e7eb")),
+        ("FONTNAME", (0, 1), (-1, -1), "Helvetica"),
+        ("FONTSIZE", (0, 0), (-1, -1), 8.5),
+        ("GRID", (0, 0), (-1, -1), 0.5, BORDER),
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("ALIGN", (1, 1), (-1, -1), "RIGHT"),
         ("PADDING", (0, 0), (-1, -1), 6),
     ]))
 
-    tw, th = table.wrapOn(c, width - 36 * mm, height)
-    table.drawOn(c, 18 * mm, y - th)
+    _, table_height = table.wrapOn(c, width - 36 * mm, height)
+    table.drawOn(c, 18 * mm, y - table_height)
+    y = y - table_height - 10 * mm
 
-    y = y - th - 10 * mm
+    # Totals
+    box_w = 82 * mm
+    box_x = width - 18 * mm - box_w
+    box_y = y - 48 * mm
 
-    # --- Totals ---
-    subtotal = getattr(invoice, "subtotal", 0.0) or 0.0
-    tax = getattr(invoice, "tax", 0.0) or 0.0
-    total = getattr(invoice, "total", 0.0) or 0.0
+    c.setFillColor(LIGHT)
+    c.setStrokeColor(BORDER)
+    c.roundRect(box_x, box_y, box_w, 48 * mm, 6, stroke=1, fill=1)
 
-    # Right aligned totals block
-    block_x = width - 18 * mm
-    c.setFont("Helvetica", 9)
-    c.setFillColor(GRAY)
-    c.drawRightString(block_x, y, "Subtotal")
-    c.drawRightString(block_x, y - 6 * mm, "Tax")
-    c.setFillColor(DARK)
-    c.setFont("Helvetica-Bold", 10)
-    c.drawRightString(block_x, y - 14 * mm, "Total")
+    label_x = box_x + 5 * mm
+    value_x = box_x + box_w - 5 * mm
+    row_y = y - 8 * mm
 
-    c.setFont("Helvetica", 9)
-    c.setFillColor(DARK)
-    c.drawRightString(block_x - 40 * mm, y, _money(subtotal, currency))
-    c.drawRightString(block_x - 40 * mm, y - 6 * mm, _money(tax, currency))
-    c.setFont("Helvetica-Bold", 10)
-    c.drawRightString(block_x - 40 * mm, y - 14 * mm, _money(total, currency))
+    totals = [
+        ("Subtotal", subtotal, False),
+        ("Tax", tax, False),
+        ("Total Invoice Value", total, True),
+        ("Deposit / Payments Received", deposit_paid, False),
+        ("Balance Due", balance_due, True),
+    ]
 
-    y -= 24 * mm
+    for label, value, bold in totals:
+        c.setFont("Helvetica-Bold" if bold else "Helvetica", 9)
+        c.setFillColor(JUNGLE if label == "Balance Due" else DARK)
+        c.drawString(label_x, row_y, label)
+        c.drawRightString(value_x, row_y, _money(value, currency))
+        row_y -= 8 * mm
 
-    # --- Notes / Terms ---
+    y = box_y - 12 * mm
+
+    # Terms / Notes
+    terms = getattr(invoice, "terms", None) or "Payment as agreed."
     notes = getattr(invoice, "notes", None)
-    terms = getattr(invoice, "terms", None) or "Payment due as agreed."
 
-    c.setFont("Helvetica-Bold", 10)
     c.setFillColor(DARK)
+    c.setFont("Helvetica-Bold", 10)
     c.drawString(18 * mm, y, "Terms")
-    c.setFont("Helvetica", 9)
+
     c.setFillColor(GRAY)
-    c.drawString(18 * mm, y - 6 * mm, (terms or "")[:120])
+    c.setFont("Helvetica", 9)
+    c.drawString(18 * mm, y - 6 * mm, str(terms)[:120])
 
     if notes:
-        c.setFont("Helvetica-Bold", 10)
         c.setFillColor(DARK)
-        c.drawString(18 * mm, y - 16 * mm, "Notes")
-        c.setFont("Helvetica", 9)
+        c.setFont("Helvetica-Bold", 10)
+        c.drawString(18 * mm, y - 17 * mm, "Notes")
         c.setFillColor(GRAY)
-        c.drawString(18 * mm, y - 22 * mm, (notes or "")[:120])
+        c.setFont("Helvetica", 9)
+        c.drawString(18 * mm, y - 23 * mm, str(notes)[:120])
 
-    # --- Footer ---
+    # Footer
     c.setFillColor(colors.HexColor("#e5e7eb"))
     c.rect(0, 0, width, 12 * mm, stroke=0, fill=1)
 
     c.setFillColor(colors.HexColor("#374151"))
     c.setFont("Helvetica", 8)
-    c.drawString(18 * mm, 4 * mm, "Rizara Meats Ltd • Nairobi, Kenya • For support contact Rizara Admin")
+    c.drawString(18 * mm, 4 * mm, "Rizara Meats Ltd • Nairobi, Kenya")
+
     c.setFillColor(colors.HexColor("#6b7280"))
     c.drawRightString(width - 18 * mm, 4 * mm, f"Generated: {_fmt_date(date.today())}")
 

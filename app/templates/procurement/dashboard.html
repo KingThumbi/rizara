@@ -1,0 +1,86 @@
+{% extends "layouts/base.html" %}
+
+{% block title %}Procurement - Rizara{% endblock %}
+
+{% block body %}
+{% include "partials/admin_chrome.html" %}
+
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+  <div class="flex items-center justify-between mb-6">
+    <div>
+      <h1 class="text-2xl font-bold text-gray-900">Procurement</h1>
+      <p class="text-sm text-gray-600 mt-1">
+        Manage farmer and market supply into aggregation batches.
+      </p>
+    </div>
+
+    <div class="flex gap-3">
+      <a href="{{ url_for('procurement.source_new') }}"
+         class="px-4 py-2 rounded-xl bg-jungle text-white font-semibold hover:bg-jungleLight transition">
+        Add Source
+      </a>
+      <a href="{{ url_for('procurement.record_new') }}"
+         class="px-4 py-2 rounded-xl bg-gold text-jungle font-semibold hover:opacity-90 transition">
+        New Procurement
+      </a>
+    </div>
+  </div>
+
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
+    <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+      <p class="text-sm text-gray-500">Sources</p>
+      <p class="text-3xl font-bold text-gray-900 mt-2">{{ sources_count }}</p>
+      <a href="{{ url_for('procurement.sources_list') }}" class="text-sm text-jungle font-semibold mt-3 inline-block">
+        View farmers & markets
+      </a>
+    </div>
+
+    <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+      <p class="text-sm text-gray-500">Procurement Records</p>
+      <p class="text-3xl font-bold text-gray-900 mt-2">{{ records_count }}</p>
+      <a href="{{ url_for('procurement.records_list') }}" class="text-sm text-jungle font-semibold mt-3 inline-block">
+        View records
+      </a>
+    </div>
+  </div>
+
+  <div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+    <div class="px-6 py-4 border-b border-gray-100">
+      <h2 class="font-bold text-gray-900">Recent Procurement Records</h2>
+    </div>
+
+    <div class="overflow-x-auto">
+      <table class="min-w-full text-sm">
+        <thead class="bg-gray-50 text-gray-600">
+          <tr>
+            <th class="px-6 py-3 text-left">Date</th>
+            <th class="px-6 py-3 text-left">Source</th>
+            <th class="px-6 py-3 text-left">Type</th>
+            <th class="px-6 py-3 text-left">Animal</th>
+            <th class="px-6 py-3 text-right">Qty</th>
+            <th class="px-6 py-3 text-left">Status</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-gray-100">
+          {% for record in recent_records %}
+          <tr class="hover:bg-gray-50">
+            <td class="px-6 py-3">{{ record.purchase_date }}</td>
+            <td class="px-6 py-3">{{ record.source.name if record.source else "-" }}</td>
+            <td class="px-6 py-3">{{ record.source.source_type|title if record.source else "-" }}</td>
+            <td class="px-6 py-3">{{ record.animal_type|title }}</td>
+            <td class="px-6 py-3 text-right">{{ record.quantity }}</td>
+            <td class="px-6 py-3">{{ record.status|title }}</td>
+          </tr>
+          {% else %}
+          <tr>
+            <td colspan="6" class="px-6 py-8 text-center text-gray-500">
+              No procurement records yet.
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

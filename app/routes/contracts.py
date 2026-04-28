@@ -48,9 +48,12 @@ bp = Blueprint("contracts", __name__, url_prefix="/contracts")
 @bp.get("")
 @login_required
 def list_contracts():
-    status = request.args.get("status", "").strip()
+    status = (request.args.get("status") or "").strip()
     buyer_id = request.args.get("buyer_id", type=int)
-    q = request.args.get("q", "").strip()
+    q = (request.args.get("q") or "").strip()
+
+    # Used when selecting a contract to link a processing batch.
+    select_for_batch = request.args.get("select_for_batch", type=int)
 
     query = Contract.query.order_by(Contract.created_at.desc())
 
@@ -80,8 +83,8 @@ def list_contracts():
         selected_status=status,
         selected_buyer_id=buyer_id,
         q=q,
+        select_for_batch=select_for_batch,
     )
-
 
 @bp.get("/new")
 @login_required
@@ -571,4 +574,220 @@ def create_sale_from_contract(contract_id: int):
 
     flash("Sale created from contract.", "success")
     return redirect(url_for("sales.view_sale", sale_id=sale.id))
-        
+
+@bp.route("/<int:contract_id>/tender-sale", methods=["GET", "POST"])
+@login_required
+def tender_sale(contract_id):
+    from decimal import Decimal
+    from datetime import date
+
+    from app.models import (
+        Contract,
+        Sale,
+        SaleItem,
+        SalePayment,
+        Invoice,
+        InvoiceItem,
+        InvoiceStatus,
+        PipelineCase,
+        CommercialProcessingBatch,
+    )
+
+    contract = Contract.query.get_or_404(contract_id)
+
+    if contract.status not in {"signed", "active", "approved", "partially_fulfilled"}:
+        flash("Only approved, signed, or active contracts can be invoiced.", "danger")
+        return redirect(url_for("contracts.contract_detail", contract_id=contract.id))
+
+    batches = CommercialProcessingBatch.query.filter_by(contract_id=contract.id).all()
+
+    if request.method == "GET":
+        return render_template(
+            "contracts/tender_sale.html",
+            contract=contract,
+            batches=batches,
+            currency_options=["USD", "AED", "SAR", "QAR", "EUR", "GBP", "KES"],
+            current_year=date.today().year,
+        )
+
+    currency = request.form.get("currency") or contract.currency or "USD"
+    batch_id = request.form.get("commercial_processing_batch_id") or None
+    deposit_amount = Decimal(str(request.form.get("deposit_amount") or 0))
+    deposit_reference = request.form.get("deposit_reference") or None
+    deposit_method = request.form.get("deposit_method") or "bank_transfer"
+
+    product_names = request.form.getlist("product_name[]")
+    quantities = request.form.getlist("quantity[]")
+    contract_prices = request.form.getlist("contract_unit_price[]")
+    invoice_prices = request.form.getlist("invoice_unit_price[]")
+    adjustment_reasons = request.form.getlist("price_adjustment_reason[]")
+
+    if not product_names:
+        flash("Add at least one invoice item.", "danger")
+        return redirect(request.url)
+
+    sale_number = f"SAL-{date.today().strftime('%Y%m%d')}-{contract.id:04d}"
+    invoice_number = f"INV-{date.today().strftime('%Y%m%d')}-{contract.id:04d}"
+
+    subtotal = Decimal("0.00")
+    prepared_lines = []
+
+    for i, product_name in enumerate(product_names):
+        qty = Decimal(str(quantities[i] or 0))
+        contract_price = Decimal(str(contract_prices[i] or 0))
+        invoice_price = Decimal(str(invoice_prices[i] or 0))
+        line_total = qty * invoice_price
+        adjustment = invoice_price - contract_price
+        reason = adjustment_reasons[i] if i < len(adjustment_reasons) else None
+
+        if adjustment != 0 and not reason:
+            flash("Price changes require a reason.", "danger")
+            return redirect(request.url)
+
+        subtotal += line_total
+
+        prepared_lines.append({
+            "product_name": product_name,
+            "qty": qty,
+            "contract_price": contract_price,
+            "invoice_price": invoice_price,
+            "adjustment": adjustment,
+            "reason": reason,
+            "line_total": line_total,
+        })
+
+    balance_due = max(subtotal - deposit_amount, Decimal("0.00"))
+
+    sale = Sale(
+        sale_number=sale_number,
+        contract_id=contract.id,
+        customer_id=contract.buyer_id,
+        buyer_id=contract.buyer_id,
+        sale_date=date.today(),
+        invoice_type="commercial",
+        status="partial" if deposit_amount > 0 else "draft",
+        currency=currency,
+        subtotal=subtotal,
+        discount=Decimal("0.00"),
+        tax_amount=Decimal("0.00"),
+        total_amount=subtotal,
+        prepaid_amount=deposit_amount,
+        amount_paid=deposit_amount,
+        balance_due=balance_due,
+        payment_status="partial" if deposit_amount > 0 else "unpaid",
+        created_by_user_id=current_user.id,
+    )
+
+    db.session.add(sale)
+    db.session.flush()
+
+    invoice = Invoice(
+        invoice_number=invoice_number,
+        buyer_id=contract.buyer_id,
+        sale_id=sale.id,
+        contract_id=contract.id,
+        commercial_processing_batch_id=int(batch_id) if batch_id else None,
+        issue_date=date.today(),
+        due_date=date.today(),
+        status=InvoiceStatus.PAID if balance_due <= 0 else InvoiceStatus.ISSUED,
+        issued_at=datetime.utcnow(),
+        paid_at=datetime.utcnow() if balance_due <= 0 else None,
+        subtotal=subtotal,
+        tax=Decimal("0.00"),
+        total=subtotal,
+        terms=contract.payment_terms or "Payment as per signed contract.",
+        notes="Invoice generated from signed contract tender-sale flow.",
+        issued_by_user_id=current_user.id,
+    )
+
+    db.session.add(invoice)
+    db.session.flush()
+
+    for line in prepared_lines:
+        sale_item = SaleItem(
+            sale_id=sale.id,
+            product_name=line["product_name"],
+            quantity=line["qty"],
+            unit_of_measure="kg",
+            unit_price=line["invoice_price"],
+            line_total=line["line_total"],
+            notes=(
+                f"Contract price: {currency} {line['contract_price']}/kg. "
+                f"Invoice price: {currency} {line['invoice_price']}/kg. "
+                f"Adjustment: {currency} {line['adjustment']}/kg. "
+                f"Reason: {line['reason'] or '-'}"
+            ),
+        )
+
+        invoice_item = InvoiceItem(
+            invoice_id=invoice.id,
+            description=(
+                f"{line['product_name']} | Contract: {currency} {line['contract_price']}/kg "
+                f"| Invoice: {currency} {line['invoice_price']}/kg"
+                + (f" | Adjustment reason: {line['reason']}" if line["adjustment"] != 0 else "")
+            ),
+            quantity=line["qty"],
+            unit_price=line["invoice_price"],
+            line_total=line["line_total"],
+        )
+
+        db.session.add(sale_item)
+        db.session.add(invoice_item)
+
+    if deposit_amount > 0:
+        payment = SalePayment(
+            sale_id=sale.id,
+            payment_date=date.today(),
+            payment_type="prepayment",
+            payment_method=deposit_method,
+            amount=deposit_amount,
+            reference_number=deposit_reference,
+            notes="Deposit received upon signed contract.",
+            created_by_user_id=current_user.id,
+        )
+        db.session.add(payment)
+
+    case = PipelineCase.query.filter_by(contract_id=contract.id).first()
+    if case:
+        case.sale_id = sale.id
+        case.invoice_id = invoice.id
+        case.buyer_id = contract.buyer_id
+        case.currency = currency
+        case.invoiced_amount = subtotal
+        case.paid_amount = deposit_amount
+        case.outstanding_amount = balance_due
+        db.session.add(case)
+
+    db.session.commit()
+
+    flash("Sale tendered and invoice issued successfully.", "success")
+    return redirect(url_for("processing.view_invoice", invoice_id=invoice.id))
+
+@bp.post("/<int:contract_id>/link-processing-batch/<int:batch_id>")
+@login_required
+def link_processing_batch(contract_id, batch_id):
+    from app.models import Contract, CommercialProcessingBatch, ProcessingBatch
+
+    contract = Contract.query.get_or_404(contract_id)
+    legacy_batch = ProcessingBatch.query.get_or_404(batch_id)
+
+    commercial_batch = CommercialProcessingBatch(
+        batch_number=f"CPB-{legacy_batch.id}",
+        contract_id=contract.id,
+        status="processed",
+        processing_date=legacy_batch.slaughter_date,
+        source_type="legacy_processing_batch",
+        source_reference_id=legacy_batch.id,
+        output_qty=None,
+        processing_authorized=True,
+        authorization_status="approved",
+        authorization_basis="linked_to_signed_contract",
+        notes=f"Linked from legacy processing batch #{legacy_batch.id}.",
+        created_by_user_id=current_user.id,
+    )
+
+    db.session.add(commercial_batch)
+    db.session.commit()
+
+    flash("Processing batch linked to contract successfully.", "success")
+    return redirect(url_for("contracts.tender_sale", contract_id=contract.id))            

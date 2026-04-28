@@ -1,0 +1,611 @@
+{% extends "layouts/base.html" %}
+
+{% block title %}{{ sale.sale_number }} - Sale Detail{% endblock %}
+
+{% block body %}
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+  <div class="mb-6">
+    <div class="flex items-center gap-2 text-sm text-gray-500 mb-3">
+      <a href="{{ url_for('contracts.list_contracts') }}" class="hover:text-jungle transition">Contracts</a>
+      {% if sale.contract %}
+        <span>/</span>
+        <a href="{{ url_for('contracts.view_contract', contract_id=sale.contract.id) }}" class="hover:text-jungle transition">
+          {{ sale.contract.contract_number }}
+        </a>
+      {% endif %}
+      <span>/</span>
+      <span class="text-gray-700 font-medium">{{ sale.sale_number }}</span>
+    </div>
+
+    <div class="bg-white rounded-3xl border border-gray-200 shadow-sm overflow-hidden">
+      <div class="px-6 py-6 lg:px-8 bg-gradient-to-r from-gray-900 to-gray-800 text-white">
+        <div class="flex flex-col xl:flex-row xl:items-start xl:justify-between gap-5">
+          <div>
+            <div class="flex flex-wrap items-center gap-3 mb-3">
+              <h1 class="text-3xl font-bold tracking-tight">{{ sale.sale_number }}</h1>
+
+              {% if sale.status == 'draft' %}
+                <span class="inline-flex items-center rounded-full bg-white/10 px-3 py-1 text-xs font-medium text-white">
+                  Draft
+                </span>
+              {% elif sale.status == 'confirmed' %}
+                <span class="inline-flex items-center rounded-full bg-blue-100 px-3 py-1 text-xs font-medium text-blue-800">
+                  Confirmed
+                </span>
+              {% elif sale.status == 'completed' %}
+                <span class="inline-flex items-center rounded-full bg-green-100 px-3 py-1 text-xs font-medium text-green-800">
+                  Completed
+                </span>
+              {% elif sale.status == 'cancelled' %}
+                <span class="inline-flex items-center rounded-full bg-red-100 px-3 py-1 text-xs font-medium text-red-800">
+                  Cancelled
+                </span>
+              {% else %}
+                <span class="inline-flex items-center rounded-full bg-white/10 px-3 py-1 text-xs font-medium text-white">
+                  {{ sale.status|replace('_', ' ')|title }}
+                </span>
+              {% endif %}
+
+              {% if sale.payment_status == 'paid' %}
+                <span class="inline-flex items-center rounded-full bg-emerald-100 px-3 py-1 text-xs font-medium text-emerald-800">
+                  Paid
+                </span>
+              {% elif sale.payment_status == 'partially_paid' %}
+                <span class="inline-flex items-center rounded-full bg-amber-100 px-3 py-1 text-xs font-medium text-amber-800">
+                  Partially Paid
+                </span>
+              {% else %}
+                <span class="inline-flex items-center rounded-full bg-white/10 px-3 py-1 text-xs font-medium text-white">
+                  {{ sale.payment_status|replace('_', ' ')|title }}
+                </span>
+              {% endif %}
+
+              {% if sale.processing_authorized %}
+                <span class="inline-flex items-center rounded-full bg-jungleLight/20 px-3 py-1 text-xs font-medium text-white">
+                  Processing Authorized
+                </span>
+              {% endif %}
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm text-gray-200">
+              <p>
+                Buyer:
+                <span class="font-semibold text-white">{{ sale.buyer.name if sale.buyer else '-' }}</span>
+              </p>
+              <p>
+                Currency:
+                <span class="font-semibold text-white">{{ sale.currency }}</span>
+              </p>
+              <p>
+                Sale Date:
+                <span class="font-semibold text-white">{{ sale.sale_date or '-' }}</span>
+              </p>
+              <p>
+                Invoice Type:
+                <span class="font-semibold text-white">{{ sale.invoice_type|replace('_', ' ')|title }}</span>
+              </p>
+            </div>
+          </div>
+
+          <div class="flex flex-wrap gap-2">
+            {% if sale.contract %}
+              <a
+                href="{{ url_for('contracts.view_contract', contract_id=sale.contract.id) }}"
+                class="rounded-xl border border-white/20 px-4 py-2.5 text-sm font-medium text-white hover:bg-white/10 transition"
+              >
+                Back to Contract
+              </a>
+            {% endif %}
+
+            {% if sale.status == 'draft' %}
+              <form
+                method="post"
+                action="{{ url_for('sales.confirm_sale', sale_id=sale.id) }}"
+                onsubmit="return confirm('Confirm this sale?');"
+              >
+                <button
+                  type="submit"
+                  class="rounded-xl bg-white px-4 py-2.5 text-sm font-semibold text-gray-900 hover:bg-gray-100 transition"
+                >
+                  Confirm Sale
+                </button>
+              </form>
+            {% endif %}
+
+            {% if sale.status in ['draft', 'confirmed'] %}
+              <form
+                method="post"
+                action="{{ url_for('sales.complete_sale', sale_id=sale.id) }}"
+                onsubmit="return confirm('Mark this sale as completed?');"
+              >
+                <button
+                  type="submit"
+                  class="rounded-xl bg-gold px-4 py-2.5 text-sm font-semibold text-gray-900 hover:opacity-90 transition"
+                >
+                  Complete
+                </button>
+              </form>
+            {% endif %}
+
+            {% if sale.status in ['confirmed', 'completed'] and not sale.processing_authorized and sale.contract %}
+              {% set contract = sale.contract %}
+              {% set prepayment_ok = false %}
+              {% set lc_ok = false %}
+
+              {% if contract.prepayment_required %}
+                {% if contract.required_prepayment_amount and sale.amount_paid >= contract.required_prepayment_amount %}
+                  {% set prepayment_ok = true %}
+                {% elif contract.required_prepayment_percent and sale.total_amount > 0 %}
+                  {% set required_amount = (sale.total_amount * contract.required_prepayment_percent / 100) %}
+                  {% if sale.amount_paid >= required_amount %}
+                    {% set prepayment_ok = true %}
+                  {% endif %}
+                {% endif %}
+              {% endif %}
+
+              {% if contract.lc_required and contract.lc_status %}
+                {% if contract.lc_status|lower in ['confirmed', 'approved', 'available'] %}
+                  {% set lc_ok = true %}
+                {% endif %}
+              {% endif %}
+
+              {% if prepayment_ok or lc_ok %}
+                <form
+                  method="post"
+                  action="{{ url_for('sales.authorize_processing', sale_id=sale.id) }}"
+                  onsubmit="return confirm('Authorize processing for this sale?');"
+                >
+                  <button
+                    type="submit"
+                    class="rounded-xl bg-jungle px-4 py-2.5 text-sm font-semibold text-white hover:bg-jungleLight transition"
+                  >
+                    Authorize Processing
+                  </button>
+                </form>
+              {% endif %}
+            {% endif %}
+
+            {% if sale.status != 'cancelled' %}
+              <form
+                method="post"
+                action="{{ url_for('sales.cancel_sale', sale_id=sale.id) }}"
+                onsubmit="return confirm('Cancel this sale?');"
+              >
+                <button
+                  type="submit"
+                  class="rounded-xl border border-red-300 bg-white px-4 py-2.5 text-sm font-medium text-red-600 hover:bg-red-50 transition"
+                >
+                  Cancel
+                </button>
+              </form>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+
+      <div class="px-6 py-5 lg:px-8 bg-gray-50 border-t border-gray-200">
+        <div class="grid grid-cols-2 xl:grid-cols-5 gap-4">
+          <div class="rounded-2xl bg-white border border-gray-200 p-4">
+            <div class="text-xs font-semibold uppercase tracking-wide text-gray-500">Subtotal</div>
+            <div class="mt-2 text-2xl font-bold text-gray-900">{{ sale.currency }} {{ sale.subtotal or 0 }}</div>
+          </div>
+          <div class="rounded-2xl bg-white border border-gray-200 p-4">
+            <div class="text-xs font-semibold uppercase tracking-wide text-gray-500">Total</div>
+            <div class="mt-2 text-2xl font-bold text-gray-900">{{ sale.currency }} {{ sale.total_amount or 0 }}</div>
+          </div>
+          <div class="rounded-2xl bg-white border border-gray-200 p-4">
+            <div class="text-xs font-semibold uppercase tracking-wide text-gray-500">Paid</div>
+            <div class="mt-2 text-2xl font-bold text-gray-900">{{ sale.currency }} {{ sale.amount_paid or 0 }}</div>
+          </div>
+          <div class="rounded-2xl bg-white border border-gray-200 p-4">
+            <div class="text-xs font-semibold uppercase tracking-wide text-gray-500">Balance Due</div>
+            <div class="mt-2 text-2xl font-bold text-gray-900">{{ sale.currency }} {{ sale.balance_due or 0 }}</div>
+          </div>
+          <div class="rounded-2xl bg-white border border-gray-200 p-4">
+            <div class="text-xs font-semibold uppercase tracking-wide text-gray-500">Processing</div>
+            <div class="mt-2 text-lg font-bold text-gray-900">
+              {% if sale.processing_authorized %}Authorized{% else %}Pending{% endif %}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="grid grid-cols-1 xl:grid-cols-3 gap-6">
+    <div class="xl:col-span-2 space-y-6">
+      <div class="bg-white rounded-2xl shadow-sm border border-gray-200">
+        <div class="px-6 py-4 border-b border-gray-200">
+          <h2 class="text-sm font-semibold text-gray-900">Sale Overview</h2>
+          <p class="text-xs text-gray-500 mt-1">Commercial summary and control status for this sale.</p>
+        </div>
+
+        <div class="p-6">
+          <dl class="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-5 text-sm">
+            <div>
+              <dt class="text-gray-500">Sale Number</dt>
+              <dd class="mt-1 font-medium text-gray-900">{{ sale.sale_number }}</dd>
+            </div>
+            <div>
+              <dt class="text-gray-500">Currency</dt>
+              <dd class="mt-1 font-medium text-gray-900">{{ sale.currency }}</dd>
+            </div>
+            <div>
+              <dt class="text-gray-500">Invoice Type</dt>
+              <dd class="mt-1 font-medium text-gray-900">{{ sale.invoice_type|replace('_', ' ')|title }}</dd>
+            </div>
+            <div>
+              <dt class="text-gray-500">Payment Status</dt>
+              <dd class="mt-1 font-medium text-gray-900">{{ sale.payment_status|replace('_', ' ')|title }}</dd>
+            </div>
+            <div>
+              <dt class="text-gray-500">Processing Authorized</dt>
+              <dd class="mt-1 font-medium text-gray-900">
+                {% if sale.processing_authorized %}
+                  Yes{% if sale.authorized_at %} <span class="text-gray-500 font-normal">({{ sale.authorized_at }})</span>{% endif %}
+                {% else %}
+                  No
+                {% endif %}
+              </dd>
+            </div>
+            <div>
+              <dt class="text-gray-500">Authorized At</dt>
+              <dd class="mt-1 font-medium text-gray-900">{{ sale.authorized_at or '-' }}</dd>
+            </div>
+            <div>
+              <dt class="text-gray-500">Discount</dt>
+              <dd class="mt-1 font-medium text-gray-900">{{ sale.currency }} {{ sale.discount or 0 }}</dd>
+            </div>
+            <div>
+              <dt class="text-gray-500">Tax Amount</dt>
+              <dd class="mt-1 font-medium text-gray-900">{{ sale.currency }} {{ sale.tax_amount or 0 }}</dd>
+            </div>
+            <div>
+              <dt class="text-gray-500">Prepaid Amount</dt>
+              <dd class="mt-1 font-medium text-gray-900">{{ sale.currency }} {{ sale.prepaid_amount or 0 }}</dd>
+            </div>
+            <div>
+              <dt class="text-gray-500">Created At</dt>
+              <dd class="mt-1 font-medium text-gray-900">{{ sale.created_at or '-' }}</dd>
+            </div>
+          </dl>
+
+          {% if sale.notes %}
+            <div class="mt-6 rounded-2xl bg-gray-50 p-4">
+              <h3 class="text-sm font-semibold text-gray-900 mb-2">Notes</h3>
+              <p class="text-sm text-gray-700 whitespace-pre-line">{{ sale.notes }}</p>
+            </div>
+          {% endif %}
+        </div>
+      </div>
+
+      <div class="bg-white rounded-2xl shadow-sm border border-gray-200">
+        <div class="px-6 py-4 border-b border-gray-200">
+          <h2 class="text-sm font-semibold text-gray-900">Sale Items</h2>
+          <p class="text-xs text-gray-500 mt-1">Items sold under this commercial record.</p>
+        </div>
+
+        <div class="p-6">
+          {% if sale.items %}
+            <div class="overflow-x-auto">
+              <table class="min-w-full divide-y divide-gray-200">
+                <thead class="bg-gray-50">
+                  <tr>
+                    <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-600">Product</th>
+                    <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-600">Code</th>
+                    <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-600">Unit</th>
+                    <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-600">Quantity</th>
+                    <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-600">Unit Price</th>
+                    <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-600">Line Total</th>
+                    <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-600">Source</th>
+                  </tr>
+                </thead>
+
+                <tbody class="divide-y divide-gray-100">
+                  {% for item in sale.items %}
+                    <tr class="hover:bg-gray-50">
+                      <td class="px-4 py-3 text-sm text-gray-900">{{ item.product_name }}</td>
+                      <td class="px-4 py-3 text-sm text-gray-700">{{ item.product_code or '-' }}</td>
+                      <td class="px-4 py-3 text-sm text-gray-700">{{ item.unit_of_measure }}</td>
+                      <td class="px-4 py-3 text-sm text-gray-700">{{ item.quantity }}</td>
+                      <td class="px-4 py-3 text-sm text-gray-700">{{ sale.currency }} {{ item.unit_price }}</td>
+                      <td class="px-4 py-3 text-sm font-medium text-gray-900">{{ sale.currency }} {{ item.line_total }}</td>
+                      <td class="px-4 py-3 text-sm text-gray-700">
+                        {% if item.contract_item %}
+                          Contract Item
+                        {% elif item.processing_batch_output %}
+                          Processing Output
+                        {% else %}
+                          Manual
+                        {% endif %}
+                      </td>
+                    </tr>
+                    {% if item.notes %}
+                      <tr>
+                        <td colspan="7" class="px-4 pb-3 text-xs text-gray-500">
+                          <span class="font-medium">Note:</span> {{ item.notes }}
+                        </td>
+                      </tr>
+                    {% endif %}
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          {% else %}
+            <div class="rounded-2xl border border-dashed border-gray-300 bg-gray-50 px-5 py-8 text-center">
+              <h3 class="text-sm font-semibold text-gray-900">No sale items found</h3>
+              <p class="mt-2 text-sm text-gray-500">
+                This sale has no item rows yet.
+              </p>
+            </div>
+          {% endif %}
+        </div>
+      </div>
+
+      <div class="bg-white rounded-2xl shadow-sm border border-gray-200">
+        <div class="px-6 py-4 border-b border-gray-200">
+          <h2 class="text-sm font-semibold text-gray-900">Payments</h2>
+          <p class="text-xs text-gray-500 mt-1">Record and track commercial payments against this sale.</p>
+        </div>
+
+        <div class="p-6">
+          {% if sale.payments %}
+            <div class="overflow-x-auto">
+              <table class="min-w-full divide-y divide-gray-200">
+                <thead class="bg-gray-50">
+                  <tr>
+                    <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-600">Date</th>
+                    <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-600">Payment Type</th>
+                    <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-600">Method</th>
+                    <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-600">Reference</th>
+                    <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-600">Amount</th>
+                  </tr>
+                </thead>
+
+                <tbody class="divide-y divide-gray-100">
+                  {% for payment in sale.payments %}
+                    <tr class="hover:bg-gray-50">
+                      <td class="px-4 py-3 text-sm text-gray-700">{{ payment.payment_date }}</td>
+                      <td class="px-4 py-3 text-sm text-gray-700">{{ payment.payment_type|replace('_', ' ')|title }}</td>
+                      <td class="px-4 py-3 text-sm text-gray-700">{{ payment.payment_method|replace('_', ' ')|title if payment.payment_method else '-' }}</td>
+                      <td class="px-4 py-3 text-sm text-gray-700">{{ payment.reference_number or '-' }}</td>
+                      <td class="px-4 py-3 text-sm font-medium text-gray-900">{{ sale.currency }} {{ payment.amount }}</td>
+                    </tr>
+                    {% if payment.notes %}
+                      <tr>
+                        <td colspan="5" class="px-4 pb-3 text-xs text-gray-500">
+                          <span class="font-medium">Note:</span> {{ payment.notes }}
+                        </td>
+                      </tr>
+                    {% endif %}
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          {% else %}
+            <div class="rounded-2xl border border-dashed border-gray-300 bg-gray-50 px-5 py-8 text-center">
+              <h3 class="text-sm font-semibold text-gray-900">No payments recorded yet</h3>
+              <p class="mt-2 text-sm text-gray-500">
+                Record prepayment, partial payment, final payment, or LC settlement below.
+              </p>
+            </div>
+          {% endif %}
+
+          {% if sale.status != 'cancelled' %}
+            <div class="mt-6 border-t border-gray-200 pt-6">
+              <h3 class="text-sm font-semibold text-gray-900 mb-4">Record Payment</h3>
+
+              <form method="post" action="{{ url_for('sales.add_payment', sale_id=sale.id) }}" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label for="payment_date" class="block text-sm font-medium text-gray-700 mb-1">Payment Date</label>
+                  <input
+                    type="date"
+                    id="payment_date"
+                    name="payment_date"
+                    required
+                    class="w-full rounded-xl border border-gray-300 px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-jungle"
+                  >
+                </div>
+
+                <div>
+                  <label for="payment_type" class="block text-sm font-medium text-gray-700 mb-1">Payment Type</label>
+                  <select
+                    id="payment_type"
+                    name="payment_type"
+                    required
+                    class="w-full rounded-xl border border-gray-300 px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-jungle"
+                  >
+                    <option value="prepayment">Prepayment</option>
+                    <option value="partial_payment">Partial Payment</option>
+                    <option value="final_payment">Final Payment</option>
+                    <option value="lc_settlement">LC Settlement</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label for="payment_method" class="block text-sm font-medium text-gray-700 mb-1">Payment Method</label>
+                  <select
+                    id="payment_method"
+                    name="payment_method"
+                    class="w-full rounded-xl border border-gray-300 px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-jungle"
+                  >
+                    <option value="">Select method</option>
+                    <option value="bank_transfer">Bank Transfer</option>
+                    <option value="swift">SWIFT</option>
+                    <option value="cash">Cash</option>
+                    <option value="cheque">Cheque</option>
+                    <option value="mpesa">M-Pesa</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label for="amount" class="block text-sm font-medium text-gray-700 mb-1">Amount</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    id="amount"
+                    name="amount"
+                    required
+                    class="w-full rounded-xl border border-gray-300 px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-jungle"
+                  >
+                </div>
+
+                <div class="md:col-span-2">
+                  <label for="reference_number" class="block text-sm font-medium text-gray-700 mb-1">Reference Number</label>
+                  <input
+                    type="text"
+                    id="reference_number"
+                    name="reference_number"
+                    class="w-full rounded-xl border border-gray-300 px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-jungle"
+                  >
+                </div>
+
+                <div class="md:col-span-2">
+                  <label for="payment_notes" class="block text-sm font-medium text-gray-700 mb-1">Notes</label>
+                  <textarea
+                    id="payment_notes"
+                    name="notes"
+                    rows="3"
+                    class="w-full rounded-xl border border-gray-300 px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-jungle"
+                  ></textarea>
+                </div>
+
+                <div class="md:col-span-2">
+                  <button
+                    type="submit"
+                    class="rounded-xl bg-jungle px-5 py-2.5 text-sm font-semibold text-white hover:bg-jungleLight transition"
+                  >
+                    Add Payment
+                  </button>
+                </div>
+              </form>
+            </div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    <div class="space-y-6">
+      <div class="bg-white rounded-2xl shadow-sm border border-gray-200">
+        <div class="px-6 py-4 border-b border-gray-200">
+          <h2 class="text-sm font-semibold text-gray-900">Financial Summary</h2>
+        </div>
+
+        <div class="p-6 space-y-4 text-sm">
+          <div class="flex justify-between gap-4">
+            <span class="text-gray-500">Subtotal</span>
+            <span class="font-medium text-gray-900">{{ sale.currency }} {{ sale.subtotal or 0 }}</span>
+          </div>
+          <div class="flex justify-between gap-4">
+            <span class="text-gray-500">Discount</span>
+            <span class="font-medium text-gray-900">{{ sale.currency }} {{ sale.discount or 0 }}</span>
+          </div>
+          <div class="flex justify-between gap-4">
+            <span class="text-gray-500">Tax</span>
+            <span class="font-medium text-gray-900">{{ sale.currency }} {{ sale.tax_amount or 0 }}</span>
+          </div>
+          <div class="flex justify-between gap-4 border-t border-gray-200 pt-3">
+            <span class="text-gray-500">Total</span>
+            <span class="font-semibold text-gray-900">{{ sale.currency }} {{ sale.total_amount or 0 }}</span>
+          </div>
+          <div class="flex justify-between gap-4">
+            <span class="text-gray-500">Prepaid</span>
+            <span class="font-medium text-gray-900">{{ sale.currency }} {{ sale.prepaid_amount or 0 }}</span>
+          </div>
+          <div class="flex justify-between gap-4">
+            <span class="text-gray-500">Paid</span>
+            <span class="font-medium text-gray-900">{{ sale.currency }} {{ sale.amount_paid or 0 }}</span>
+          </div>
+          <div class="flex justify-between gap-4 border-t border-gray-200 pt-3">
+            <span class="text-gray-500">Balance Due</span>
+            <span class="font-semibold text-gray-900">{{ sale.currency }} {{ sale.balance_due or 0 }}</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="bg-white rounded-2xl shadow-sm border border-gray-200">
+        <div class="px-6 py-4 border-b border-gray-200">
+          <h2 class="text-sm font-semibold text-gray-900">Contract Link</h2>
+        </div>
+
+        <div class="p-6 text-sm">
+          {% if sale.contract %}
+            <div class="space-y-4">
+              <div class="flex justify-between gap-4">
+                <span class="text-gray-500">Contract Number</span>
+                <a
+                  href="{{ url_for('contracts.view_contract', contract_id=sale.contract.id) }}"
+                  class="font-medium text-jungle hover:underline"
+                >
+                  {{ sale.contract.contract_number }}
+                </a>
+              </div>
+
+              <div class="flex justify-between gap-4">
+                <span class="text-gray-500">Buyer</span>
+                <span class="font-medium text-gray-900">{{ sale.contract.buyer.name if sale.contract.buyer else '-' }}</span>
+              </div>
+
+              <div class="flex justify-between gap-4">
+                <span class="text-gray-500">Contract Status</span>
+                <span class="font-medium text-gray-900">{{ sale.contract.status|replace('_', ' ')|title }}</span>
+              </div>
+
+              {% if sale.contract.prepayment_required %}
+                <div class="flex justify-between gap-4">
+                  <span class="text-gray-500">Prepayment Required</span>
+                  <span class="font-medium text-gray-900">Yes</span>
+                </div>
+              {% endif %}
+
+              {% if sale.contract.required_prepayment_amount %}
+                <div class="flex justify-between gap-4">
+                  <span class="text-gray-500">Required Prepayment Amount</span>
+                  <span class="font-medium text-gray-900">{{ sale.currency }} {{ sale.contract.required_prepayment_amount }}</span>
+                </div>
+              {% endif %}
+
+              {% if sale.contract.required_prepayment_percent %}
+                <div class="flex justify-between gap-4">
+                  <span class="text-gray-500">Required Prepayment %</span>
+                  <span class="font-medium text-gray-900">{{ sale.contract.required_prepayment_percent }}%</span>
+                </div>
+              {% endif %}
+
+              {% if sale.contract.lc_required %}
+                <div class="flex justify-between gap-4">
+                  <span class="text-gray-500">LC Required</span>
+                  <span class="font-medium text-gray-900">Yes</span>
+                </div>
+                <div class="flex justify-between gap-4">
+                  <span class="text-gray-500">LC Status</span>
+                  <span class="font-medium text-gray-900">{{ sale.contract.lc_status or '-' }}</span>
+                </div>
+              {% endif %}
+            </div>
+          {% else %}
+            <div class="rounded-2xl border border-dashed border-gray-300 bg-gray-50 px-5 py-8 text-center">
+              <h3 class="text-sm font-semibold text-gray-900">No linked contract</h3>
+              <p class="mt-2 text-sm text-gray-500">This sale is not connected to a contract.</p>
+            </div>
+          {% endif %}
+        </div>
+      </div>
+
+      <div class="bg-white rounded-2xl shadow-sm border border-gray-200">
+        <div class="px-6 py-4 border-b border-gray-200">
+          <h2 class="text-sm font-semibold text-gray-900">Workflow Guidance</h2>
+        </div>
+
+        <div class="p-6 text-sm text-gray-600 space-y-3">
+          <p>1. Confirm the sale once commercial details are final.</p>
+          <p>2. Record prepayment, partial payment, or final settlement.</p>
+          <p>3. Authorize processing only when prepayment or LC conditions are met.</p>
+          <p>4. Keep the linked contract and sale aligned for fulfillment reporting.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,36 @@
+{% extends "layouts/base.html" %}
+{% block body %}
+{% include "partials/admin_chrome.html" %}
+
+<div class="max-w-7xl mx-auto px-6 py-8">
+  <div class="flex justify-between items-center mb-6">
+    <h1 class="text-xl font-bold">Procurement Sources</h1>
+    <a href="{{ url_for('procurement.source_new') }}"
+       class="px-4 py-2 bg-jungle text-white rounded-xl">Add Source</a>
+  </div>
+
+  <table class="w-full text-sm">
+    <thead class="bg-gray-100">
+      <tr>
+        <th class="p-3 text-left">Name</th>
+        <th class="p-3">Type</th>
+        <th class="p-3">Phone</th>
+        <th class="p-3">Location</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for s in sources %}
+      <tr class="border-b">
+        <td class="p-3">{{ s.name }}</td>
+        <td class="p-3">{{ s.source_type }}</td>
+        <td class="p-3">{{ s.phone or '-' }}</td>
+        <td class="p-3">{{ s.location or '-' }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="4" class="p-4 text-center">No sources</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{% endblock %}

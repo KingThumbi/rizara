@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime
-
+from decimal import Decimal
 from flask import Blueprint, current_app, flash, redirect, render_template, request, url_for
 from flask_login import current_user
 
@@ -12,9 +12,11 @@ from app.models import (
     Invoice,
     InvoiceItem,
     InvoiceStatus,
+    InventoryLot,
     ProcessingBatch,
     ProcessingBatchSale,
     ProcessingYield,
+    PipelineCase,
 )
 from app.utils.guards import admin_required
 from app.utils.request_parsers import parse_date, parse_float, parse_int, safe_enum_value
@@ -200,24 +202,31 @@ def view_invoiceable_batch(batch_id):
 def record_processing_yield(batch_id):
     batch = get_processing_batch_or_404(batch_id)
 
-    existing = ProcessingYield.query.filter_by(processing_batch_id=batch.id).first()
+    existing = ProcessingYield.query.filter_by(
+        processing_batch_id=batch.id
+    ).first()
+
     if existing and request.method == "GET":
         flash("Yield already recorded for this batch.", "info")
         return redirect(url_for("processing.view_invoiceable_batch", batch_id=batch.id))
 
     if request.method == "POST":
-        total_carcass_weight_kg = parse_float(request.form.get("total_carcass_weight_kg"))
+        total_carcass_weight_kg = parse_float(
+            request.form.get("total_carcass_weight_kg")
+        )
         parts_included = request.form.get("parts_included_in_batch_sale") == "yes"
         parts_sold_separately = request.form.get("parts_sold_separately") == "yes"
         parts_notes = (request.form.get("parts_notes") or "").strip() or None
 
-        if total_carcass_weight_kg is None:
-            flash("Total carcass weight is required.", "danger")
+        if total_carcass_weight_kg is None or total_carcass_weight_kg <= 0:
+            flash("Total carcass weight must be greater than zero.", "danger")
             return redirect(request.url)
+
+        output_kg = Decimal(str(total_carcass_weight_kg))
 
         yield_record = ProcessingYield(
             processing_batch_id=batch.id,
-            total_carcass_weight_kg=total_carcass_weight_kg,
+            total_carcass_weight_kg=output_kg,
             parts_included_in_batch_sale=parts_included,
             parts_sold_separately=parts_sold_separately,
             parts_notes=parts_notes,
@@ -230,11 +239,34 @@ def record_processing_yield(batch_id):
 
         db.session.add(yield_record)
 
-        if not commit_or_rollback("Record processing yield"):
+        existing_lot = InventoryLot.query.filter_by(
+            processing_batch_id=batch.id
+        ).first()
+
+        if existing_lot:
+            existing_lot.quantity_kg = output_kg
+            existing_lot.available_kg = output_kg
+            existing_lot.unit = "kg"
+            existing_lot.status = "available"
+        else:
+            inventory_lot = InventoryLot(
+                processing_batch_id=batch.id,
+                quantity_kg=output_kg,
+                available_kg=output_kg,
+                unit="kg",
+                status="available",
+            )
+            db.session.add(inventory_lot)
+
+        if not commit_or_rollback("Record processing yield and create inventory lot"):
             return redirect(request.url)
 
-        flash("Processing yield recorded successfully.", "success")
-        return redirect(url_for("processing.view_invoiceable_batch", batch_id=batch.id))
+        flash(
+            "Processing yield recorded successfully and inventory lot created.",
+            "success",
+        )
+
+        return redirect(url_for("invoices.new_invoice", batch_id=batch.id))
 
     return render_template(
         "processing/yield_add.html",
@@ -242,92 +274,14 @@ def record_processing_yield(batch_id):
         current_year=datetime.utcnow().year,
     )
 
-
 @processing_bp.route("/processing/<int:batch_id>/sale", methods=["GET", "POST"])
 @admin_required
 def record_processing_batch_sale(batch_id):
-    batch = get_processing_batch_or_404(batch_id)
-
-    yield_record = ProcessingYield.query.filter_by(processing_batch_id=batch.id).first()
-    if not yield_record:
-        flash("Record processing yield first before selling the batch.", "danger")
-        return redirect(url_for("processing.record_processing_yield", batch_id=batch.id))
-
-    existing_sale = ProcessingBatchSale.query.filter_by(processing_batch_id=batch.id).first()
-    if existing_sale and request.method == "GET":
-        flash("Sale already recorded for this batch.", "info")
-        return redirect(url_for("processing.generate_invoice_from_sale", sale_id=existing_sale.id))
-
-    buyers = Buyer.query.order_by(Buyer.name.asc()).all()
-
-    if request.method == "POST":
-        existing_sale = ProcessingBatchSale.query.filter_by(processing_batch_id=batch.id).first()
-        if existing_sale:
-            flash("Sale already recorded for this batch. You can view the invoice.", "info")
-            return redirect(url_for("processing.generate_invoice_from_sale", sale_id=existing_sale.id))
-
-        buyer_id = parse_int(request.form.get("buyer_id"))
-        buyer_name = (request.form.get("buyer_name") or "").strip() or None
-        buyer_phone = (request.form.get("buyer_phone") or "").strip() or None
-        buyer_email = (request.form.get("buyer_email") or "").strip() or None
-        total_sale_price = parse_float(request.form.get("total_sale_price"))
-        sale_date = parse_date(request.form.get("sale_date"))
-        notes = (request.form.get("notes") or "").strip() or None
-
-        if total_sale_price is None:
-            flash("Total sale price is required.", "danger")
-            return redirect(request.url)
-
-        if buyer_id:
-            buyer = Buyer.query.get(buyer_id)
-            if not buyer:
-                flash("Selected buyer not found.", "danger")
-                return redirect(request.url)
-        else:
-            if not buyer_name:
-                flash("Provide buyer name or select an existing buyer.", "danger")
-                return redirect(request.url)
-            buyer = Buyer(name=buyer_name, phone=buyer_phone, email=buyer_email)
-            db.session.add(buyer)
-            db.session.flush()
-
-        sale = ProcessingBatchSale(
-            processing_batch_id=batch.id,
-            buyer_id=buyer.id,
-            total_sale_price=total_sale_price,
-            sale_date=sale_date or date.today(),
-            notes=notes,
-            recorded_by_user_id=current_user.id,
-        )
-
-        for animal in animals_in_processing_batch(batch):
-            animal_status = (animal.status or "").strip().lower()
-            if animal_status in {"processed", "processing"}:
-                animal.status = "sold"
-
-        db.session.add(sale)
-
-        try:
-            db.session.commit()
-        except Exception:
-            db.session.rollback()
-            existing_sale = ProcessingBatchSale.query.filter_by(processing_batch_id=batch.id).first()
-            flash("Sale already recorded for this batch. You can view the invoice.", "info")
-            if existing_sale:
-                return redirect(url_for("processing.generate_invoice_from_sale", sale_id=existing_sale.id))
-            return redirect(url_for("processing.view_invoiceable_batch", batch_id=batch.id))
-
-        flash("Batch sale recorded. You can now generate the invoice.", "success")
-        return redirect(url_for("processing.generate_invoice_from_sale", sale_id=sale.id))
-
-    return render_template(
-        "sales/batch_sale_add.html",
-        batch=batch,
-        yield_record=yield_record,
-        buyers=buyers,
-        current_year=datetime.utcnow().year,
+    flash(
+        "Batch sale is now handled via signed contracts. Use 'Tender Sale / Issue Invoice' from Contracts.",
+        "warning",
     )
-
+    return redirect(url_for("contracts.list_contracts"))
 
 @processing_bp.route("/sales/<int:sale_id>/invoice/generate", methods=["GET"])
 @admin_required
@@ -391,6 +345,21 @@ def generate_invoice_from_sale(sale_id):
     flash("Invoice generation failed.", "danger")
     return redirect(url_for("processing.view_invoiceable_batch", batch_id=batch.id))
 
+@processing_bp.route("/invoices")
+@admin_required
+def list_invoices():
+    invoices = (
+        Invoice.query
+        .order_by(Invoice.issue_date.desc(), Invoice.id.desc())
+        .all()
+    )
+
+    return render_template(
+        "invoices/list.html",
+        invoices=invoices,
+        current_year=datetime.utcnow().year,
+        safe_enum_value=safe_enum_value,
+    )
 
 @processing_bp.route("/invoices/<int:invoice_id>")
 @admin_required
@@ -398,10 +367,31 @@ def view_invoice(invoice_id):
     invoice = Invoice.query.get_or_404(invoice_id)
     buyer = Buyer.query.get_or_404(invoice.buyer_id)
     items = InvoiceItem.query.filter_by(invoice_id=invoice.id).all()
+    pipeline_case = PipelineCase.query.filter_by(invoice_id=invoice.id).first()
+    sale = invoice.sale
+    legacy_sale = getattr(invoice, "legacy_sale", None)
 
-    sale = ProcessingBatchSale.query.get_or_404(invoice.processing_batch_sale_id)
-    batch = ProcessingBatch.query.get_or_404(sale.processing_batch_id)
-    yield_record = ProcessingYield.query.filter_by(processing_batch_id=batch.id).first()
+    contract = invoice.contract or (sale.contract if sale else None)
+    batch = invoice.commercial_processing_batch
+
+    signed_doc = None
+    if contract:
+        signed_doc = next(
+            (
+                d for d in contract.documents
+                if d.document_type in {"signed_contract", "executed_contract"}
+            ),
+            None,
+        )
+
+    amount_paid = Decimal("0.00")
+    balance_due = Decimal(str(invoice.total or 0))
+    currency = "USD"
+
+    if sale:
+        currency = sale.currency or "USD"
+        amount_paid = sum(Decimal(str(p.amount or 0)) for p in sale.payments)
+        balance_due = max(Decimal(str(invoice.total or 0)) - amount_paid, Decimal("0.00"))
 
     return render_template(
         "invoices/invoice_view.html",
@@ -409,12 +399,17 @@ def view_invoice(invoice_id):
         buyer=buyer,
         items=items,
         sale=sale,
+        legacy_sale=legacy_sale,
+        contract=contract,
         batch=batch,
-        yield_record=yield_record,
+        signed_doc=signed_doc,
+        pipeline_case=pipeline_case,
+        amount_paid=amount_paid,
+        balance_due=balance_due,
+        currency=currency,
         current_year=datetime.utcnow().year,
         invoice_status_value=safe_enum_value(invoice.status),
     )
-
 
 @processing_bp.route("/invoices/<int:invoice_id>/pdf", methods=["GET"])
 @admin_required
@@ -430,3 +425,4 @@ def invoice_pdf(invoice_id):
         mimetype="application/pdf",
         headers={"Content-Disposition": f'inline; filename="{filename}"'},
     )
+

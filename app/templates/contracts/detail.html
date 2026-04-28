@@ -94,15 +94,6 @@
                 </button>
               </form>
             {% endif %}
-
-            {% if contract.status in ['signed', 'active', 'partially_fulfilled'] %}
-              <a
-                href="{{ url_for('contracts.new_sale_from_contract', contract_id=contract.id) }}"
-                class="rounded-xl bg-jungle px-4 py-2.5 text-sm font-semibold text-white hover:bg-jungleLight transition"
-              >
-                Create Sale
-              </a>
-            {% endif %}
           </div>
         </div>
       </div>

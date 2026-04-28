@@ -1,0 +1,108 @@
+{% extends "layouts/base.html" %}
+
+{% block title %}Invoices | Rizara{% endblock %}
+
+{% block body %}
+<main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+
+  <div class="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4 mb-8">
+    <div>
+      <p class="text-sm uppercase tracking-wide text-gray-500">Finance</p>
+      <h1 class="text-3xl font-bold text-jungle mt-1">Invoices</h1>
+      <p class="text-gray-600 mt-2">
+        Invoice buyers from processed inventory lots and reference the correct contract document.
+      </p>
+    </div>
+
+    <a href="{{ url_for('invoices.new_invoice') }}"
+       class="inline-flex items-center justify-center px-5 py-3 rounded-2xl bg-jungle text-white font-semibold shadow-sm hover:bg-jungleLight transition">
+      New Invoice
+    </a>
+  </div>
+
+  <div class="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden">
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead class="bg-gray-50 border-b border-gray-200">
+          <tr>
+            <th class="p-4 text-left">Invoice</th>
+            <th class="p-4 text-left">Buyer</th>
+            <th class="p-4 text-left">Contract Document</th>
+            <th class="p-4 text-right">Total</th>
+            <th class="p-4 text-right">Deposit</th>
+            <th class="p-4 text-right">Balance</th>
+            <th class="p-4 text-left">Status</th>
+            <th class="p-4 text-right">Actions</th>
+          </tr>
+        </thead>
+
+        <tbody>
+          {% for invoice in invoices %}
+            {% set s = invoice.status.value if invoice.status and invoice.status.value is defined else invoice.status %}
+            {% set currency = invoice.currency or "USD" %}
+
+            <tr class="border-b border-gray-100 hover:bg-gray-50 transition">
+              <td class="p-4">
+                <div class="font-semibold text-gray-900">{{ invoice.invoice_number }}</div>
+                <div class="text-xs text-gray-500">{{ invoice.issue_date }}</div>
+              </td>
+
+              <td class="p-4">
+                {{ invoice.buyer.name if invoice.buyer else "-" }}
+              </td>
+
+              <td class="p-4">
+                {% if invoice.contract_document %}
+                  <div class="font-medium text-gray-900">{{ invoice.contract_document.title }}</div>
+                  <div class="text-xs text-gray-500">
+                    {{ invoice.contract_document.document_type|replace("_", " ")|title }}
+                  </div>
+                {% else %}
+                  -
+                {% endif %}
+              </td>
+
+              <td class="p-4 text-right font-semibold tabular-nums">
+                {{ currency }} {{ "{:,.2f}".format(invoice.total or 0) }}
+              </td>
+
+              <td class="p-4 text-right tabular-nums">
+                {{ currency }} {{ "{:,.2f}".format(invoice.deposit_paid or 0) }}
+              </td>
+
+              <td class="p-4 text-right font-semibold tabular-nums">
+                {{ currency }} {{ "{:,.2f}".format(invoice.balance or 0) }}
+              </td>
+
+              <td class="p-4">
+                <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold
+                  {% if s == 'paid' %} bg-green-100 text-green-800
+                  {% elif s == 'void' %} bg-red-100 text-red-800
+                  {% elif s == 'draft' %} bg-gray-100 text-gray-700
+                  {% elif s == 'partially_paid' %} bg-yellow-100 text-yellow-800
+                  {% else %} bg-blue-100 text-blue-800 {% endif %}">
+                  {{ (s or "issued")|replace("_", " ")|upper }}
+                </span>
+              </td>
+
+              <td class="p-4 text-right">
+                <a href="{{ url_for('invoices.view_invoice', invoice_id=invoice.id) }}"
+                   class="text-jungle font-semibold hover:underline">
+                  View
+                </a>
+              </td>
+            </tr>
+          {% else %}
+            <tr>
+              <td colspan="8" class="p-10 text-center text-gray-500">
+                No invoices created yet.
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</main>
+{% endblock %}

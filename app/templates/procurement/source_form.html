@@ -1,0 +1,25 @@
+{% extends "layouts/base.html" %}
+{% block body %}
+{% include "partials/admin_chrome.html" %}
+
+<div class="max-w-2xl mx-auto py-10">
+  <h1 class="text-xl font-bold mb-6">New Source</h1>
+
+  <form method="POST" class="space-y-4">
+    <select name="source_type" class="w-full border p-2">
+      <option value="farmer">Farmer</option>
+      <option value="market">Market</option>
+    </select>
+
+    <input name="name" placeholder="Name" class="w-full border p-2">
+    <input name="phone" placeholder="Phone" class="w-full border p-2">
+    <input name="location" placeholder="Location" class="w-full border p-2">
+    <input name="county" placeholder="County" class="w-full border p-2">
+
+    <textarea name="notes" placeholder="Notes" class="w-full border p-2"></textarea>
+
+    <button class="bg-jungle text-white px-4 py-2 rounded-xl">Save</button>
+  </form>
+</div>
+
+{% endblock %}

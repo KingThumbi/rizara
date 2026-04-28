@@ -1,9 +1,190 @@
-{% set s = invoice.status.value if invoice.status else 'issued' %}
+{% extends "layouts/base.html" %}
 
-<span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-semibold
-  {% if s == 'paid' %} bg-green-100 text-green-800
-  {% elif s == 'void' %} bg-red-100 text-red-800
-  {% elif s == 'draft' %} bg-gray-100 text-gray-700
-  {% else %} bg-blue-100 text-blue-800 {% endif %}">
-  {{ s|upper }}
-</span>
+{% block title %}Invoice {{ invoice.invoice_number }} | Rizara{% endblock %}
+
+{% block body %}
+{% set s = invoice.status.value if invoice.status and invoice.status.value is defined else invoice.status %}
+{% set currency = invoice.currency or "USD" %}
+
+<main class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+
+  <div class="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4 mb-8">
+    <div>
+      <p class="text-sm uppercase tracking-wide text-gray-500">Commercial Invoice</p>
+      <h1 class="text-3xl font-bold text-jungle mt-1">{{ invoice.invoice_number }}</h1>
+      <div class="mt-3 flex flex-wrap items-center gap-3 text-sm text-gray-600">
+        <span>Issue Date: <b>{{ invoice.issue_date }}</b></span>
+
+        <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold
+          {% if s == 'paid' %} bg-green-100 text-green-800
+          {% elif s == 'void' %} bg-red-100 text-red-800
+          {% elif s == 'draft' %} bg-gray-100 text-gray-700
+          {% elif s == 'partially_paid' %} bg-yellow-100 text-yellow-800
+          {% else %} bg-blue-100 text-blue-800 {% endif %}">
+          {{ (s or "issued")|replace("_", " ")|upper }}
+        </span>
+      </div>
+    </div>
+
+    <div class="flex gap-3">
+      <a href="{{ url_for('invoices.list_invoices') }}"
+         class="px-5 py-3 rounded-2xl border border-gray-200 text-gray-700 font-semibold hover:bg-gray-50 transition">
+        Back
+      </a>
+
+      {% if s != "void" %}
+      <form method="POST" action="{{ url_for('invoices.void_invoice', invoice_id=invoice.id) }}"
+            onsubmit="return confirm('Void this invoice and restore inventory?');">
+        <button class="px-5 py-3 rounded-2xl bg-red-50 text-red-700 font-semibold hover:bg-red-100 transition">
+          Void Invoice
+        </button>
+      </form>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+
+    <section class="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm">
+      <h2 class="font-bold text-gray-900 mb-4">Buyer</h2>
+      {% if invoice.buyer %}
+        <div class="text-lg font-semibold text-jungle">{{ invoice.buyer.name }}</div>
+        <div class="text-sm text-gray-600 mt-2">{{ invoice.buyer.phone or "" }}</div>
+        <div class="text-sm text-gray-600">{{ invoice.buyer.email or "" }}</div>
+      {% else %}
+        <div class="text-gray-500">No buyer linked.</div>
+      {% endif %}
+    </section>
+
+    <section class="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm">
+      <h2 class="font-bold text-gray-900 mb-4">Contract Document</h2>
+      {% if invoice.contract_document %}
+        <div class="font-semibold text-gray-900">{{ invoice.contract_document.title }}</div>
+        <div class="text-sm text-gray-500 mt-1">
+          {{ invoice.contract_document.document_type|replace("_", " ")|title }}
+          · Version {{ invoice.contract_document.version_no }}
+        </div>
+        <div class="text-sm text-gray-500 mt-1">
+          {{ invoice.contract_document.original_filename or invoice.contract_document.stored_filename }}
+        </div>
+      {% else %}
+        <div class="text-gray-500">No contract document linked.</div>
+      {% endif %}
+    </section>
+
+    <section class="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm">
+      <h2 class="font-bold text-gray-900 mb-4">Commercial Summary</h2>
+      <div class="space-y-3 text-sm">
+        <div class="flex justify-between">
+          <span class="text-gray-500">Currency</span>
+          <span class="font-semibold">{{ currency }}</span>
+        </div>
+        <div class="flex justify-between">
+          <span class="text-gray-500">Total</span>
+          <span class="font-semibold">{{ currency }} {{ "{:,.2f}".format(invoice.total or 0) }}</span>
+        </div>
+        <div class="flex justify-between">
+          <span class="text-gray-500">Deposit</span>
+          <span class="font-semibold">{{ currency }} {{ "{:,.2f}".format(invoice.deposit_paid or 0) }}</span>
+        </div>
+        <div class="border-t pt-3 flex justify-between text-lg">
+          <span class="font-bold text-jungle">Balance</span>
+          <span class="font-bold text-jungle">{{ currency }} {{ "{:,.2f}".format(invoice.balance or 0) }}</span>
+        </div>
+      </div>
+    </section>
+
+  </div>
+
+  <section class="bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden mb-6">
+    <div class="p-6 border-b border-gray-100">
+      <h2 class="font-bold text-gray-900">Invoice Items</h2>
+      <p class="text-sm text-gray-500 mt-1">Items are deducted from InventoryLot when invoice is created.</p>
+    </div>
+
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead class="bg-gray-50 border-b border-gray-200">
+          <tr>
+            <th class="p-4 text-left">Description</th>
+            <th class="p-4 text-left">Inventory Lot</th>
+            <th class="p-4 text-right">KG</th>
+            <th class="p-4 text-right">Price / KG</th>
+            <th class="p-4 text-right">Line Total</th>
+          </tr>
+        </thead>
+
+        <tbody>
+          {% for item in invoice.items %}
+          <tr class="border-b border-gray-100">
+            <td class="p-4 font-medium text-gray-900">{{ item.description }}</td>
+            <td class="p-4 text-gray-600">
+              {% if item.inventory_lot %}
+                Lot #{{ item.inventory_lot.id }}
+              {% else %}
+                -
+              {% endif %}
+            </td>
+            <td class="p-4 text-right tabular-nums">{{ "{:,.2f}".format(item.quantity or 0) }}</td>
+            <td class="p-4 text-right tabular-nums">{{ currency }} {{ "{:,.2f}".format(item.unit_price or 0) }}</td>
+            <td class="p-4 text-right font-semibold tabular-nums">{{ currency }} {{ "{:,.2f}".format(item.line_total or 0) }}</td>
+          </tr>
+          {% else %}
+          <tr>
+            <td colspan="5" class="p-8 text-center text-gray-500">No invoice items.</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm mb-6">
+    <div class="max-w-sm ml-auto space-y-3">
+      <div class="flex justify-between">
+        <span class="text-gray-500">Subtotal</span>
+        <span class="font-semibold">{{ currency }} {{ "{:,.2f}".format(invoice.subtotal or 0) }}</span>
+      </div>
+
+      <div class="flex justify-between">
+        <span class="text-gray-500">Tax</span>
+        <span class="font-semibold">{{ currency }} {{ "{:,.2f}".format(invoice.tax or 0) }}</span>
+      </div>
+
+      <div class="border-t pt-3 flex justify-between text-lg">
+        <span class="font-bold">Total</span>
+        <span class="font-bold">{{ currency }} {{ "{:,.2f}".format(invoice.total or 0) }}</span>
+      </div>
+
+      <div class="flex justify-between">
+        <span class="text-gray-500">Deposit Paid</span>
+        <span class="font-semibold">{{ currency }} {{ "{:,.2f}".format(invoice.deposit_paid or 0) }}</span>
+      </div>
+
+      <div class="border-t pt-3 flex justify-between text-xl">
+        <span class="font-bold text-jungle">Balance Due</span>
+        <span class="font-bold text-jungle">{{ currency }} {{ "{:,.2f}".format(invoice.balance or 0) }}</span>
+      </div>
+    </div>
+  </section>
+
+  {% if invoice.terms or invoice.notes %}
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+    {% if invoice.terms %}
+    <section class="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm">
+      <h2 class="font-bold mb-2">Terms</h2>
+      <p class="text-gray-700 whitespace-pre-line">{{ invoice.terms }}</p>
+    </section>
+    {% endif %}
+
+    {% if invoice.notes %}
+    <section class="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm">
+      <h2 class="font-bold mb-2">Notes</h2>
+      <p class="text-gray-700 whitespace-pre-line">{{ invoice.notes }}</p>
+    </section>
+    {% endif %}
+  </div>
+  {% endif %}
+
+</main>
+{% endblock %}

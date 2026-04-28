@@ -3,194 +3,527 @@
 {% block title %}Invoice {{ invoice.invoice_number }} | Rizara{% endblock %}
 
 {% block body %}
+{% set s = invoice.status.value if invoice.status and invoice.status.value is defined else invoice.status %}
+{% set currency = invoice.currency or "USD" %}
+{% set contract_doc = invoice.contract_document %}
+{% set contract = invoice.contract or (contract_doc.contract if contract_doc and contract_doc.contract else None) %}
 
-  <!-- NAVBAR -->
-  <nav class="bg-jungle text-white px-6 py-4 flex justify-between items-center shadow">
-    <div class="flex items-center gap-3">
-      <div class="text-xl font-bold tracking-wide">Rizara Meats</div>
-      <div class="hidden sm:block text-white/80 text-sm">Ethical • Traceable • Halal</div>
-    </div>
+<main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
 
-    <div class="flex items-center gap-3">
-      <a href="{{ url_for('main.view_invoiceable_batch', batch_id=batch.id) }}"
-         class="bg-gold text-jungle font-semibold px-4 py-2 rounded-lg hover:bg-yellow-400 transition">
-        ← Back to Batch
-      </a>
+  <!-- Header -->
+  <div class="flex flex-col xl:flex-row xl:items-end xl:justify-between gap-4 mb-8">
+    <div>
+      <p class="text-sm uppercase tracking-wide text-gray-500">Commercial Invoice</p>
+      <h1 class="text-3xl font-bold text-jungle mt-1">{{ invoice.invoice_number }}</h1>
 
-      <a href="{{ url_for('auth.logout') }}"
-         class="bg-white/10 text-white font-semibold px-4 py-2 rounded-lg hover:bg-white/20 transition">
-        Logout
-      </a>
-    </div>
-  </nav>
+      <div class="mt-3 flex flex-wrap items-center gap-3 text-sm text-gray-600">
+        <span>Issue Date: <b>{{ invoice.issue_date }}</b></span>
 
-  <main class="max-w-5xl mx-auto px-6 py-10">
+        {% if invoice.due_date %}
+          <span>Due Date: <b>{{ invoice.due_date }}</b></span>
+        {% endif %}
 
-    <!-- Header -->
-    <div class="mb-8">
-      <div class="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
-        <div>
-          <h1 class="text-3xl font-bold text-jungle">Invoice {{ invoice.invoice_number }}</h1>
-          <p class="text-gray-600 mt-1">
-            Status: <span class="font-semibold">{{ invoice_status_value or invoice.status }}</span>
-            <span class="mx-2">•</span>
-            Issue Date: <b>{{ invoice.issue_date }}</b>
-          </p>
-        </div>
+        {% if invoice.created_at %}
+          <span>Created: <b>{{ invoice.created_at.strftime("%Y-%m-%d %H:%M") }}</b></span>
+        {% endif %}
 
-        <div class="flex flex-wrap gap-2">
-          <a href="{{ url_for('main.invoice_pdf', invoice_id=invoice.id) }}"
-             target="_blank"
-             rel="noopener"
-             class="inline-flex items-center px-4 py-2 rounded-lg bg-jungle text-white font-semibold hover:bg-jungleLight transition">
-            Open Invoice PDF
-          </a>
-        </div>
+        <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold
+          {% if s == 'paid' %} bg-green-100 text-green-800
+          {% elif s == 'void' %} bg-red-100 text-red-800
+          {% elif s == 'draft' %} bg-gray-100 text-gray-700
+          {% elif s == 'partially_paid' %} bg-yellow-100 text-yellow-800
+          {% elif s == 'overdue' %} bg-orange-100 text-orange-800
+          {% else %} bg-blue-100 text-blue-800 {% endif %}">
+          {{ (s or "issued")|replace("_", " ")|upper }}
+        </span>
       </div>
     </div>
 
-    <!-- Share link -->
-    <div class="bg-white rounded-2xl shadow p-6 mb-6 border border-gray-100">
-      <div class="flex items-start justify-between gap-4">
-        <div>
-          <h2 class="text-lg font-bold text-gray-900">Share (Email/WhatsApp)</h2>
-          <p class="text-sm text-gray-600 mt-1">
-            Copy and send the PDF link as a soft copy. It opens on any device.
-          </p>
-        </div>
-      </div>
+    <div class="flex flex-wrap gap-3">
+      <a href="{{ url_for('invoices.list_invoices') }}"
+         class="px-5 py-3 rounded-2xl border border-gray-200 text-gray-700 font-semibold hover:bg-gray-50 transition">
+        Back
+      </a>
 
-      <div class="mt-4 flex flex-col sm:flex-row gap-3">
-        <input id="shareLink"
-               class="w-full border border-gray-300 rounded-lg px-4 py-2 text-sm font-mono bg-gray-50"
-               readonly
-               value="{{ url_for('main.invoice_pdf', invoice_id=invoice.id, _external=True) }}" />
-        <button type="button"
-                class="px-4 py-2 rounded-lg bg-gold text-jungle font-semibold hover:bg-yellow-400 transition"
-                onclick="navigator.clipboard.writeText(document.getElementById('shareLink').value)">
-          Copy
+      <a href="{{ url_for('invoices.invoice_pdf', invoice_id=invoice.id) }}"
+         target="_blank"
+         class="px-5 py-3 rounded-2xl bg-jungle text-white font-semibold hover:bg-jungleLight transition">
+        Open PDF
+      </a>
+
+      {% if invoice.buyer %}
+      <a href="{{ url_for('invoices.buyer_statement', buyer_id=invoice.buyer.id) }}"
+         target="_blank"
+         class="px-5 py-3 rounded-2xl border border-jungle text-jungle font-semibold hover:bg-jungle/5 transition">
+        Customer Statement
+      </a>
+      {% endif %}
+
+      {% if s != "void" and s != "paid" %}
+      <button type="button"
+              onclick="document.getElementById('paymentPanel')?.scrollIntoView({ behavior: 'smooth', block: 'start' });"
+              class="px-5 py-3 rounded-2xl bg-gold text-jungle font-semibold hover:opacity-90 transition">
+        Record Payment
+      </button>
+      {% endif %}
+
+      {% if s != "void" %}
+      <form method="POST"
+            action="{{ url_for('invoices.void_invoice', invoice_id=invoice.id) }}"
+            onsubmit="return confirm('Void this invoice and restore deducted inventory?');">
+        <button class="px-5 py-3 rounded-2xl bg-red-50 text-red-700 font-semibold hover:bg-red-100 transition">
+          Void Invoice
         </button>
-      </div>
+      </form>
+      {% endif %}
+    </div>
+  </div>
 
-      <p class="text-xs text-gray-500 mt-3">
-        Note: This link currently works for admins only. Buyers will access invoices via the Buyer Portal once sharing is enabled.
+  <!-- KPI Summary -->
+  <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+    <section class="bg-white p-5 rounded-3xl border border-gray-100 shadow-sm">
+      <p class="text-xs uppercase tracking-wide text-gray-500 font-semibold">Invoice Value</p>
+      <p class="text-2xl font-bold text-gray-900 mt-2">
+        {{ currency }} {{ "{:,.2f}".format(invoice.total or 0) }}
+      </p>
+    </section>
+
+    <section class="bg-white p-5 rounded-3xl border border-gray-100 shadow-sm">
+      <p class="text-xs uppercase tracking-wide text-gray-500 font-semibold">Payments Received</p>
+      <p class="text-2xl font-bold text-green-700 mt-2">
+        {{ currency }} {{ "{:,.2f}".format(invoice.deposit_paid or 0) }}
+      </p>
+    </section>
+
+    <section class="bg-white p-5 rounded-3xl border border-gray-100 shadow-sm">
+      <p class="text-xs uppercase tracking-wide text-gray-500 font-semibold">Balance Due</p>
+      <p class="text-2xl font-bold text-jungle mt-2">
+        {{ currency }} {{ "{:,.2f}".format(invoice.balance or 0) }}
+      </p>
+    </section>
+
+    <section class="bg-white p-5 rounded-3xl border border-gray-100 shadow-sm">
+      <p class="text-xs uppercase tracking-wide text-gray-500 font-semibold">Payment Count</p>
+      <p class="text-2xl font-bold text-gray-900 mt-2">
+        {{ invoice.payments|length }}
+      </p>
+    </section>
+  </div>
+
+  <!-- Commercial Context -->
+  <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+
+    <!-- Buyer -->
+    <section class="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm">
+      <h2 class="font-bold text-gray-900 mb-4">Buyer</h2>
+
+      {% if invoice.buyer %}
+        <div class="text-lg font-semibold text-jungle">{{ invoice.buyer.name }}</div>
+
+        <div class="mt-3 space-y-1 text-sm text-gray-600">
+          <div>Email: <span class="font-medium text-gray-900">{{ invoice.buyer.email or "-" }}</span></div>
+          <div>Phone: <span class="font-medium text-gray-900">{{ invoice.buyer.phone or "-" }}</span></div>
+          {% if invoice.buyer.address %}
+          <div>Address: <span class="font-medium text-gray-900">{{ invoice.buyer.address }}</span></div>
+          {% endif %}
+        </div>
+      {% else %}
+        <div class="text-gray-500">No buyer linked.</div>
+      {% endif %}
+    </section>
+
+    <!-- Contract Document -->
+    <section class="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm">
+      <h2 class="font-bold text-gray-900 mb-4">Contract Document</h2>
+
+      {% if contract_doc %}
+        <div class="font-semibold text-gray-900 break-words">{{ contract_doc.title }}</div>
+
+        <div class="text-sm text-gray-500 mt-2">
+          {{ contract_doc.document_type|replace("_", " ")|title }}
+          · Version {{ contract_doc.version_no }}
+          {% if contract_doc.is_primary %} · Primary{% endif %}
+        </div>
+
+        <div class="mt-3 space-y-1 text-sm text-gray-600">
+          <div>Document ID: <span class="font-medium text-gray-900">DOC-{{ contract_doc.id }}</span></div>
+
+          {% if contract_doc.original_filename or contract_doc.stored_filename %}
+          <div class="break-words">
+            File:
+            <span class="font-medium text-gray-900">
+              {{ contract_doc.original_filename or contract_doc.stored_filename }}
+            </span>
+          </div>
+          {% endif %}
+
+          {% if contract_doc.uploaded_at %}
+          <div>Uploaded: <span class="font-medium text-gray-900">{{ contract_doc.uploaded_at.strftime("%Y-%m-%d %H:%M") }}</span></div>
+          {% endif %}
+        </div>
+      {% else %}
+        <div class="text-gray-500">No contract document linked.</div>
+      {% endif %}
+    </section>
+
+    <!-- Contract -->
+    <section class="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm">
+      <h2 class="font-bold text-gray-900 mb-4">Contract Reference</h2>
+
+      {% if contract %}
+        <div class="text-lg font-semibold text-jungle">{{ contract.contract_number }}</div>
+
+        <div class="mt-3 space-y-1 text-sm text-gray-600">
+          {% if contract.destination_country %}
+          <div>Destination: <span class="font-medium text-gray-900">{{ contract.destination_country }}</span></div>
+          {% endif %}
+
+          {% if contract.product_type %}
+          <div>Product: <span class="font-medium text-gray-900">{{ contract.product_type }}</span></div>
+          {% endif %}
+
+          {% if contract.currency %}
+          <div>Contract Currency: <span class="font-medium text-gray-900">{{ contract.currency }}</span></div>
+          {% endif %}
+
+          {% if contract.status %}
+          <div>Status: <span class="font-medium text-gray-900">{{ contract.status|replace("_", " ")|title }}</span></div>
+          {% endif %}
+        </div>
+      {% else %}
+        <div class="text-gray-500">No contract linked.</div>
+      {% endif %}
+    </section>
+
+  </div>
+
+  <!-- Invoice Items -->
+  <section class="bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden mb-6">
+    <div class="p-6 border-b border-gray-100">
+      <h2 class="font-bold text-gray-900">Invoice Items</h2>
+      <p class="text-sm text-gray-500 mt-1">
+        These items were invoiced from processed InventoryLots. Partial lot sales are supported.
       </p>
     </div>
 
-    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead class="bg-gray-50 border-b border-gray-200">
+          <tr>
+            <th class="p-4 text-left">Description</th>
+            <th class="p-4 text-left">Inventory Lot</th>
+            <th class="p-4 text-right">KG</th>
+            <th class="p-4 text-right">Price / KG</th>
+            <th class="p-4 text-right">Line Total</th>
+          </tr>
+        </thead>
 
-      <!-- Buyer -->
-      <div class="bg-white rounded-2xl shadow p-6 border border-gray-100">
-        <h2 class="text-lg font-bold text-gray-900 mb-2">Buyer</h2>
-        <div class="text-gray-700 text-sm leading-6">
-          <div class="font-semibold text-base break-words">{{ buyer.name }}</div>
-          {% if buyer.phone %}<div class="break-words">{{ buyer.phone }}</div>{% endif %}
-          {% if buyer.email %}<div class="break-words">{{ buyer.email }}</div>{% endif %}
-          {% if buyer.address %}<div class="break-words">{{ buyer.address }}</div>{% endif %}
-        </div>
+        <tbody>
+          {% for item in invoice.items %}
+          <tr class="border-b border-gray-100">
+            <td class="p-4 font-medium text-gray-900">
+              {{ item.description }}
+            </td>
+
+            <td class="p-4 text-gray-600">
+              {% if item.inventory_lot %}
+                <div class="font-semibold text-gray-900">Lot #{{ item.inventory_lot.id }}</div>
+
+                {% if item.inventory_lot.batch_number %}
+                  <div class="text-xs text-gray-500">Batch: {{ item.inventory_lot.batch_number }}</div>
+                {% endif %}
+
+                {% if item.inventory_lot.product_name %}
+                  <div class="text-xs text-gray-500">Product: {{ item.inventory_lot.product_name }}</div>
+                {% endif %}
+
+                {% if item.inventory_lot.product_type %}
+                  <div class="text-xs text-gray-500">Type: {{ item.inventory_lot.product_type|replace("_", " ")|title }}</div>
+                {% endif %}
+
+                {% if item.inventory_lot.animal_type %}
+                  <div class="text-xs text-gray-500">Animal: {{ item.inventory_lot.animal_type|title }}</div>
+                {% endif %}
+
+                {% if item.inventory_lot.available_kg is not none %}
+                  <div class="text-xs text-gray-500">Remaining: {{ "{:,.2f}".format(item.inventory_lot.available_kg or 0) }} kg</div>
+                {% endif %}
+
+                {% if item.inventory_lot.status %}
+                  <div class="text-xs text-gray-500">Status: {{ item.inventory_lot.status|replace("_", " ")|title }}</div>
+                {% endif %}
+              {% else %}
+                -
+              {% endif %}
+            </td>
+
+            <td class="p-4 text-right tabular-nums">
+              {{ "{:,.2f}".format(item.quantity or 0) }} {{ item.unit or "kg" }}
+            </td>
+
+            <td class="p-4 text-right tabular-nums">
+              {{ currency }} {{ "{:,.2f}".format(item.unit_price or 0) }}
+            </td>
+
+            <td class="p-4 text-right font-semibold tabular-nums">
+              {{ currency }} {{ "{:,.2f}".format(item.line_total or 0) }}
+            </td>
+          </tr>
+          {% else %}
+          <tr>
+            <td colspan="5" class="p-8 text-center text-gray-500">
+              No invoice items found.
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- Totals -->
+  <section class="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm mb-6">
+    <div class="max-w-md ml-auto space-y-3">
+      <div class="flex justify-between">
+        <span class="text-gray-500">Subtotal</span>
+        <span class="font-semibold">{{ currency }} {{ "{:,.2f}".format(invoice.subtotal or 0) }}</span>
       </div>
 
-      <!-- Batch -->
-      <div class="bg-white rounded-2xl shadow p-6 border border-gray-100 lg:col-span-2">
-        <h2 class="text-lg font-bold text-gray-900 mb-2">Batch</h2>
-
-        <div class="text-gray-700 text-sm leading-6">
-          <div>
-            Processing Batch <span class="font-semibold">#{{ batch.id }}</span>
-            <span class="mx-2">•</span>
-            {{ batch.animal_type|capitalize }}
-            <span class="mx-2">•</span>
-            Facility: <b class="break-words">{{ batch.facility }}</b>
-          </div>
-
-          {% if yield_record %}
-            <div class="mt-2">
-              <span class="text-gray-600">Carcass Weight:</span>
-              <span class="font-semibold">{{ yield_record.total_carcass_weight_kg }} kg</span>
-            </div>
-            {% if yield_record.parts_notes %}
-              <div class="mt-1">
-                <span class="text-gray-600">Parts:</span>
-                <span class="break-words">{{ yield_record.parts_notes }}</span>
-              </div>
-            {% endif %}
-          {% endif %}
-        </div>
+      <div class="flex justify-between">
+        <span class="text-gray-500">Tax</span>
+        <span class="font-semibold">{{ currency }} {{ "{:,.2f}".format(invoice.tax or 0) }}</span>
       </div>
 
-      <!-- Items -->
-      <div class="bg-white rounded-2xl shadow p-6 border border-gray-100 lg:col-span-3">
-        <div class="flex items-start justify-between gap-4 mb-3">
-          <h2 class="text-lg font-bold text-gray-900">Items</h2>
-          <div class="text-sm text-gray-500">
-            {{ items|length }} item{{ '' if items|length == 1 else 's' }}
-          </div>
-        </div>
-
-        <div class="overflow-x-auto">
-          {# table-fixed is key: prevents one long description from expanding the whole table #}
-          <table class="w-full text-sm border border-gray-200 table-fixed">
-            <thead class="bg-gray-50">
-              <tr>
-                <th class="p-3 text-left font-semibold text-gray-700 w-6/12">Description</th>
-                <th class="p-3 text-right font-semibold text-gray-700 w-2/12">Qty</th>
-                <th class="p-3 text-right font-semibold text-gray-700 w-2/12">Unit Price</th>
-                <th class="p-3 text-right font-semibold text-gray-700 w-2/12">Total</th>
-              </tr>
-            </thead>
-
-            <tbody>
-              {% for it in items %}
-              <tr class="border-t align-top">
-                {# WRAP FIX: break-words + whitespace-normal ensures long text wraps #}
-                <td class="p-3 whitespace-normal break-words">
-                  <div class="font-medium text-gray-900 break-words">
-                    {{ it.description }}
-                  </div>
-                </td>
-
-                <td class="p-3 text-right tabular-nums whitespace-nowrap">
-                  {{ it.quantity }}
-                </td>
-
-                <td class="p-3 text-right tabular-nums whitespace-nowrap">
-                  {{ it.unit_price }}
-                </td>
-
-                <td class="p-3 text-right tabular-nums whitespace-nowrap font-semibold text-gray-900">
-                  {{ it.line_total }}
-                </td>
-              </tr>
-              {% endfor %}
-            </tbody>
-          </table>
-        </div>
-
-        <div class="mt-6 flex flex-col sm:flex-row sm:justify-end">
-          <div class="w-full sm:w-96 border border-gray-200 rounded-xl p-4 bg-gray-50">
-            <div class="flex justify-between text-sm text-gray-700">
-              <span>Subtotal</span>
-              <span class="tabular-nums">{{ invoice.subtotal }}</span>
-            </div>
-            <div class="flex justify-between text-sm text-gray-700 mt-2">
-              <span>Tax</span>
-              <span class="tabular-nums">{{ invoice.tax }}</span>
-            </div>
-            <div class="hr border-t border-gray-200 my-3"></div>
-            <div class="flex justify-between text-base font-bold text-gray-900">
-              <span>Total</span>
-              <span class="tabular-nums">{{ invoice.total }}</span>
-            </div>
-          </div>
-        </div>
+      <div class="border-t pt-3 flex justify-between text-lg">
+        <span class="font-bold">Total Invoice Value</span>
+        <span class="font-bold">{{ currency }} {{ "{:,.2f}".format(invoice.total or 0) }}</span>
       </div>
 
+      <div class="flex justify-between">
+        <span class="text-gray-500">Payments Received</span>
+        <span class="font-semibold">{{ currency }} {{ "{:,.2f}".format(invoice.deposit_paid or 0) }}</span>
+      </div>
+
+      <div class="border-t pt-3 flex justify-between text-xl">
+        <span class="font-bold text-jungle">Balance Due</span>
+        <span class="font-bold text-jungle">
+          {{ currency }} {{ "{:,.2f}".format(invoice.balance or 0) }}
+        </span>
+      </div>
+    </div>
+  </section>
+
+  <!-- Record Payment -->
+  {% if s != "void" and s != "paid" %}
+  <section id="paymentPanel" class="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm mb-6">
+    <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-5">
+      <div>
+        <h2 class="text-lg font-bold text-gray-900">Record Payment</h2>
+        <p class="text-sm text-gray-500 mt-1">
+          Record balance payments, bank transfers, M-Pesa references, SWIFT payments, cheques, or cash receipts.
+        </p>
+      </div>
+
+      <div class="rounded-2xl bg-jungle/10 px-4 py-3 text-right">
+        <p class="text-xs text-gray-500">Current Balance</p>
+        <p class="font-bold text-jungle">
+          {{ currency }} {{ "{:,.2f}".format(invoice.balance or 0) }}
+        </p>
+      </div>
     </div>
 
-  </main>
+    <form method="POST"
+          action="{{ url_for('invoices.record_payment', invoice_id=invoice.id) }}"
+          class="grid grid-cols-1 md:grid-cols-4 gap-4">
 
-  <footer class="text-center text-sm text-gray-500 py-6">
-    © {{ current_year or 2026 }} Rizara Meats Ltd — Ethical • Traceable • Halal
-  </footer>
+      <div>
+        <label class="block text-sm font-semibold text-gray-700 mb-2">Amount</label>
+        <input name="amount"
+               type="number"
+               step="0.01"
+               min="0.01"
+               max="{{ invoice.balance or invoice.total or 0 }}"
+               required
+               class="w-full rounded-2xl border-gray-200 focus:border-jungle focus:ring-jungle"
+               placeholder="0.00">
+      </div>
 
+      <div>
+        <label class="block text-sm font-semibold text-gray-700 mb-2">Method</label>
+        <select name="method"
+                class="w-full rounded-2xl border-gray-200 focus:border-jungle focus:ring-jungle">
+          <option value="bank_transfer">Bank Transfer</option>
+          <option value="swift">SWIFT</option>
+          <option value="mpesa">M-Pesa</option>
+          <option value="cash">Cash</option>
+          <option value="cheque">Cheque</option>
+          <option value="lc_settlement">LC Settlement</option>
+          <option value="other">Other</option>
+        </select>
+      </div>
+
+      <div>
+        <label class="block text-sm font-semibold text-gray-700 mb-2">Reference</label>
+        <input name="reference"
+               class="w-full rounded-2xl border-gray-200 focus:border-jungle focus:ring-jungle"
+               placeholder="TXN / receipt / bank ref">
+      </div>
+
+      <div class="flex items-end">
+        <button type="submit"
+                class="w-full px-5 py-3 rounded-2xl bg-jungle text-white font-semibold hover:bg-jungleLight transition">
+          Save Payment
+        </button>
+      </div>
+
+      <div class="md:col-span-4">
+        <label class="block text-sm font-semibold text-gray-700 mb-2">Notes</label>
+        <textarea name="notes"
+                  rows="3"
+                  class="w-full rounded-2xl border-gray-200 focus:border-jungle focus:ring-jungle"
+                  placeholder="Optional payment notes..."></textarea>
+      </div>
+    </form>
+  </section>
+  {% endif %}
+
+  <!-- Payment History -->
+  <section class="bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden mb-6">
+    <div class="p-6 border-b border-gray-100">
+      <h2 class="font-bold text-gray-900">Payment History</h2>
+      <p class="text-sm text-gray-500 mt-1">
+        All payments and receipts recorded against this invoice.
+      </p>
+    </div>
+
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead class="bg-gray-50 border-b border-gray-200">
+          <tr>
+            <th class="p-4 text-left">Receipt</th>
+            <th class="p-4 text-left">Date</th>
+            <th class="p-4 text-left">Method</th>
+            <th class="p-4 text-left">Reference</th>
+            <th class="p-4 text-right">Amount</th>
+            <th class="p-4 text-left">Notes</th>
+            <th class="p-4 text-right">Actions</th>
+          </tr>
+        </thead>
+
+        <tbody>
+          {% for payment in invoice.payments %}
+          <tr class="border-b border-gray-100">
+            <td class="p-4 font-semibold text-gray-900">
+              {{ payment.receipt_number or ("RCT-" ~ payment.id) }}
+            </td>
+
+            <td class="p-4 text-gray-600">
+              {{ payment.paid_at.strftime("%Y-%m-%d %H:%M") if payment.paid_at else "-" }}
+            </td>
+
+            <td class="p-4 font-medium text-gray-900">
+              {{ payment.method|replace("_", " ")|title if payment.method else "-" }}
+            </td>
+
+            <td class="p-4 text-gray-600">
+              {{ payment.reference or "-" }}
+            </td>
+
+            <td class="p-4 text-right font-semibold tabular-nums">
+              {{ currency }} {{ "{:,.2f}".format(payment.amount or 0) }}
+            </td>
+
+            <td class="p-4 text-gray-600">
+              {{ payment.notes or "-" }}
+            </td>
+
+            <td class="p-4 text-right">
+              <a href="{{ url_for('invoices.payment_receipt', invoice_id=invoice.id, payment_id=payment.id) }}"
+                 target="_blank"
+                 class="text-jungle font-semibold hover:underline">
+                Receipt
+              </a>
+            </td>
+          </tr>
+          {% else %}
+          <tr>
+            <td colspan="7" class="p-8 text-center text-gray-500">
+              No payment history yet.
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- Audit / Operational Details -->
+  <section class="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm mb-6">
+    <h2 class="font-bold text-gray-900 mb-4">Audit & Operational Details</h2>
+
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+      <div>
+        <p class="text-gray-500">Issued By</p>
+        <p class="font-semibold text-gray-900">
+          {{ invoice.issued_by.name if invoice.issued_by and invoice.issued_by.name else invoice.issued_by.email if invoice.issued_by and invoice.issued_by.email else "-" }}
+        </p>
+      </div>
+
+      <div>
+        <p class="text-gray-500">Issued At</p>
+        <p class="font-semibold text-gray-900">
+          {{ invoice.issued_at.strftime("%Y-%m-%d %H:%M") if invoice.issued_at else "-" }}
+        </p>
+      </div>
+
+      <div>
+        <p class="text-gray-500">Paid At</p>
+        <p class="font-semibold text-gray-900">
+          {{ invoice.paid_at.strftime("%Y-%m-%d %H:%M") if invoice.paid_at else "-" }}
+        </p>
+      </div>
+
+      <div>
+        <p class="text-gray-500">Voided At</p>
+        <p class="font-semibold text-gray-900">
+          {{ invoice.voided_at.strftime("%Y-%m-%d %H:%M") if invoice.voided_at else "-" }}
+        </p>
+      </div>
+
+      <div>
+        <p class="text-gray-500">Updated At</p>
+        <p class="font-semibold text-gray-900">
+          {{ invoice.updated_at.strftime("%Y-%m-%d %H:%M") if invoice.updated_at else "-" }}
+        </p>
+      </div>
+
+      <div>
+        <p class="text-gray-500">Legacy Sale Link</p>
+        <p class="font-semibold text-gray-900">
+          {{ invoice.processing_batch_sale_id or "-" }}
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- Terms / Notes -->
+  {% if invoice.terms or invoice.notes %}
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+    {% if invoice.terms %}
+    <section class="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm">
+      <h2 class="font-bold mb-2">Terms</h2>
+      <p class="text-gray-700 whitespace-pre-line">{{ invoice.terms }}</p>
+    </section>
+    {% endif %}
+
+    {% if invoice.notes %}
+    <section class="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm">
+      <h2 class="font-bold mb-2">Notes</h2>
+      <p class="text-gray-700 whitespace-pre-line">{{ invoice.notes }}</p>
+    </section>
+    {% endif %}
+  </div>
+  {% endif %}
+
+</main>
 {% endblock %}

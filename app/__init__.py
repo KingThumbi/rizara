@@ -49,7 +49,8 @@ def create_app() -> Flask:
     from .routes.pipeline import pipeline_bp
     from .routes.pipeline_pages import pipeline_pages_bp
     from app.routes.contracts import bp as contracts_bp
-
+    from app.routes.procurement import bp as procurement_bp
+    from app.routes.invoices import bp as invoices_bp
     from .auth import auth
     from .admin import admin_bp
     from .public import public
@@ -65,7 +66,8 @@ def create_app() -> Flask:
     app.register_blueprint(pipeline_bp)
     app.register_blueprint(pipeline_pages_bp)
     app.register_blueprint(contracts_bp)
-
+    app.register_blueprint(procurement_bp)
+    app.register_blueprint(invoices_bp)
     app.register_blueprint(auth)
     app.register_blueprint(admin_bp)
     app.register_blueprint(public)

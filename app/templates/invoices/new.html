@@ -1,0 +1,296 @@
+{% extends "layouts/base.html" %}
+
+{% block title %}New Invoice | Rizara{% endblock %}
+
+{% block body %}
+<main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+
+  <div class="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4 mb-8">
+    <div>
+      <p class="text-sm uppercase tracking-wide text-gray-500">Finance</p>
+      <h1 class="text-3xl font-bold text-jungle mt-1">Create Invoice</h1>
+      <p class="text-gray-600 mt-2">
+        Reference a signed contract document and invoice from available processed inventory.
+      </p>
+
+      {% if selected_batch_id %}
+        <div class="mt-3 inline-flex px-3 py-1 rounded-full bg-jungle/10 text-jungle text-xs font-semibold">
+          Filtered to Processing Batch #{{ selected_batch_id }}
+        </div>
+      {% endif %}
+    </div>
+
+    <a href="{{ url_for('invoices.list_invoices') }}"
+       class="inline-flex items-center justify-center px-5 py-3 rounded-2xl border border-gray-200 text-gray-700 font-semibold hover:bg-gray-50 transition">
+      Back to Invoices
+    </a>
+  </div>
+
+  {% if not inventory_lots %}
+    <section class="bg-white rounded-3xl border border-red-100 shadow-sm p-8 mb-6">
+      <h2 class="text-xl font-bold text-red-700">No available InventoryLot found</h2>
+      <p class="text-gray-600 mt-2">
+        This invoice needs available processed inventory. Record or finalize yield first so the system can create an InventoryLot.
+      </p>
+
+      {% if selected_batch_id %}
+        <a href="{{ url_for('processing.view_invoiceable_batch', batch_id=selected_batch_id) }}"
+           class="inline-flex mt-5 px-5 py-3 rounded-2xl bg-jungle text-white font-semibold hover:bg-jungleLight transition">
+          Back to Processing Batch
+        </a>
+      {% endif %}
+    </section>
+  {% endif %}
+
+  <form method="POST" action="{{ url_for('invoices.create_invoice') }}" class="space-y-6">
+
+    <section class="bg-white rounded-3xl border border-gray-100 shadow-sm p-6">
+      <div class="mb-5">
+        <h2 class="text-lg font-bold text-gray-900">Commercial Details</h2>
+        <p class="text-sm text-gray-500 mt-1">Select the buyer and uploaded contract document.</p>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+        <div>
+          <label class="block text-sm font-semibold text-gray-700 mb-2">Buyer</label>
+          <select name="buyer_id" required class="w-full rounded-2xl border-gray-200 focus:border-jungle focus:ring-jungle">
+            <option value="">Select buyer</option>
+            {% for buyer in buyers %}
+              <option value="{{ buyer.id }}">{{ buyer.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div>
+          <label class="block text-sm font-semibold text-gray-700 mb-2">Contract Document</label>
+          <select name="contract_document_id" required class="w-full rounded-2xl border-gray-200 focus:border-jungle focus:ring-jungle">
+            <option value="">Select contract document</option>
+            {% for doc in contract_documents %}
+              <option value="{{ doc.id }}"
+                {% if selected_contract_document_id and selected_contract_document_id == doc.id %}selected{% endif %}>
+                {{ doc.title }} · {{ doc.document_type|replace("_", " ")|title }} · V{{ doc.version_no }}
+              </option>
+            {% endfor %}
+          </select>
+          <p class="text-xs text-gray-500 mt-2">
+            These are uploaded contract documents from /admin/documents.
+          </p>
+        </div>
+
+        <div>
+          <label class="block text-sm font-semibold text-gray-700 mb-2">Currency</label>
+          <input name="currency" value="USD" maxlength="10"
+                 class="w-full rounded-2xl border-gray-200 focus:border-jungle focus:ring-jungle">
+        </div>
+
+        <div>
+          <label class="block text-sm font-semibold text-gray-700 mb-2">Tax</label>
+          <input name="tax" type="number" step="0.01" min="0" value="0"
+                 class="w-full rounded-2xl border-gray-200 focus:border-jungle focus:ring-jungle">
+        </div>
+
+        <div>
+          <label class="block text-sm font-semibold text-gray-700 mb-2">Deposit Paid</label>
+          <input name="deposit_paid" type="number" step="0.01" min="0" value="0"
+                 class="w-full rounded-2xl border-gray-200 focus:border-jungle focus:ring-jungle">
+        </div>
+      </div>
+    </section>
+
+    <section class="bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden">
+      <div class="p-6 border-b border-gray-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <h2 class="text-lg font-bold text-gray-900">Inventory Items</h2>
+          <p class="text-sm text-gray-500 mt-1">
+            Select processed lots. Partial sales are allowed by entering less KG than available.
+          </p>
+        </div>
+
+        <button type="button" onclick="addItemRow()"
+                {% if not inventory_lots %}disabled{% endif %}
+                class="inline-flex items-center justify-center px-5 py-3 rounded-2xl bg-jungle text-white font-semibold shadow-sm hover:bg-jungleLight transition disabled:opacity-50 disabled:cursor-not-allowed">
+          Add Item
+        </button>
+      </div>
+
+      <div class="p-6">
+        <div id="items" class="space-y-4"></div>
+
+        <div class="mt-6 rounded-2xl bg-gray-50 border border-gray-100 p-5">
+          <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+            <div>
+              <p class="text-sm font-semibold text-gray-700">Estimated Subtotal</p>
+              <p class="text-xs text-gray-500">Preview only. Server recalculates on save.</p>
+            </div>
+            <div class="text-2xl font-bold text-jungle tabular-nums">
+              <span id="currencyPreview">USD</span> <span id="subtotalPreview">0.00</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <div class="bg-white rounded-3xl border border-gray-100 shadow-sm p-6">
+        <label class="block text-sm font-semibold text-gray-700 mb-2">Terms</label>
+        <textarea name="terms" rows="5"
+                  placeholder="Payment terms, LC notes, buyer-specific terms..."
+                  class="w-full rounded-2xl border-gray-200 focus:border-jungle focus:ring-jungle"></textarea>
+      </div>
+
+      <div class="bg-white rounded-3xl border border-gray-100 shadow-sm p-6">
+        <label class="block text-sm font-semibold text-gray-700 mb-2">Notes</label>
+        <textarea name="notes" rows="5"
+                  placeholder="Internal or invoice notes..."
+                  class="w-full rounded-2xl border-gray-200 focus:border-jungle focus:ring-jungle"></textarea>
+      </div>
+    </section>
+
+    <div class="flex flex-col sm:flex-row sm:justify-end gap-3">
+      <a href="{{ url_for('invoices.list_invoices') }}"
+         class="inline-flex items-center justify-center px-6 py-3 rounded-2xl border border-gray-200 text-gray-700 font-semibold hover:bg-gray-50 transition">
+        Cancel
+      </a>
+
+      <button type="submit"
+              {% if not inventory_lots %}disabled{% endif %}
+              class="inline-flex items-center justify-center px-6 py-3 rounded-2xl bg-jungle text-white font-semibold shadow-sm hover:bg-jungleLight transition disabled:opacity-50 disabled:cursor-not-allowed">
+        Create Invoice
+      </button>
+    </div>
+
+  </form>
+</main>
+
+<script>
+const inventoryLots = [
+  {% for lot in inventory_lots %}
+  {
+    id: "{{ lot.id }}",
+    availableKg: Number("{{ lot.available_kg or 0 }}"),
+    label: "Lot #{{ lot.id }} · {{ lot.available_kg or 0 }}kg available{% if lot.status %} · {{ lot.status|title }}{% endif %}"
+  },
+  {% endfor %}
+];
+
+function moneyFormat(value) {
+  const number = Number(value || 0);
+  return number.toLocaleString(undefined, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+  });
+}
+
+function updateSubtotalPreview() {
+  let subtotal = 0;
+
+  document.querySelectorAll("[data-item-row]").forEach((row) => {
+    const quantity = Number(row.querySelector("[name='quantity[]']")?.value || 0);
+    const price = Number(row.querySelector("[name='unit_price[]']")?.value || 0);
+    subtotal += quantity * price;
+  });
+
+  const currency = document.querySelector("[name='currency']")?.value || "USD";
+  document.getElementById("currencyPreview").textContent = currency.toUpperCase();
+  document.getElementById("subtotalPreview").textContent = moneyFormat(subtotal);
+}
+
+function validateQuantity(input) {
+  const row = input.closest("[data-item-row]");
+  const select = row.querySelector("[name='inventory_lot_id[]']");
+  const selected = inventoryLots.find((lot) => lot.id === select.value);
+  const warning = row.querySelector("[data-warning]");
+  warning.textContent = "";
+
+  if (!selected) return;
+
+  const requested = Number(input.value || 0);
+
+  if (requested > selected.availableKg) {
+    warning.textContent = `Only ${selected.availableKg}kg available in this lot.`;
+  }
+}
+
+function addItemRow() {
+  if (!inventoryLots.length) return;
+
+  const wrapper = document.getElementById("items");
+
+  const options = inventoryLots.map((lot) => {
+    return `<option value="${lot.id}" data-available="${lot.availableKg}">${lot.label}</option>`;
+  }).join("");
+
+  const row = document.createElement("div");
+  row.setAttribute("data-item-row", "true");
+  row.className = "rounded-3xl border border-gray-100 bg-gray-50 p-5";
+
+  row.innerHTML = `
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-4 items-end">
+      <div class="lg:col-span-5">
+        <label class="block text-xs font-bold uppercase tracking-wide text-gray-500 mb-2">Inventory Lot</label>
+        <select name="inventory_lot_id[]" required class="w-full rounded-2xl border-gray-200 bg-white focus:border-jungle focus:ring-jungle">
+          <option value="">Select lot</option>
+          ${options}
+        </select>
+      </div>
+
+      <div class="lg:col-span-2">
+        <label class="block text-xs font-bold uppercase tracking-wide text-gray-500 mb-2">KG</label>
+        <input name="quantity[]" type="number" step="0.01" min="0.01" required
+               class="w-full rounded-2xl border-gray-200 bg-white focus:border-jungle focus:ring-jungle">
+      </div>
+
+      <div class="lg:col-span-2">
+        <label class="block text-xs font-bold uppercase tracking-wide text-gray-500 mb-2">Price / KG</label>
+        <input name="unit_price[]" type="number" step="0.01" min="0" required
+               class="w-full rounded-2xl border-gray-200 bg-white focus:border-jungle focus:ring-jungle">
+      </div>
+
+      <div class="lg:col-span-2">
+        <label class="block text-xs font-bold uppercase tracking-wide text-gray-500 mb-2">Line Total</label>
+        <div data-line-total class="w-full rounded-2xl border border-gray-200 bg-white px-4 py-2.5 font-semibold text-gray-900 tabular-nums">
+          0.00
+        </div>
+      </div>
+
+      <div class="lg:col-span-1">
+        <button type="button"
+                class="w-full px-4 py-2.5 rounded-2xl bg-white border border-red-100 text-red-600 font-semibold hover:bg-red-50 transition"
+                onclick="this.closest('[data-item-row]').remove(); updateSubtotalPreview();">
+          ×
+        </button>
+      </div>
+    </div>
+
+    <p data-warning class="text-sm text-red-600 font-medium mt-3"></p>
+  `;
+
+  wrapper.appendChild(row);
+
+  const qtyInput = row.querySelector("[name='quantity[]']");
+  const priceInput = row.querySelector("[name='unit_price[]']");
+  const selectInput = row.querySelector("[name='inventory_lot_id[]']");
+  const lineTotal = row.querySelector("[data-line-total]");
+
+  function updateRow() {
+    const q = Number(qtyInput.value || 0);
+    const p = Number(priceInput.value || 0);
+    lineTotal.textContent = moneyFormat(q * p);
+    validateQuantity(qtyInput);
+    updateSubtotalPreview();
+  }
+
+  qtyInput.addEventListener("input", updateRow);
+  priceInput.addEventListener("input", updateRow);
+  selectInput.addEventListener("change", updateRow);
+
+  updateSubtotalPreview();
+}
+
+document.querySelector("[name='currency']")?.addEventListener("input", updateSubtotalPreview);
+
+if (inventoryLots.length > 0) {
+  addItemRow();
+}
+</script>
+{% endblock %}

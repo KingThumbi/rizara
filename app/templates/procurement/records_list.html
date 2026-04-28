@@ -1,0 +1,36 @@
+{% extends "layouts/base.html" %}
+{% block body %}
+{% include "partials/admin_chrome.html" %}
+
+<div class="max-w-7xl mx-auto px-6 py-8">
+  <div class="flex justify-between mb-6">
+    <h1 class="text-xl font-bold">Procurement Records</h1>
+    <a href="{{ url_for('procurement.record_new') }}"
+       class="px-4 py-2 bg-gold text-jungle rounded-xl">New Record</a>
+  </div>
+
+  <table class="w-full text-sm">
+    <thead class="bg-gray-100">
+      <tr>
+        <th class="p-3">Date</th>
+        <th class="p-3">Source</th>
+        <th class="p-3">Animal</th>
+        <th class="p-3">Qty</th>
+        <th class="p-3">Status</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in records %}
+      <tr class="border-b">
+        <td class="p-3">{{ r.purchase_date }}</td>
+        <td class="p-3">{{ r.source.name if r.source else '-' }}</td>
+        <td class="p-3">{{ r.animal_type }}</td>
+        <td class="p-3">{{ r.quantity }}</td>
+        <td class="p-3">{{ r.status }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{% endblock %}

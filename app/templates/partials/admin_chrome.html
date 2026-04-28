@@ -29,10 +29,14 @@
           Processing
         </a>
 
-        <a href="/contracts"
+        <a href="{{ url_for('contracts.list_contracts') }}"
           class="{% if request.path.startswith('/contracts') %}text-gold{% else %}hover:text-gold{% endif %} transition">
           Contracts
-        </a>        
+        </a>
+        <a href="{{ url_for('procurement.dashboard') }}"
+           class="{% if request.path.startswith('/procurement') %}text-gold{% else %}hover:text-gold{% endif %} transition">
+          Procurement
+        </a>
       </div>
     </div>
 

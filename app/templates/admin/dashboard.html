@@ -142,6 +142,12 @@
         <p class="text-sm text-gray-500">Market Purchases</p>
         <p class="text-3xl font-bold text-jungle mt-2">{{ stats.market_purchases or 0 }}</p>
       </a>
+      <a href="{{ url_for('processing.list_invoices') }}" class="dash-card">
+        <p class="text-sm text-gray-500">Invoices</p>
+        <p class="text-3xl font-bold text-jungle mt-2">
+          {{ stats.invoices or 0 }}
+        </p>
+      </a>
     </section>
 
     <!-- MODULES -->
@@ -149,14 +155,40 @@
 
       <div class="module-panel">
         <h2 class="text-xl font-bold text-gray-950">Commercial</h2>
-        <p class="text-sm text-gray-500 mt-1">Contracts, buyers, sales and invoices.</p>
+        <p class="text-sm text-gray-500 mt-1">
+          Contracts, buyers, sales, invoicing and payments.
+        </p>
 
         <div class="mt-5 grid grid-cols-1 gap-3">
-          <a href="{{ url_for('pipeline_pages.pipeline_dashboard') }}" class="module-link">Pipeline Control Tower</a>
-          <a href="{{ url_for('admin.documents_list') }}" class="module-link">Documents</a>
-          <a href="{{ url_for('admin.documents_new') }}" class="module-link">New Document</a>
-          <a href="{{ url_for('admin.buyers_list') }}" class="module-link">Buyers</a>
-          <a href="{{ url_for('admin.buyers_new') }}" class="module-link">New Buyer</a>
+
+          <!-- Control Tower -->
+          <a href="{{ url_for('pipeline_pages.pipeline_dashboard') }}" class="module-link">
+            Pipeline Control Tower
+          </a>
+
+          <!-- Contracts & Docs -->
+          <a href="{{ url_for('admin.documents_list') }}" class="module-link">
+            Documents
+          </a>
+
+          <a href="{{ url_for('admin.documents_new') }}" class="module-link">
+            New Document
+          </a>
+
+          <!-- Buyers -->
+          <a href="{{ url_for('admin.buyers_list') }}" class="module-link">
+            Buyers
+          </a>
+
+          <a href="{{ url_for('admin.buyers_new') }}" class="module-link">
+            New Buyer
+          </a>
+
+          <!-- ✅ NEW: Invoices -->
+          <a href="{{ url_for('processing.list_invoices') }}" class="module-link">
+            Invoices
+          </a>
+
         </div>
       </div>
 

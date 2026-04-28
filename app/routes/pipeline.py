@@ -350,15 +350,29 @@ def record_payment(case_id: int):
         case.sale.amount_paid = new_paid_total
         case.sale.balance_due = max(sale_total - new_paid_total, Decimal("0.00"))
 
+        case.paid_amount = new_paid_total
+        case.outstanding_amount = case.sale.balance_due
+
         if case.sale.balance_due <= 0:
             case.sale.payment_status = "paid"
             case.sale.status = "paid"
+
+            if case.invoice:
+                case.invoice.status = "paid"
+                case.invoice.paid_at = utcnow_naive()
+                db.session.add(case.invoice)
+
         elif new_paid_total > 0:
             case.sale.payment_status = "partial"
             case.sale.status = "partial"
 
+            if case.invoice:
+                case.invoice.status = "issued"
+                db.session.add(case.invoice)
+
         db.session.add(payment)
         db.session.add(case.sale)
+        db.session.add(case)
 
         PipelineStatusService.recompute_case(
             case,
@@ -379,8 +393,8 @@ def record_payment(case_id: int):
         return jsonify({
             "ok": False,
             "error": f"Could not record payment: {str(exc)}",
-        }), 500       
-
+        }), 500
+    
 @pipeline_bp.post("/cases/<int:case_id>/dispatch-delivery")
 @login_required
 def dispatch_delivery(case_id: int):
@@ -421,7 +435,12 @@ def generate_invoice(case_id: int):
     if case.invoice:
         return jsonify({"ok": False, "error": "Invoice already exists."}), 400
 
-    sale_total = Decimal(str(case.sale.total_amount or 0))
+    sale = case.sale
+
+    sale_total = Decimal(str(sale.total_amount or 0))
+    amount_paid = Decimal(str(sale.amount_paid or 0))
+    balance_due = max(sale_total - amount_paid, Decimal("0.00"))
+
     if sale_total <= 0:
         return jsonify({"ok": False, "error": "Sale amount must be greater than zero."}), 400
 
@@ -430,28 +449,55 @@ def generate_invoice(case_id: int):
     try:
         invoice = Invoice(
             invoice_number=invoice_number,
-            buyer_id=case.sale.buyer_id,
+
+            # ✅ Core links
+            buyer_id=sale.buyer_id,
+            sale_id=sale.id,
+            contract_id=sale.contract_id or case.contract_id,
+            commercial_processing_batch_id=case.commercial_processing_batch_id,
+
+            # ✅ Dates
             issue_date=date.today(),
             due_date=date.today(),
+
+            # ✅ Status
             status="issued",
             issued_at=utcnow_naive(),
+
+            # ✅ Financials
             subtotal=sale_total,
             tax=Decimal("0.00"),
             total=sale_total,
-            notes=f"Generated from pipeline case {case.case_number}",
-            terms="Payment as per contract.",
+
+            # ✅ Notes (VERY IMPORTANT for your Sharjah case)
+            notes=(
+                f"Generated from pipeline case {case.case_number}. "
+                f"Deposit/Payments received: {sale.currency} {amount_paid:,.2f}. "
+                f"Balance due: {sale.currency} {balance_due:,.2f}."
+            ),
+
+            # ✅ Terms
+            terms=(
+                sale.contract.payment_terms
+                if sale.contract and getattr(sale.contract, "payment_terms", None)
+                else "Payment as per signed contract."
+            ),
+
             issued_by_user_id=current_user.id,
         )
 
         db.session.add(invoice)
         db.session.flush()
 
+        # ✅ Link back to case
         case.invoice_id = invoice.id
         case.invoiced_amount = sale_total
-        case.outstanding_amount = max(sale_total - Decimal(str(case.sale.amount_paid or 0)), Decimal("0.00"))
+        case.paid_amount = amount_paid
+        case.outstanding_amount = balance_due
 
         db.session.add(case)
 
+        # ✅ Recompute pipeline
         PipelineStatusService.recompute_case(
             case,
             actor_user_id=current_user.id,
@@ -472,7 +518,7 @@ def generate_invoice(case_id: int):
             "ok": False,
             "error": f"Could not generate invoice: {str(exc)}",
         }), 500
-
+    
 @pipeline_bp.post("/cases/<int:case_id>/confirm-delivery")
 @login_required
 def confirm_delivery(case_id: int):
