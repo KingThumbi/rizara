@@ -69,8 +69,11 @@ def deduct_inventory_lot(lot: InventoryLot, requested_kg: Decimal) -> None:
 
     if lot.available_kg <= 0:
         lot.available_kg = Decimal("0.00")
-        lot.status = "sold"
-
+        lot.status = "sold_out"
+    elif lot.available_kg < qty(lot.quantity_kg):
+        lot.status = "partially_sold"
+    else:
+        lot.status = "available"
 
 def add_invoice_items_from_inventory(
     invoice: Invoice,

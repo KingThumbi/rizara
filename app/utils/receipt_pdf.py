@@ -1,101 +1,116 @@
-# app/utils/receipt_pdf.py
+# /home/thumbi/rizara/app/utils/receipt_pdf.py
+
 from __future__ import annotations
 
 import io
-from datetime import date, datetime
-from decimal import Decimal
+from datetime import date
 
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_LEFT
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
-from reportlab.pdfgen import canvas
 from reportlab.platypus import Paragraph, Table, TableStyle
 
-
-def _fmt_date(value, with_time: bool = False):
-    if not value:
-        return "-"
-    if isinstance(value, datetime):
-        return value.strftime("%Y-%m-%d %H:%M") if with_time else value.strftime("%Y-%m-%d")
-    if isinstance(value, date):
-        return value.strftime("%Y-%m-%d")
-    return str(value)
-
-
-def _decimal(value) -> Decimal:
-    try:
-        return Decimal(str(value or 0))
-    except Exception:
-        return Decimal("0")
-
-
-def _money(value, currency="USD") -> str:
-    return f"{currency} {_decimal(value):,.2f}"
-
-
-def _safe_enum_value(value):
-    try:
-        return value.value
-    except Exception:
-        return str(value) if value is not None else "-"
-
-
-def _paragraph(text, style):
-    safe = str(text or "-").replace("&", "&amp;")
-    return Paragraph(safe, style)
+from .pdf_theme import (
+    NumberedCanvas,
+    draw_footer,
+    draw_header,
+    fmt_date,
+    decimalize,
+    money,
+    status_label,
+    safe_text,
+    p,
+    make_styles,
+    JUNGLE,
+    GOLD,
+    DARK,
+    GRAY,
+    LIGHT,
+    BORDER,
+    GREEN_SOFT,
+    GREEN_BORDER,
+    GOLD_SOFT,
+    TEXT_FONT,
+    TEXT_BOLD,
+    NUM_FONT,
+    NUM_BOLD,
+)
 
 
 def _receipt_number(payment) -> str:
     if getattr(payment, "receipt_number", None):
-        return payment.receipt_number
+        return str(payment.receipt_number)
 
     paid_at = getattr(payment, "paid_at", None)
     year = paid_at.year if paid_at else date.today().year
-    return f"RCT-{year}-{payment.id:05d}"
+
+    return f"RCT-{year}-{getattr(payment, 'id', 0):05d}"
+
+
+def _contract_document_ref(contract_document) -> str:
+    if not contract_document:
+        return "-"
+
+    return (
+        getattr(contract_document, "title", None)
+        or getattr(contract_document, "original_filename", None)
+        or getattr(contract_document, "stored_filename", None)
+        or f"DOC-{getattr(contract_document, 'id', '-')}"
+    )
+
+
+def _contract_ref(contract) -> str:
+    if not contract:
+        return "-"
+
+    return (
+        getattr(contract, "contract_number", None)
+        or getattr(contract, "reference", None)
+        or f"CONTRACT-{getattr(contract, 'id', '-')}"
+    )
+
+
+def _payment_method(payment) -> str:
+    method = getattr(payment, "method", None) or "-"
+    return str(method).replace("_", " ").title()
 
 
 def render_payment_receipt_pdf(invoice, payment) -> bytes:
-    buf = io.BytesIO()
-    c = canvas.Canvas(buf, pagesize=A4)
+    buffer = io.BytesIO()
+    c = NumberedCanvas(buffer, pagesize=A4, footer_func=draw_footer)
+
     width, height = A4
+    today = date.today()
 
-    JUNGLE = colors.HexColor("#1f6f54")
-    GOLD = colors.HexColor("#d4af37")
-    GRAY = colors.HexColor("#6b7280")
-    DARK = colors.HexColor("#111827")
-    LIGHT = colors.HexColor("#f9fafb")
-    BORDER = colors.HexColor("#e5e7eb")
-    GREEN_SOFT = colors.HexColor("#ecfdf5")
-    GREEN_BORDER = colors.HexColor("#bbf7d0")
+    styles = make_styles()
+    sample_styles = getSampleStyleSheet()
 
-    styles = getSampleStyleSheet()
-
-    small_gray = ParagraphStyle(
-        "SmallGray",
-        parent=styles["Normal"],
-        fontName="Helvetica",
+    label_style = ParagraphStyle(
+        "ReceiptLabel",
+        parent=sample_styles["Normal"],
+        fontName=TEXT_FONT,
         fontSize=8,
         leading=10,
         textColor=GRAY,
         alignment=TA_LEFT,
     )
 
-    small_dark = ParagraphStyle(
-        "SmallDark",
-        parent=styles["Normal"],
-        fontName="Helvetica",
+    value_style = ParagraphStyle(
+        "ReceiptValue",
+        parent=sample_styles["Normal"],
+        fontName=TEXT_FONT,
         fontSize=8,
         leading=10,
         textColor=DARK,
         alignment=TA_LEFT,
     )
 
-    confirm_style = ParagraphStyle(
-        "ConfirmText",
-        parent=styles["Normal"],
-        fontName="Helvetica",
+    note_style = ParagraphStyle(
+        "ReceiptNote",
+        parent=sample_styles["Normal"],
+        fontName=TEXT_FONT,
         fontSize=8.5,
         leading=10.5,
         textColor=GRAY,
@@ -104,73 +119,63 @@ def render_payment_receipt_pdf(invoice, payment) -> bytes:
 
     currency = getattr(invoice, "currency", None) or "USD"
     buyer = getattr(invoice, "buyer", None)
-    contract_doc = getattr(invoice, "contract_document", None)
+
+    contract_document = getattr(invoice, "contract_document", None)
     contract = getattr(invoice, "contract", None) or (
-        contract_doc.contract if contract_doc and getattr(contract_doc, "contract", None) else None
+        contract_document.contract
+        if contract_document and getattr(contract_document, "contract", None)
+        else None
     )
 
     receipt_no = _receipt_number(payment)
     invoice_no = getattr(invoice, "invoice_number", "-")
-    invoice_status = _safe_enum_value(getattr(invoice, "status", "-"))
+    invoice_status = status_label(getattr(invoice, "status", "-"))
 
-    amount = _decimal(getattr(payment, "amount", 0))
-    invoice_total = _decimal(getattr(invoice, "total", 0))
-    total_paid = _decimal(getattr(invoice, "deposit_paid", 0))
-    balance = _decimal(getattr(invoice, "balance", 0))
+    amount = decimalize(getattr(payment, "amount", 0))
+    invoice_total = decimalize(getattr(invoice, "total", 0))
+    total_paid = decimalize(getattr(invoice, "deposit_paid", 0))
+    balance = decimalize(getattr(invoice, "balance", 0))
 
-    # Header
-    c.setFillColor(JUNGLE)
-    c.rect(0, height - 32 * mm, width, 32 * mm, stroke=0, fill=1)
+    paid_at = getattr(payment, "paid_at", None)
 
-    c.setFillColor(colors.white)
-    c.setFont("Helvetica-Bold", 16)
-    c.drawString(18 * mm, height - 15 * mm, "Rizara Meats Ltd")
-
-    c.setFont("Helvetica", 9)
-    c.drawString(18 * mm, height - 22 * mm, "Ethical • Traceable • Halal")
-
-    c.setFont("Helvetica-Bold", 12)
-    c.drawRightString(width - 18 * mm, height - 14 * mm, "PAYMENT RECEIPT")
-
-    c.setFont("Helvetica", 9)
-    c.drawRightString(width - 18 * mm, height - 20 * mm, f"No: {receipt_no}")
-    c.drawRightString(
-        width - 18 * mm,
-        height - 25 * mm,
-        f"Invoice: {invoice_no} | Date: {_fmt_date(getattr(payment, 'paid_at', None), with_time=True)}",
+    draw_header(
+        c,
+        title="PAYMENT RECEIPT",
+        right_line_1=f"No: {receipt_no}",
+        right_line_2=f"Invoice: {invoice_no} | Date: {fmt_date(paid_at, with_time=True)}",
     )
 
     y = height - 44 * mm
 
-    # Payment highlight
+    # Payment received hero
     c.setFillColor(GREEN_SOFT)
     c.setStrokeColor(GREEN_BORDER)
-    c.roundRect(18 * mm, y - 25 * mm, width - 36 * mm, 25 * mm, 8, stroke=1, fill=1)
+    c.roundRect(18 * mm, y - 28 * mm, width - 36 * mm, 28 * mm, 8, stroke=1, fill=1)
 
     c.setFillColor(JUNGLE)
-    c.setFont("Helvetica-Bold", 10)
+    c.setFont(TEXT_BOLD, 10)
     c.drawString(24 * mm, y - 9 * mm, "PAYMENT RECEIVED")
 
-    c.setFont("Helvetica-Bold", 22)
-    c.drawString(24 * mm, y - 19 * mm, _money(amount, currency))
+    c.setFont(NUM_BOLD, 21)
+    c.drawString(24 * mm, y - 20 * mm, money(amount, currency))
 
     c.setFillColor(DARK)
-    c.setFont("Helvetica", 9)
+    c.setFont(TEXT_FONT, 9)
     c.drawRightString(width - 24 * mm, y - 10 * mm, f"Receipt Number: {receipt_no}")
     c.drawRightString(width - 24 * mm, y - 17 * mm, "Status: Confirmed")
 
-    y -= 38 * mm
+    y -= 40 * mm
 
-    # Buyer + payment details
+    # Received from + payment details
     c.setFillColor(DARK)
-    c.setFont("Helvetica-Bold", 11)
+    c.setFont(TEXT_BOLD, 11)
     c.drawString(18 * mm, y, "Received From")
     c.drawString(width / 2 + 2 * mm, y, "Payment Details")
     y -= 6 * mm
 
     left_x = 18 * mm
     right_x = width / 2 + 2 * mm
-    box_h = 42 * mm
+    box_h = 45 * mm
     left_w = width / 2 - 24 * mm
     right_w = width - right_x - 18 * mm
 
@@ -180,35 +185,40 @@ def render_payment_receipt_pdf(invoice, payment) -> bytes:
     c.roundRect(right_x, y - box_h, right_w, box_h, 6, stroke=1, fill=1)
 
     buyer_name = getattr(buyer, "name", "-") if buyer else "-"
-    buyer_email = getattr(buyer, "email", "") if buyer else ""
     buyer_phone = getattr(buyer, "phone", "") if buyer else ""
+    buyer_email = getattr(buyer, "email", "") if buyer else ""
     buyer_address = getattr(buyer, "address", "") if buyer else ""
 
     c.setFillColor(DARK)
-    c.setFont("Helvetica-Bold", 10)
+    c.setFont(TEXT_BOLD, 10)
     c.drawString(left_x + 4 * mm, y - 8 * mm, str(buyer_name)[:44])
 
-    c.setFont("Helvetica", 9)
-    line_y = y - 14 * mm
+    c.setFont(TEXT_FONT, 9)
+    buyer_y = y - 15 * mm
     for text in [buyer_phone, buyer_email, buyer_address]:
         if text:
-            c.drawString(left_x + 4 * mm, line_y, str(text)[:55])
-            line_y -= 5 * mm
+            c.drawString(left_x + 4 * mm, buyer_y, str(text)[:55])
+            buyer_y -= 6 * mm
 
     detail_rows = [
-        ("Method", (getattr(payment, "method", None) or "-").replace("_", " ").title()),
+        ("Method", _payment_method(payment)),
         ("Reference", getattr(payment, "reference", None) or "-"),
-        ("Payment Date", _fmt_date(getattr(payment, "paid_at", None), with_time=True)),
-        ("Invoice Status", str(invoice_status).replace("_", " ").title()),
+        ("Payment Date", fmt_date(paid_at, with_time=True)),
+        ("Invoice Status", invoice_status),
         ("Notes", getattr(payment, "notes", None) or "-"),
     ]
 
     detail_data = [
-        [_paragraph(f"{label}:", small_gray), _paragraph(value, small_dark)]
+        [p(f"{label}:", label_style), p(value, value_style)]
         for label, value in detail_rows
     ]
 
-    detail_table = Table(detail_data, colWidths=[25 * mm, right_w - 33 * mm], hAlign="LEFT")
+    detail_table = Table(
+        detail_data,
+        colWidths=[26 * mm, right_w - 34 * mm],
+        hAlign="LEFT",
+    )
+
     detail_table.setStyle(TableStyle([
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
         ("LEFTPADDING", (0, 0), (-1, -1), 0),
@@ -220,37 +230,38 @@ def render_payment_receipt_pdf(invoice, payment) -> bytes:
     _, detail_h = detail_table.wrapOn(c, right_w - 8 * mm, box_h - 8 * mm)
     detail_table.drawOn(c, right_x + 4 * mm, y - 6 * mm - detail_h)
 
-    y -= box_h + 13 * mm
+    y -= box_h + 14 * mm
 
     # Commercial reference
     c.setFillColor(DARK)
-    c.setFont("Helvetica-Bold", 11)
+    c.setFont(TEXT_BOLD, 11)
     c.drawString(18 * mm, y, "Commercial Reference")
     y -= 6 * mm
 
-    ref_box_h = 30 * mm
+    ref_box_h = 34 * mm
+
     c.setFillColor(colors.white)
     c.setStrokeColor(BORDER)
     c.roundRect(18 * mm, y - ref_box_h, width - 36 * mm, ref_box_h, 6, stroke=1, fill=1)
 
-    contract_ref = getattr(contract, "contract_number", "-") if contract else "-"
-
-    doc_ref = "-"
-    if contract_doc:
-        doc_ref = (
-            getattr(contract_doc, "title", None)
-            or getattr(contract_doc, "original_filename", None)
-            or getattr(contract_doc, "stored_filename", None)
-            or f"DOC-{contract_doc.id}"
-        )
-
-    ref_data = [
-        [_paragraph("Invoice:", small_gray), _paragraph(invoice_no, small_dark)],
-        [_paragraph("Contract:", small_gray), _paragraph(contract_ref, small_dark)],
-        [_paragraph("Document:", small_gray), _paragraph(doc_ref, small_dark)],
+    ref_rows = [
+        ("Invoice", invoice_no),
+        ("Contract", _contract_ref(contract)),
+        ("Document", _contract_document_ref(contract_document)),
+        ("Currency", currency),
     ]
 
-    ref_table = Table(ref_data, colWidths=[25 * mm, width - 69 * mm], hAlign="LEFT")
+    ref_data = [
+        [p(f"{label}:", label_style), p(value, value_style)]
+        for label, value in ref_rows
+    ]
+
+    ref_table = Table(
+        ref_data,
+        colWidths=[25 * mm, width - 69 * mm],
+        hAlign="LEFT",
+    )
+
     ref_table.setStyle(TableStyle([
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
         ("LEFTPADDING", (0, 0), (-1, -1), 0),
@@ -262,20 +273,37 @@ def render_payment_receipt_pdf(invoice, payment) -> bytes:
     _, ref_h = ref_table.wrapOn(c, width - 44 * mm, ref_box_h - 8 * mm)
     ref_table.drawOn(c, 22 * mm, y - 6 * mm - ref_h)
 
-    y -= ref_box_h + 12 * mm
+    y -= ref_box_h + 14 * mm
 
-    # Financial summary
-    box_w = 90 * mm
+    # Financial summary + confirmation
+    box_w = 92 * mm
     box_x = width - 18 * mm - box_w
-    box_y = y - 48 * mm
+    box_h = 50 * mm
+    box_y = y - box_h
+
+    note_x = 18 * mm
+    note_w = box_x - note_x - 10 * mm
+
+    c.setFillColor(colors.white)
+    c.setStrokeColor(BORDER)
+    c.roundRect(note_x, box_y, note_w, box_h, 6, stroke=1, fill=1)
+
+    c.setFillColor(DARK)
+    c.setFont(TEXT_BOLD, 10)
+    c.drawString(note_x + 4 * mm, y - 8 * mm, "Receipt Confirmation")
+
+    confirmation_text = (
+        "Payment received and recorded against this invoice. "
+        "Please retain this receipt for your records, reconciliation, and settlement follow-up."
+    )
+
+    confirm_para = Paragraph(safe_text(confirmation_text), note_style)
+    _, confirm_h = confirm_para.wrap(note_w - 8 * mm, box_h - 16 * mm)
+    confirm_para.drawOn(c, note_x + 4 * mm, y - 15 * mm - confirm_h)
 
     c.setFillColor(LIGHT)
     c.setStrokeColor(BORDER)
-    c.roundRect(box_x, box_y, box_w, 48 * mm, 6, stroke=1, fill=1)
-
-    label_x = box_x + 5 * mm
-    value_x = box_x + box_w - 5 * mm
-    row_y = y - 8 * mm
+    c.roundRect(box_x, box_y, box_w, box_h, 6, stroke=1, fill=1)
 
     totals = [
         ("Invoice Total", invoice_total, True),
@@ -284,47 +312,72 @@ def render_payment_receipt_pdf(invoice, payment) -> bytes:
         ("Remaining Balance", balance, True),
     ]
 
+    row_y = y - 9 * mm
+    label_x = box_x + 5 * mm
+    value_x = box_x + box_w - 5 * mm
+
     for label, value, bold in totals:
-        c.setFont("Helvetica-Bold" if bold else "Helvetica", 9)
         c.setFillColor(JUNGLE if label in {"This Payment", "Remaining Balance"} else DARK)
+        c.setFont(TEXT_BOLD if bold else TEXT_FONT, 9)
         c.drawString(label_x, row_y, label)
-        c.drawRightString(value_x, row_y, _money(value, currency))
-        row_y -= 9 * mm
 
-    # Wrapped confirmation note
-    note_x = 18 * mm
-    note_y = y - 8 * mm
-    note_w = box_x - note_x - 10 * mm
+        c.setFont(NUM_BOLD if bold else NUM_FONT, 9)
+        c.drawRightString(value_x, row_y, money(value, currency))
 
-    c.setFillColor(DARK)
-    c.setFont("Helvetica-Bold", 10)
-    c.drawString(note_x, note_y, "Receipt Confirmation")
-
-    confirmation_text = (
-        "Payment received and recorded against this invoice. "
-        "Please retain this receipt for your records and reconciliation."
-    )
-
-    confirm_para = Paragraph(confirmation_text, confirm_style)
-    _, confirm_h = confirm_para.wrap(note_w, 24 * mm)
-    confirm_para.drawOn(c, note_x, note_y - 6 * mm - confirm_h)
+        row_y -= 10 * mm
 
     y = box_y - 14 * mm
 
-    # Footer
-    c.setFillColor(colors.HexColor("#e5e7eb"))
-    c.rect(0, 0, width, 14 * mm, stroke=0, fill=1)
+    # Compact audit trail
+    audit_h = 28 * mm
 
-    c.setFillColor(colors.HexColor("#374151"))
-    c.setFont("Helvetica", 8)
-    c.drawString(18 * mm, 5 * mm, "Rizara Meats Ltd • Nairobi, Kenya • sales@rizarameats.co.ke")
+    if y - audit_h < 24 * mm:
+        c.showPage()
+        y = height - 24 * mm
 
-    c.setFillColor(colors.HexColor("#6b7280"))
-    c.drawRightString(width - 18 * mm, 5 * mm, f"Generated: {_fmt_date(date.today())}")
+    c.setFillColor(colors.white)
+    c.setStrokeColor(BORDER)
+    c.roundRect(18 * mm, y - audit_h, width - 36 * mm, audit_h, 6, stroke=1, fill=1)
+
+    c.setFillColor(DARK)
+    c.setFont(TEXT_BOLD, 10)
+    c.drawString(22 * mm, y - 8 * mm, "Audit Trail")
+
+    audit_data = [[
+        p("Receipt No.", styles["small_gray"]),
+        p("Invoice No.", styles["small_gray"]),
+        p("Payment Ref.", styles["small_gray"]),
+        p("As At", styles["small_gray"]),
+    ], [
+        p(receipt_no, styles["small_dark"]),
+        p(invoice_no, styles["small_dark"]),
+        p(getattr(payment, "reference", None) or "-", styles["small_dark"]),
+        p(fmt_date(today), styles["small_dark"]),
+    ]]
+
+    audit_table = Table(
+        audit_data,
+        colWidths=[42 * mm, 42 * mm, 58 * mm, 34 * mm],
+        hAlign="LEFT",
+    )
+
+    audit_table.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), LIGHT),
+        ("GRID", (0, 0), (-1, -1), 0.25, BORDER),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 5),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 5),
+        ("TOPPADDING", (0, 0), (-1, -1), 5),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+    ]))
+
+    _, audit_table_h = audit_table.wrapOn(c, width - 44 * mm, audit_h - 10 * mm)
+    audit_table.drawOn(c, 22 * mm, y - 12 * mm - audit_table_h)
 
     c.showPage()
     c.save()
 
-    pdf = buf.getvalue()
-    buf.close()
+    pdf = buffer.getvalue()
+    buffer.close()
+
     return pdf

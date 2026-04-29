@@ -5,7 +5,6 @@
 
 {% block body %}
 <div class="min-h-screen bg-gray-50">
-
   {% include "partials/admin_chrome.html" %}
 
   <main class="max-w-7xl mx-auto px-6 py-8">
@@ -60,6 +59,93 @@
             </div>
           </a>
         </div>
+      </div>
+    </section>
+
+    <!-- DECISION KPI CARDS -->
+    <section class="mb-8">
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+
+        <a href="{{ url_for('main.add_goat_aggregation') }}" class="dash-card">
+          <p class="text-sm text-gray-500">Available for Aggregation</p>
+          <p class="text-3xl font-bold text-jungle mt-2">
+            {{ stats.animals_available_total or 0 }}
+          </p>
+          <p class="text-xs text-gray-400 mt-2">
+            Goats {{ stats.goats_available or 0 }} · Sheep {{ stats.sheep_available or 0 }} · Cattle {{ stats.cattle_available or 0 }}
+          </p>
+        </a>
+
+        <a href="{{ url_for('main.animal_pipeline_view', animal_type='goat', status='processing') }}" class="dash-card">
+          <p class="text-sm text-gray-500">In Processing</p>
+          <p class="text-3xl font-bold text-jungle mt-2">
+            {{ stats.animals_processing_total or 0 }}
+          </p>
+          <p class="text-xs text-gray-400 mt-2">
+            Animals currently in slaughter / processing stage
+          </p>
+        </a>
+
+        <a href="{{ url_for('main.animal_pipeline_view', animal_type='goat', status='processed') }}" class="dash-card">
+          <p class="text-sm text-gray-500">Processed Stock</p>
+          <p class="text-3xl font-bold text-jungle mt-2">
+            {{ stats.animals_processed_total or 0 }}
+          </p>
+          <p class="text-xs text-gray-400 mt-2">
+            Ready for inventory, sale, or invoice flow
+          </p>
+        </a>
+
+        <a href="{{ url_for('processing.list_invoices') }}" class="dash-card">
+          <p class="text-sm text-gray-500">Outstanding Invoices</p>
+          <p class="text-3xl font-bold text-jungle mt-2">
+            {{ stats.invoices_outstanding or 0 }}
+          </p>
+          <p class="text-xs text-gray-400 mt-2">
+            Total invoices {{ stats.invoices_total or 0 }} · Partial {{ stats.invoices_partial or 0 }}
+          </p>
+        </a>
+
+        <a href="{{ url_for('main.animal_pipeline_view', animal_type='goat', status='sold') }}" class="dash-card">
+          <p class="text-sm text-gray-500">Sold Animals</p>
+          <p class="text-3xl font-bold text-jungle mt-2">
+            {{ stats.animals_sold_total or 0 }}
+          </p>
+          <p class="text-xs text-gray-400 mt-2">
+            Livestock already moved to commercial sale stage
+          </p>
+        </a>
+
+        <a href="{{ url_for('market_purchase.market_purchase_list') }}" class="dash-card">
+          <p class="text-sm text-gray-500">Market Purchases</p>
+          <p class="text-3xl font-bold text-jungle mt-2">
+            {{ stats.market_purchases_total or 0 }}
+          </p>
+          <p class="text-xs text-gray-400 mt-2">
+            Procurement records needing costing review
+          </p>
+        </a>
+
+        <a href="{{ url_for('admin.documents_list') }}" class="dash-card">
+          <p class="text-sm text-gray-500">Commercial Documents</p>
+          <p class="text-3xl font-bold text-jungle mt-2">
+            {{ stats.documents_total or 0 }}
+          </p>
+          <p class="text-xs text-gray-400 mt-2">
+            Contracts, LOIs, and signed buyer records
+          </p>
+        </a>
+
+        <a href="{{ url_for('pipeline_pages.pipeline_dashboard') }}" class="dash-card">
+          <p class="text-sm text-gray-500">Pipeline Cases</p>
+          <p class="text-3xl font-bold text-jungle mt-2">
+            {{ stats.pipeline_cases_total or 0 }}
+          </p>
+          <p class="text-xs text-gray-400 mt-2">
+            Contract → invoice → payment → delivery cases
+          </p>
+        </a>
+
       </div>
     </section>
 
@@ -121,80 +207,30 @@
       </div>
     </section>
 
-    <!-- KPI CARDS -->
-    <section class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-      <a href="{{ url_for('main.add_farmer') }}" class="dash-card">
-        <p class="text-sm text-gray-500">Farmers</p>
-        <p class="text-3xl font-bold text-jungle mt-2">{{ stats.farmers or 0 }}</p>
-      </a>
-
-      <a href="{{ url_for('main.animal_pipeline_view', animal_type='goat', status='on_farm') }}" class="dash-card">
-        <p class="text-sm text-gray-500">Goats</p>
-        <p class="text-3xl font-bold text-jungle mt-2">{{ stats.goats or 0 }}</p>
-      </a>
-
-      <a href="{{ url_for('main.animal_pipeline_view', animal_type='sheep', status='on_farm') }}" class="dash-card">
-        <p class="text-sm text-gray-500">Sheep</p>
-        <p class="text-3xl font-bold text-jungle mt-2">{{ stats.sheep or 0 }}</p>
-      </a>
-
-      <a href="{{ url_for('market_purchase.market_purchase_list') }}" class="dash-card">
-        <p class="text-sm text-gray-500">Market Purchases</p>
-        <p class="text-3xl font-bold text-jungle mt-2">{{ stats.market_purchases or 0 }}</p>
-      </a>
-      <a href="{{ url_for('processing.list_invoices') }}" class="dash-card">
-        <p class="text-sm text-gray-500">Invoices</p>
-        <p class="text-3xl font-bold text-jungle mt-2">
-          {{ stats.invoices or 0 }}
-        </p>
-      </a>
-    </section>
-
     <!-- MODULES -->
     <section class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
 
       <div class="module-panel">
         <h2 class="text-xl font-bold text-gray-950">Commercial</h2>
         <p class="text-sm text-gray-500 mt-1">
-          Contracts, buyers, sales, invoicing and payments.
+          Contracts, buyers, sales, invoicing, and payments.
         </p>
 
         <div class="mt-5 grid grid-cols-1 gap-3">
-
-          <!-- Control Tower -->
-          <a href="{{ url_for('pipeline_pages.pipeline_dashboard') }}" class="module-link">
-            Pipeline Control Tower
-          </a>
-
-          <!-- Contracts & Docs -->
-          <a href="{{ url_for('admin.documents_list') }}" class="module-link">
-            Documents
-          </a>
-
-          <a href="{{ url_for('admin.documents_new') }}" class="module-link">
-            New Document
-          </a>
-
-          <!-- Buyers -->
-          <a href="{{ url_for('admin.buyers_list') }}" class="module-link">
-            Buyers
-          </a>
-
-          <a href="{{ url_for('admin.buyers_new') }}" class="module-link">
-            New Buyer
-          </a>
-
-          <!-- ✅ NEW: Invoices -->
-          <a href="{{ url_for('processing.list_invoices') }}" class="module-link">
-            Invoices
-          </a>
-
+          <a href="{{ url_for('pipeline_pages.pipeline_dashboard') }}" class="module-link">Pipeline Control Tower</a>
+          <a href="{{ url_for('admin.documents_list') }}" class="module-link">Documents</a>
+          <a href="{{ url_for('admin.documents_new') }}" class="module-link">New Document</a>
+          <a href="{{ url_for('admin.buyers_list') }}" class="module-link">Buyers</a>
+          <a href="{{ url_for('admin.buyers_new') }}" class="module-link">New Buyer</a>
+          <a href="{{ url_for('processing.list_invoices') }}" class="module-link">Invoices</a>
         </div>
       </div>
 
       <div class="module-panel">
         <h2 class="text-xl font-bold text-gray-950">Operations</h2>
-        <p class="text-sm text-gray-500 mt-1">Procurement, aggregation and processing.</p>
+        <p class="text-sm text-gray-500 mt-1">
+          Procurement, aggregation, and processing.
+        </p>
 
         <div class="mt-5 grid grid-cols-1 gap-3">
           <a href="{{ url_for('market_purchase.market_purchase_new') }}" class="module-link">New Market Purchase</a>
@@ -210,7 +246,9 @@
 
       <div class="module-panel">
         <h2 class="text-xl font-bold text-gray-950">Administration</h2>
-        <p class="text-sm text-gray-500 mt-1">Users, messages and requests.</p>
+        <p class="text-sm text-gray-500 mt-1">
+          Users, messages, and buyer requests.
+        </p>
 
         <div class="mt-5 grid grid-cols-1 gap-3">
           <a href="{{ url_for('auth.admin_list_users') }}" class="module-link">Users</a>
@@ -227,7 +265,9 @@
       <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-5">
         <div>
           <h2 class="text-xl font-bold text-gray-950">Livestock Pipeline</h2>
-          <p class="text-sm text-gray-500">Click any status to view records.</p>
+          <p class="text-sm text-gray-500">
+            Click any status to view records.
+          </p>
         </div>
       </div>
 
@@ -235,12 +275,17 @@
         {% for animal, pipeline in [('goat', goat_pipeline), ('sheep', sheep_pipeline), ('cattle', cattle_pipeline)] %}
           <div>
             <h3 class="font-bold text-jungle mb-3">{{ animal.capitalize() }}</h3>
+
             <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
               {% for status, label in [('on_farm','On Farm'), ('aggregated','Aggregated'), ('processing','Processing'), ('processed','Processed'), ('sold','Sold')] %}
                 <a href="{{ url_for('main.animal_pipeline_view', animal_type=animal, status=status) }}"
                    class="rounded-2xl border border-gray-200 bg-gray-50 p-4 hover:bg-white hover:shadow-sm transition">
-                  <p class="text-xs uppercase tracking-wide text-gray-500 font-semibold">{{ label }}</p>
-                  <p class="text-2xl font-bold text-gray-950 mt-1">{{ pipeline[status] or 0 }}</p>
+                  <p class="text-xs uppercase tracking-wide text-gray-500 font-semibold">
+                    {{ label }}
+                  </p>
+                  <p class="text-2xl font-bold text-gray-950 mt-1">
+                    {{ pipeline[status] or 0 }}
+                  </p>
                 </a>
               {% endfor %}
             </div>
@@ -251,10 +296,13 @@
 
     <!-- RECENT ACTIVITY -->
     <section class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+
       <div class="rounded-[2rem] bg-white border border-gray-200 shadow-sm p-6">
         <div class="flex items-center justify-between mb-4">
           <h2 class="text-lg font-bold text-gray-950">Recent Contact Messages</h2>
-          <a class="text-sm text-jungle hover:underline" href="{{ url_for('main.contact_messages') }}">View all</a>
+          <a class="text-sm text-jungle hover:underline" href="{{ url_for('main.contact_messages') }}">
+            View all
+          </a>
         </div>
 
         {% if stats.latest_contacts %}
@@ -263,7 +311,9 @@
               <div class="rounded-2xl bg-gray-50 border border-gray-100 p-4">
                 <p class="font-semibold text-gray-950">{{ msg.name }}</p>
                 <p class="text-sm text-gray-500">{{ msg.email }}</p>
-                <p class="text-xs text-gray-400 mt-1">{{ msg.created_at.strftime('%Y-%m-%d') if msg.created_at else '-' }}</p>
+                <p class="text-xs text-gray-400 mt-1">
+                  {{ msg.created_at.strftime('%Y-%m-%d') if msg.created_at else '-' }}
+                </p>
               </div>
             {% endfor %}
           </div>
@@ -275,7 +325,9 @@
       <div class="rounded-[2rem] bg-white border border-gray-200 shadow-sm p-6">
         <div class="flex items-center justify-between mb-4">
           <h2 class="text-lg font-bold text-gray-950">Recent Order Requests</h2>
-          <a class="text-sm text-jungle hover:underline" href="{{ url_for('main.order_requests') }}">View all</a>
+          <a class="text-sm text-jungle hover:underline" href="{{ url_for('main.order_requests') }}">
+            View all
+          </a>
         </div>
 
         {% if stats.latest_orders %}
@@ -284,7 +336,9 @@
               <div class="rounded-2xl bg-gray-50 border border-gray-100 p-4">
                 <p class="font-semibold text-gray-950">{{ order.buyer_name }}</p>
                 <p class="text-sm text-gray-500">{{ order.product }} · {{ order.quantity }}</p>
-                <p class="text-xs text-gray-400 mt-1">{{ order.created_at.strftime('%Y-%m-%d') if order.created_at else '-' }}</p>
+                <p class="text-xs text-gray-400 mt-1">
+                  {{ order.created_at.strftime('%Y-%m-%d') if order.created_at else '-' }}
+                </p>
               </div>
             {% endfor %}
           </div>
@@ -292,6 +346,7 @@
           <p class="text-gray-500 text-sm">No order requests yet.</p>
         {% endif %}
       </div>
+
     </section>
 
   </main>
@@ -351,11 +406,6 @@
 </style>
 
 <script>
-function pipelineMoney(value, currency = "") {
-  const n = Number(value || 0);
-  return `${currency ? currency + " " : ""}${n.toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
-}
-
 function countStatus(grouped, status) {
   return grouped && grouped[status] ? grouped[status].length : 0;
 }
@@ -368,37 +418,31 @@ function renderPipelineIntelligence(data) {
     {
       label: "Awaiting Signature",
       value: countStatus(grouped, "awaiting_signature"),
-      tone: "amber",
       href: "/admin/pipeline"
     },
     {
       label: "Awaiting Authorization",
       value: countStatus(grouped, "awaiting_authorization"),
-      tone: "red",
       href: "/admin/pipeline"
     },
     {
       label: "Awaiting Invoice",
       value: countStatus(grouped, "awaiting_invoice"),
-      tone: "purple",
       href: "/admin/pipeline"
     },
     {
       label: "Payment Pending",
       value: countStatus(grouped, "invoiced") + countStatus(grouped, "partially_paid"),
-      tone: "blue",
       href: "/admin/pipeline"
     },
     {
       label: "Delivery Pending",
       value: countStatus(grouped, "paid") + countStatus(grouped, "in_delivery"),
-      tone: "teal",
       href: "/admin/pipeline"
     },
     {
       label: "Exceptions",
       value: summary.exception_cases || 0,
-      tone: "red",
       href: "/admin/pipeline"
     }
   ];

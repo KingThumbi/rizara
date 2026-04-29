@@ -412,6 +412,21 @@ class ContractDocument(db.Model):
     def __repr__(self) -> str:
         return f"<ContractDocument {self.id} {self.document_type} {self.title}>"
     
+processing_batch_aggregation_batches = db.Table(
+    "processing_batch_aggregation_batches",
+    db.Column(
+        "processing_batch_id",
+        db.Integer,
+        db.ForeignKey("commercial_processing_batches.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+    db.Column(
+        "aggregation_batch_id",
+        db.Integer,
+        db.ForeignKey("aggregation_batch.id", ondelete="RESTRICT"),
+        primary_key=True,
+    ),
+)
 
 class CommercialProcessingBatch(db.Model):
     __tablename__ = "commercial_processing_batches"
@@ -469,10 +484,15 @@ class CommercialProcessingBatch(db.Model):
         lazy="select",
     )
 
+    aggregation_batches = db.relationship(
+        "AggregationBatch",
+        secondary=processing_batch_aggregation_batches,
+        backref=db.backref("processing_batches", lazy="dynamic"),
+    )
+
     def __repr__(self) -> str:
         return f"<CommercialProcessingBatch {self.id} {self.batch_number}>"
     
-
 class ProcessingBatchOutput(db.Model):
     __tablename__ = "processing_batch_outputs"
 
@@ -603,7 +623,6 @@ class Sale(db.Model):
 
     def __repr__(self) -> str:
         return f"<Sale {self.id} {self.sale_number}>"
-    
 
 class SaleItem(db.Model):
     __tablename__ = "sale_items"

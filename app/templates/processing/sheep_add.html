@@ -25,26 +25,21 @@
   <nav class="bg-jungle text-white px-6 py-4 flex justify-between items-center shadow">
     <div class="text-xl font-bold tracking-wide">Rizara Meats</div>
     <div class="flex items-center gap-3">
-      <a
-        href="{{ url_for('main.dashboard') }}"
-        class="bg-gold text-jungle font-semibold px-4 py-2 rounded hover:bg-yellow-400 transition"
-      >
+      <a href="{{ url_for('main.dashboard') }}" class="bg-gold text-jungle font-semibold px-4 py-2 rounded hover:bg-yellow-400 transition">
         ← Back to Dashboard
       </a>
-      <a
-        href="{{ url_for('auth.logout') }}"
-        class="bg-white/10 text-white font-semibold px-4 py-2 rounded hover:bg-white/20 transition"
-      >
+      <a href="{{ url_for('auth.logout') }}" class="bg-white/10 text-white font-semibold px-4 py-2 rounded hover:bg-white/20 transition">
         Logout
       </a>
     </div>
   </nav>
 
-  <main class="max-w-4xl mx-auto px-6 py-10">
+  <main class="max-w-6xl mx-auto px-6 py-10">
     <div class="mb-8">
-      <h1 class="text-3xl font-bold text-jungle">Create Sheep Processing Batch</h1>
-      <p class="text-gray-600 mt-1">
-        Create a processing batch from a selected <b>sheep aggregation batch</b>.
+      <p class="text-sm font-semibold uppercase tracking-wide text-gold">Processing</p>
+      <h1 class="text-3xl font-bold text-jungle mt-1">Create Sheep Processing Batch</h1>
+      <p class="text-gray-600 mt-2">
+        Select one or more sheep aggregation batches. Rizara will move all eligible sheep from the selected batches into one processing batch.
       </p>
     </div>
 
@@ -52,16 +47,7 @@
       {% if messages %}
         <div class="mb-6 space-y-3">
           {% for category, message in messages %}
-            <div
-              class="px-4 py-3 rounded-lg
-              {% if category == 'success' %}
-                bg-green-100 text-green-800
-              {% elif category == 'danger' or category == 'error' %}
-                bg-red-100 text-red-800
-              {% else %}
-                bg-gray-100 text-gray-800
-              {% endif %}"
-            >
+            <div class="px-4 py-3 rounded-2xl {% if category == 'success' %}bg-green-100 text-green-800{% elif category == 'danger' or category == 'error' %}bg-red-100 text-red-800{% else %}bg-gray-100 text-gray-800{% endif %}">
               {{ message }}
             </div>
           {% endfor %}
@@ -69,92 +55,102 @@
       {% endif %}
     {% endwith %}
 
-    <div class="bg-white rounded-xl shadow p-8">
-      <form method="POST" class="space-y-6">
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+    <div class="bg-white rounded-3xl shadow-sm border border-gray-100 p-8">
+      <form method="POST" class="space-y-8">
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-5">
           <div>
-            <label for="facility" class="block text-sm font-semibold text-gray-700 mb-1">
-              Processing Facility
-            </label>
-            <input
-              type="text"
-              name="facility"
-              id="facility"
-              required
-              class="w-full border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-jungle"
-            />
+            <label for="facility" class="block text-sm font-semibold text-gray-700 mb-1">Processing Facility</label>
+            <input type="text" name="facility" id="facility" required class="w-full border border-gray-300 rounded-2xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-jungle" />
           </div>
 
           <div>
             <label for="slaughter_date" class="block text-sm font-semibold text-gray-700 mb-1">
               Slaughter Date <span class="text-gray-400">(optional)</span>
             </label>
-            <input
-              type="date"
-              name="slaughter_date"
-              id="slaughter_date"
-              value="{{ date.today().isoformat() }}"
-              class="w-full border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-jungle"
-            />
+            <input type="date" name="slaughter_date" id="slaughter_date" value="{{ date.today().isoformat() }}" class="w-full border border-gray-300 rounded-2xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-jungle" />
+          </div>
+
+          <div>
+            <label for="halal_cert_ref" class="block text-sm font-semibold text-gray-700 mb-1">
+              Halal Certificate Reference <span class="text-gray-400">(optional)</span>
+            </label>
+            <input type="text" name="halal_cert_ref" id="halal_cert_ref" class="w-full border border-gray-300 rounded-2xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-jungle" />
           </div>
         </div>
 
-        <div>
-          <label for="halal_cert_ref" class="block text-sm font-semibold text-gray-700 mb-1">
-            Halal Certificate Reference <span class="text-gray-400">(optional)</span>
-          </label>
-          <input
-            type="text"
-            name="halal_cert_ref"
-            id="halal_cert_ref"
-            class="w-full border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-jungle"
-          />
-        </div>
+        <section>
+          <div class="flex flex-col md:flex-row md:items-end md:justify-between gap-4 mb-5">
+            <div>
+              <h2 class="text-xl font-bold text-gray-900">Select Sheep Aggregation Batches</h2>
+              <p class="text-sm text-gray-500 mt-1">
+                You are selecting aggregation batches, not individual animals.
+              </p>
+            </div>
 
-        <div>
-          <label for="aggregation_batch_id" class="block text-sm font-semibold text-gray-700 mb-2">
-            Select Sheep Aggregation Batch
-          </label>
+            <div class="rounded-3xl border border-gray-200 bg-gray-50 px-5 py-4 text-right">
+              <p class="text-xs uppercase tracking-wide text-gray-400">Selected Summary</p>
+              <p class="text-sm font-semibold text-jungle mt-1">
+                <span id="selectedBatchCount">0</span> batches ·
+                <span id="selectedAnimalCount">0</span> animals
+              </p>
+              <p class="text-xs text-gray-500">
+                Est. <span id="selectedKg">0</span> kg live weight
+              </p>
+            </div>
+          </div>
 
           {% if not batches %}
-            <div class="bg-gray-100 text-gray-700 px-4 py-3 rounded-lg">
+            <div class="rounded-3xl border border-gray-200 bg-gray-50 px-5 py-5 text-gray-600">
               No sheep aggregation batches are available for processing.
             </div>
           {% else %}
-            <select
-              name="aggregation_batch_id"
-              id="aggregation_batch_id"
-              required
-              class="w-full border border-gray-300 rounded-lg px-4 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-jungle"
-            >
-              <option value="">Select aggregation batch</option>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
               {% for batch in batches %}
-                <option value="{{ batch.id }}">
-                  Batch #{{ batch.id }} — {{ batch.site_name }} — {{ batch.date_received or "No date" }}
-                </option>
-              {% endfor %}
-            </select>
+                {% set animal_count = batch.animal_count|default(batch.total_animals|default(0), true) %}
+                {% set estimated_kg = batch.estimated_kg|default(batch.estimated_live_weight_kg|default(0), true) %}
 
-            <p class="text-xs text-gray-500 mt-2">
-              All eligible sheep in the selected aggregation batch will be moved to <b>processing</b>.
-            </p>
+                <label class="group relative cursor-pointer rounded-3xl border border-gray-200 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:border-jungle/40 hover:shadow-md">
+                  <input type="checkbox" name="aggregation_batch_ids" value="{{ batch.id }}" data-animals="{{ animal_count }}" data-kg="{{ estimated_kg }}" class="peer sr-only batch-picker" />
+
+                  <div class="absolute right-4 top-4 h-7 w-7 rounded-full border border-gray-300 bg-white flex items-center justify-center peer-checked:border-jungle peer-checked:bg-jungle">
+                    <span class="text-white text-sm font-bold opacity-0 peer-checked:opacity-100">✓</span>
+                  </div>
+
+                  <div class="pr-10">
+                    <p class="text-xs font-semibold uppercase tracking-wide text-gray-400">Aggregation Batch</p>
+                    <h3 class="mt-1 text-lg font-bold text-gray-900">Batch #{{ batch.id }}</h3>
+                    <p class="mt-1 text-sm text-gray-500">
+                      {{ batch.site_name or "No site recorded" }} · {{ batch.date_received or "No date" }}
+                    </p>
+                  </div>
+
+                  <div class="mt-5 grid grid-cols-2 gap-3">
+                    <div class="rounded-2xl bg-gray-50 p-4">
+                      <p class="text-xs text-gray-400">Animals</p>
+                      <p class="text-xl font-bold text-gray-900">{{ animal_count }}</p>
+                    </div>
+                    <div class="rounded-2xl bg-gray-50 p-4">
+                      <p class="text-xs text-gray-400">Est. KG</p>
+                      <p class="text-xl font-bold text-gray-900">{{ estimated_kg }}</p>
+                    </div>
+                  </div>
+
+                  <div class="mt-4 rounded-2xl bg-jungle/5 px-4 py-3 text-xs text-jungle">
+                    Selecting this batch moves all eligible sheep in it to processing.
+                  </div>
+                </label>
+              {% endfor %}
+            </div>
           {% endif %}
-        </div>
+        </section>
 
         <div class="flex justify-end gap-4 pt-2">
-          <a
-            href="{{ url_for('main.dashboard') }}"
-            class="px-5 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-100 transition"
-          >
+          <a href="{{ url_for('main.dashboard') }}" class="px-5 py-3 rounded-2xl border border-gray-300 text-gray-700 hover:bg-gray-100 transition">
             Cancel
           </a>
 
-          <button
-            type="submit"
-            {% if not batches %}disabled{% endif %}
-            class="px-6 py-2 rounded-lg bg-jungle text-white font-semibold hover:bg-jungleLight transition disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            Create Batch
+          <button type="submit" {% if not batches %}disabled{% endif %} class="px-6 py-3 rounded-2xl bg-jungle text-white font-semibold hover:bg-jungleLight transition disabled:opacity-50 disabled:cursor-not-allowed">
+            Create Processing Batch
           </button>
         </div>
       </form>
@@ -164,4 +160,29 @@
   <footer class="text-center text-sm text-gray-500 py-6">
     © {{ current_year or 2026 }} Rizara Meats Ltd — Secure • Traceable • Halal
   </footer>
+
+  <script>
+    const batchPickers = document.querySelectorAll(".batch-picker");
+
+    function updateBatchSummary() {
+      let selectedBatches = 0;
+      let selectedAnimals = 0;
+      let selectedKg = 0;
+
+      batchPickers.forEach((picker) => {
+        if (picker.checked) {
+          selectedBatches += 1;
+          selectedAnimals += Number(picker.dataset.animals || 0);
+          selectedKg += Number(picker.dataset.kg || 0);
+        }
+      });
+
+      document.getElementById("selectedBatchCount").textContent = selectedBatches;
+      document.getElementById("selectedAnimalCount").textContent = selectedAnimals.toLocaleString();
+      document.getElementById("selectedKg").textContent = selectedKg.toLocaleString();
+    }
+
+    batchPickers.forEach((picker) => picker.addEventListener("change", updateBatchSummary));
+    updateBatchSummary();
+  </script>
 {% endblock %}

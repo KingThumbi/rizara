@@ -102,33 +102,48 @@ def register_processing_routes(animal_type: str, template_add: str):
         facility = (request.form.get("facility") or "").strip()
         slaughter_date = parse_date(request.form.get("slaughter_date"))
         halal_cert_ref = (request.form.get("halal_cert_ref") or "").strip() or None
-        aggregation_batch_id = parse_int(request.form.get("aggregation_batch_id"))
+
+        aggregation_batch_ids = [
+            parse_int(batch_id)
+            for batch_id in request.form.getlist("aggregation_batch_ids")
+        ]
+        aggregation_batch_ids = [
+            batch_id for batch_id in aggregation_batch_ids if batch_id
+        ]
 
         if not facility:
             flash("Facility is required.", "danger")
             return redirect(request.url)
 
-        if not aggregation_batch_id:
-            flash("Select an aggregation batch.", "danger")
+        if not aggregation_batch_ids:
+            flash("Select at least one aggregation batch.", "danger")
             return redirect(request.url)
 
-        source_batch = db.session.get(AggregationBatch, aggregation_batch_id)
-        if source_batch is None:
-            flash("Selected aggregation batch was not found.", "danger")
-            return redirect(request.url)
+        source_batches = (
+            AggregationBatch.query
+            .filter(
+                AggregationBatch.id.in_(aggregation_batch_ids),
+                AggregationBatch.animal_type == animal_type,
+                AggregationBatch.is_locked.is_(False),
+            )
+            .order_by(AggregationBatch.created_at.asc())
+            .all()
+        )
 
-        if (source_batch.animal_type or "").strip().lower() != animal_type:
-            flash("Selected aggregation batch does not match the processing animal type.", "danger")
-            return redirect(request.url)
-
-        if source_batch.is_locked:
-            flash("Selected aggregation batch is locked and cannot be processed.", "danger")
+        if len(source_batches) != len(set(aggregation_batch_ids)):
+            flash(
+                "One or more selected aggregation batches were not found, "
+                "locked, or do not match the processing animal type.",
+                "danger",
+            )
             return redirect(request.url)
 
         animals = (
             Model.query
             .filter(
-                Model.aggregation_batch_id == source_batch.id,
+                Model.aggregation_batch_id.in_(
+                    [batch.id for batch in source_batches]
+                ),
                 Model.status == "aggregated",
                 Model.is_active.is_(True),
             )
@@ -138,7 +153,7 @@ def register_processing_routes(animal_type: str, template_add: str):
 
         if not animals:
             flash(
-                f"No eligible {label.lower()} were found in the selected aggregation batch.",
+                f"No eligible {label.lower()} were found in the selected aggregation batches.",
                 "danger",
             )
             return redirect(request.url)
@@ -150,6 +165,7 @@ def register_processing_routes(animal_type: str, template_add: str):
             halal_cert_ref=halal_cert_ref,
             created_by_user_id=current_user.id,
         )
+
         db.session.add(processing_batch)
 
         relation = getattr(processing_batch, relation_name)
@@ -160,19 +176,30 @@ def register_processing_routes(animal_type: str, template_add: str):
             relation.append(animal)
             attached_count += 1
 
-        source_batch.is_locked = True
-        source_batch.locked_at = utcnow_naive()
+        for source_batch in source_batches:
+            source_batch.is_locked = True
+            source_batch.locked_at = utcnow_naive()
 
         if not commit_or_rollback(f"Create {label} processing batch"):
             return redirect(request.url)
 
+        batch_numbers = ", ".join(
+            f"#{batch.id}" for batch in source_batches
+        )
+
         flash(
-            f"{label} processing batch created successfully from aggregation batch "
-            f"#{source_batch.id} ({attached_count} animals).",
+            f"{label} processing batch created successfully from "
+            f"{len(source_batches)} aggregation batches "
+            f"({batch_numbers}) with {attached_count} animals.",
             "success",
         )
-        return redirect(url_for("processing.view_invoiceable_batch", batch_id=processing_batch.id))
 
+        return redirect(
+            url_for(
+                "processing.view_invoiceable_batch",
+                batch_id=processing_batch.id,
+            )
+        )
 
 register_processing_routes("goat", "processing/batch_add.html")
 register_processing_routes("sheep", "processing/batch_add.html")
@@ -195,7 +222,6 @@ def view_invoiceable_batch(batch_id):
         invoice=invoice,
         current_year=datetime.utcnow().year,
     )
-
 
 @processing_bp.route("/processing/<int:batch_id>/yield", methods=["GET", "POST"])
 @admin_required
@@ -233,9 +259,21 @@ def record_processing_yield(batch_id):
             recorded_by_user_id=current_user.id,
         )
 
+        processed_count = 0
+
         for animal in animals_in_processing_batch(batch):
-            if (animal.status or "").strip().lower() == "processing":
+            current_status = (animal.status or "").strip().lower()
+
+            if current_status in ("aggregated", "processing"):
                 animal.status = "processed"
+
+                if hasattr(animal, "processed_at"):
+                    animal.processed_at = datetime.utcnow()
+
+                if hasattr(animal, "processed_by_user_id"):
+                    animal.processed_by_user_id = current_user.id
+
+                processed_count += 1
 
         db.session.add(yield_record)
 
@@ -262,7 +300,8 @@ def record_processing_yield(batch_id):
             return redirect(request.url)
 
         flash(
-            "Processing yield recorded successfully and inventory lot created.",
+            f"Processing yield recorded successfully. "
+            f"{processed_count} animals marked as processed and inventory lot updated.",
             "success",
         )
 

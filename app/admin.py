@@ -19,7 +19,19 @@ from zoneinfo import ZoneInfo
 
 from .constants.roles import ROLES
 from app.extensions import db
-from app.models import Buyer, Document, DocumentSignature, User
+from app.models import (
+    Buyer,
+    Document,
+    DocumentSignature,
+    User,
+    Farmer,
+    Goat,
+    Sheep,
+    Cattle,
+    Invoice,
+    PipelineCase,
+)
+
 from .utils.auth import allowed_roles_for
 from .utils.guards import admin_required
 
@@ -91,10 +103,58 @@ def _safe_filename(s: str) -> str:
 # Dashboard
 # -------------------------------------------------------------------
 @admin_bp.route("/", methods=["GET"])
+@admin_bp.route("/dashboard", methods=["GET"])
 @admin_required
 def dashboard():
-    return render_template("admin/dashboard.html")
+    def available_for_aggregation(Model):
+        return Model.query.filter(
+            Model.is_active.is_(True),
+            Model.status.in_(["available", "procured", "purchased", "on_farm"]),
+            Model.aggregation_batch_id.is_(None),
+        ).count()
 
+    def pipeline_counts(Model):
+        return {
+            "on_farm": Model.query.filter(
+                Model.status.in_(["on_farm", "available", "procured", "purchased"])
+            ).count(),
+            "aggregated": Model.query.filter(Model.status == "aggregated").count(),
+            "processing": Model.query.filter(Model.status == "processing").count(),
+            "processed": Model.query.filter(Model.status == "processed").count(),
+            "sold": Model.query.filter(Model.status == "sold").count(),
+        }
+
+    stats = {
+        "farmers_total": Farmer.query.count(),
+
+        "goats_total": Goat.query.count(),
+        "goats_available": available_for_aggregation(Goat),
+
+        "sheep_total": Sheep.query.count(),
+        "sheep_available": available_for_aggregation(Sheep),
+
+        "cattle_total": Cattle.query.count(),
+        "cattle_available": available_for_aggregation(Cattle),
+
+        "invoices_total": Invoice.query.count(),
+        "invoices_issued": Invoice.query.filter(Invoice.status == "issued").count(),
+        "invoices_partial": Invoice.query.filter(Invoice.status == "partially_paid").count(),
+
+        "pipeline_cases_total": PipelineCase.query.count(),
+        "documents_total": Document.query.count(),
+
+        "market_purchases_total": 0,
+        "latest_contacts": [],
+        "latest_orders": [],
+    }
+
+    return render_template(
+        "admin/dashboard.html",
+        stats=stats,
+        goat_pipeline=pipeline_counts(Goat),
+        sheep_pipeline=pipeline_counts(Sheep),
+        cattle_pipeline=pipeline_counts(Cattle),
+    )
 
 # -------------------------------------------------------------------
 # Roles API
