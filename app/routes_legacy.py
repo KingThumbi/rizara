@@ -388,51 +388,119 @@ def dashboard():
 @main.route("/admin/dashboard")
 @admin_required
 def admin_dashboard():
+    def available_for_aggregation(Model) -> int:
+        return Model.query.filter(
+            Model.is_active.is_(True),
+            Model.status.in_(["available", "procured", "purchased", "on_farm"]),
+            Model.aggregation_batch_id.is_(None),
+        ).count()
+
+    def ready_for_processing(Model, animal_type: str) -> int:
+        return (
+            db.session.query(Model)
+            .join(AggregationBatch, Model.aggregation_batch_id == AggregationBatch.id)
+            .filter(
+                AggregationBatch.animal_type == animal_type,
+                AggregationBatch.is_locked.is_(False),
+                Model.status == "aggregated",
+                Model.is_active.is_(True),
+            )
+            .count()
+        )
+
+    def count_by_status(Model, status: str) -> int:
+        return Model.query.filter(Model.status == status).count()
+
+    def pipeline_counts(Model) -> dict:
+        return {
+            "on_farm": Model.query.filter(
+                Model.status.in_(["on_farm", "available", "procured", "purchased"])
+            ).count(),
+            "aggregated": count_by_status(Model, "aggregated"),
+            "processing": count_by_status(Model, "processing"),
+            "processed": count_by_status(Model, "processed"),
+            "sold": count_by_status(Model, "sold"),
+        }
+
+    goat_pipeline = pipeline_counts(Goat)
+    sheep_pipeline = pipeline_counts(Sheep)
+    cattle_pipeline = pipeline_counts(Cattle)
+
+    goats_available = available_for_aggregation(Goat)
+    sheep_available = available_for_aggregation(Sheep)
+    cattle_available = available_for_aggregation(Cattle)
+
+    goats_ready = ready_for_processing(Goat, "goat")
+    sheep_ready = ready_for_processing(Sheep, "sheep")
+    cattle_ready = ready_for_processing(Cattle, "cattle")
+
     stats = {
-        "farmers": Farmer.query.count(),
-        "goats": Goat.query.count(),
-        "sheep": Sheep.query.count(),
-        "cattle": Cattle.query.count(),
-        "aggregation_batches": AggregationBatch.query.count(),
-        "processing_batches": ProcessingBatch.query.count(),
-        "market_purchases": MarketPurchase.query.count(),
-    }
+        "farmers_total": Farmer.query.count(),
 
-    stats["goat_pipeline"] = {
-        "on_farm": Goat.query.filter_by(status="on_farm").count(),
-        "aggregated": Goat.query.filter_by(status="aggregated").count(),
-        "processing": Goat.query.filter_by(status="processing").count(),
-        "processed": Goat.query.filter_by(status="processed").count(),
-        "sold": Goat.query.filter_by(status="sold").count(),
-    }
-    stats["sheep_pipeline"] = {
-        "on_farm": Sheep.query.filter_by(status="on_farm").count(),
-        "aggregated": Sheep.query.filter_by(status="aggregated").count(),
-        "processing": Sheep.query.filter_by(status="processing").count(),
-        "processed": Sheep.query.filter_by(status="processed").count(),
-        "sold": Sheep.query.filter_by(status="sold").count(),
-    }
-    stats["cattle_pipeline"] = {
-        "on_farm": Cattle.query.filter_by(status="on_farm").count(),
-        "aggregated": Cattle.query.filter_by(status="aggregated").count(),
-        "processing": Cattle.query.filter_by(status="processing").count(),
-        "processed": Cattle.query.filter_by(status="processed").count(),
-        "sold": Cattle.query.filter_by(status="sold").count(),
-    }
+        "goats_total": Goat.query.count(),
+        "goats_available": goats_available,
+        "goats_ready_for_processing": goats_ready,
 
-    stats["latest_contacts"] = ContactMessage.query.order_by(ContactMessage.created_at.desc()).limit(5).all()
-    stats["latest_orders"] = OrderRequest.query.order_by(OrderRequest.created_at.desc()).limit(5).all()
+        "sheep_total": Sheep.query.count(),
+        "sheep_available": sheep_available,
+        "sheep_ready_for_processing": sheep_ready,
+
+        "cattle_total": Cattle.query.count(),
+        "cattle_available": cattle_available,
+        "cattle_ready_for_processing": cattle_ready,
+
+        "livestock_total": Goat.query.count() + Sheep.query.count() + Cattle.query.count(),
+
+        "animals_available_total": goats_available + sheep_available + cattle_available,
+        "animals_ready_for_processing_total": goats_ready + sheep_ready + cattle_ready,
+
+        "animals_processing_total": (
+            goat_pipeline["processing"]
+            + sheep_pipeline["processing"]
+            + cattle_pipeline["processing"]
+        ),
+
+        "animals_processed_total": (
+            goat_pipeline["processed"]
+            + sheep_pipeline["processed"]
+            + cattle_pipeline["processed"]
+        ),
+
+        "animals_sold_total": (
+            goat_pipeline["sold"]
+            + sheep_pipeline["sold"]
+            + cattle_pipeline["sold"]
+        ),
+
+        "invoices_total": Invoice.query.count(),
+        "invoices_issued": Invoice.query.filter(Invoice.status == "issued").count(),
+        "invoices_partial": Invoice.query.filter(Invoice.status == "partially_paid").count(),
+        "invoices_outstanding": Invoice.query.filter(
+            Invoice.status.in_(["issued", "partially_paid", "overdue"])
+        ).count(),
+
+        "pipeline_cases_total": 0,
+        "documents_total": Document.query.count(),
+        "market_purchases_total": MarketPurchase.query.count(),
+
+        "latest_contacts": ContactMessage.query.order_by(
+            ContactMessage.created_at.desc()
+        ).limit(5).all(),
+
+        "latest_orders": OrderRequest.query.order_by(
+            OrderRequest.created_at.desc()
+        ).limit(5).all(),
+    }
 
     return render_template(
         "admin/dashboard.html",
         stats=stats,
-        goat_pipeline=stats.get("goat_pipeline", {}),
-        sheep_pipeline=stats.get("sheep_pipeline", {}),
-        cattle_pipeline=stats.get("cattle_pipeline", {}),
+        goat_pipeline=goat_pipeline,
+        sheep_pipeline=sheep_pipeline,
+        cattle_pipeline=cattle_pipeline,
         current_year=datetime.utcnow().year,
     )
-
-
+    
 # =========================================================
 # Role Dashboards (NON-ADMIN)
 # =========================================================
@@ -860,9 +928,9 @@ def processing_route(animal_type: str, template_add: str):
     return add_processing
 
 
-processing_route("goat", "processing/batch_add.html")
-processing_route("sheep", "processing/batch_add.html")
-processing_route("cattle", "processing/batch_add.html")
+#processing_route("goat", "processing/batch_add.html")
+#processing_route("sheep", "processing/batch_add.html")
+#processing_route("cattle", "processing/batch_add.html")
 
 # ======================
 # Public Forms (PUBLIC)

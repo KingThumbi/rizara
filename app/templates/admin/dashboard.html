@@ -233,15 +233,22 @@
         </p>
 
         <div class="mt-5 grid grid-cols-1 gap-3">
+
+          <!-- Market -->
           <a href="{{ url_for('market_purchase.market_purchase_new') }}" class="module-link">New Market Purchase</a>
           <a href="{{ url_for('market_purchase.market_purchase_list') }}" class="module-link">Market Purchases</a>
-          <a href="{{ url_for('main.add_goat_aggregation') }}" class="module-link">Goat Aggregation</a>
-          <a href="{{ url_for('main.add_sheep_aggregation') }}" class="module-link">Sheep Aggregation</a>
-          <a href="{{ url_for('main.add_cattle_aggregation') }}" class="module-link">Cattle Aggregation</a>
-          <a href="{{ url_for('main.add_goat_processing') }}" class="module-link">Goat Processing</a>
-          <a href="{{ url_for('main.add_sheep_processing') }}" class="module-link">Sheep Processing</a>
-          <a href="{{ url_for('main.add_cattle_processing') }}" class="module-link">Cattle Processing</a>
-        </div>
+
+          <!-- Aggregation -->
+          <a href="{{ url_for('aggregation.add_goat_aggregation') }}" class="module-link">Goat Aggregation</a>
+          <a href="{{ url_for('aggregation.add_sheep_aggregation') }}" class="module-link">Sheep Aggregation</a>
+          <a href="{{ url_for('aggregation.add_cattle_aggregation') }}" class="module-link">Cattle Aggregation</a>
+
+          <!-- Processing -->
+          <a href="{{ url_for('processing.add_goat_processing') }}" class="module-link">Goat Processing</a>
+          <a href="{{ url_for('processing.add_sheep_processing') }}" class="module-link">Sheep Processing</a>
+          <a href="{{ url_for('processing.add_cattle_processing') }}" class="module-link">Cattle Processing</a>
+
+        </div>        
       </div>
 
       <div class="module-panel">

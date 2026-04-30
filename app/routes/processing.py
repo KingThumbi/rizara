@@ -75,8 +75,15 @@ def register_processing_routes(animal_type: str, template_add: str):
     )
     @admin_required
     def add_processing():
-        available_batches = (
-            db.session.query(AggregationBatch)
+        batch_rows = (
+            db.session.query(
+                AggregationBatch.id.label("id"),
+                AggregationBatch.site_name.label("site_name"),
+                AggregationBatch.date_received.label("date_received"),
+                AggregationBatch.created_at.label("created_at"),
+                db.func.count(Model.id).label("animal_count"),
+                db.func.coalesce(db.func.sum(Model.live_weight_kg), 0).label("estimated_kg"),
+            )
             .join(Model, Model.aggregation_batch_id == AggregationBatch.id)
             .filter(
                 AggregationBatch.animal_type == animal_type,
@@ -84,10 +91,27 @@ def register_processing_routes(animal_type: str, template_add: str):
                 Model.status == "aggregated",
                 Model.is_active.is_(True),
             )
-            .distinct()
+            .group_by(
+                AggregationBatch.id,
+                AggregationBatch.site_name,
+                AggregationBatch.date_received,
+                AggregationBatch.created_at,
+            )
             .order_by(AggregationBatch.created_at.desc())
             .all()
         )
+
+        available_batches = [
+            {
+                "id": row.id,
+                "site_name": row.site_name,
+                "date_received": row.date_received,
+                "animal_count": int(row.animal_count or 0),
+                "estimated_kg": float(row.estimated_kg or 0),
+            }
+            for row in batch_rows
+        ]
+        
 
         if request.method == "GET":
             return render_template(
@@ -107,9 +131,7 @@ def register_processing_routes(animal_type: str, template_add: str):
             parse_int(batch_id)
             for batch_id in request.form.getlist("aggregation_batch_ids")
         ]
-        aggregation_batch_ids = [
-            batch_id for batch_id in aggregation_batch_ids if batch_id
-        ]
+        aggregation_batch_ids = [batch_id for batch_id in aggregation_batch_ids if batch_id]
 
         if not facility:
             flash("Facility is required.", "danger")
@@ -132,22 +154,22 @@ def register_processing_routes(animal_type: str, template_add: str):
 
         if len(source_batches) != len(set(aggregation_batch_ids)):
             flash(
-                "One or more selected aggregation batches were not found, "
-                "locked, or do not match the processing animal type.",
+                "One or more selected aggregation batches were not found, locked, "
+                "or do not match the processing animal type.",
                 "danger",
             )
             return redirect(request.url)
 
+        selected_batch_ids = [batch.id for batch in source_batches]
+
         animals = (
             Model.query
             .filter(
-                Model.aggregation_batch_id.in_(
-                    [batch.id for batch in source_batches]
-                ),
+                Model.aggregation_batch_id.in_(selected_batch_ids),
                 Model.status == "aggregated",
                 Model.is_active.is_(True),
             )
-            .order_by(Model.created_at.asc())
+            .order_by(Model.aggregation_batch_id.asc(), Model.created_at.asc())
             .all()
         )
 
@@ -183,14 +205,12 @@ def register_processing_routes(animal_type: str, template_add: str):
         if not commit_or_rollback(f"Create {label} processing batch"):
             return redirect(request.url)
 
-        batch_numbers = ", ".join(
-            f"#{batch.id}" for batch in source_batches
-        )
+        batch_numbers = ", ".join(f"#{batch.id}" for batch in source_batches)
 
         flash(
             f"{label} processing batch created successfully from "
-            f"{len(source_batches)} aggregation batches "
-            f"({batch_numbers}) with {attached_count} animals.",
+            f"{len(source_batches)} aggregation batches ({batch_numbers}) "
+            f"with {attached_count} animals.",
             "success",
         )
 
@@ -201,10 +221,10 @@ def register_processing_routes(animal_type: str, template_add: str):
             )
         )
 
+
 register_processing_routes("goat", "processing/batch_add.html")
 register_processing_routes("sheep", "processing/batch_add.html")
 register_processing_routes("cattle", "processing/batch_add.html")
-
 
 @processing_bp.route("/processing/<int:batch_id>/overview")
 @admin_required
