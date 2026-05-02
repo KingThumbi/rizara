@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import date, datetime
 from decimal import Decimal
 from pathlib import Path
 from app.utils.time_helpers import utcnow_naive
@@ -149,12 +150,16 @@ def view_contract(contract_id: int):
     contract = Contract.query.get_or_404(contract_id)
     summary = calculate_contract_totals(contract)
 
+    documents = ContractDocument.query.filter_by(
+        contract_id=contract.id
+    ).order_by(ContractDocument.uploaded_at.desc()).all()
+
     return render_template(
         "contracts/detail.html",
         contract=contract,
         summary=summary,
+        documents=documents,
     )
-
 
 @bp.get("/<int:contract_id>/edit")
 @login_required
@@ -290,11 +295,11 @@ def _contract_upload_dir(contract: Contract) -> Path:
     return base
 
 
-@bp.post("/<int:contract_id>/documents")
+@bp.post("/<int:contract_id>/documents/upload")
 @login_required
 def upload_contract_document(contract_id: int):
     contract = Contract.query.get_or_404(contract_id)
-    uploaded = request.files.get("document")
+    uploaded = request.files.get("document") or request.files.get("file")
 
     if not uploaded or not uploaded.filename:
         flash("Please choose a file to upload.", "danger")
@@ -305,10 +310,14 @@ def upload_contract_document(contract_id: int):
     save_path = upload_dir / safe_name
     uploaded.save(save_path)
 
+    document_type = (request.form.get("document_type") or "other").strip()
+
     document = ContractDocument(
         contract_id=contract.id,
-        document_type=(request.form.get("document_type") or "other").strip(),
+        buyer_id=contract.buyer_id,
+        document_type=document_type,
         title=(request.form.get("title") or safe_name).strip(),
+        status="signed" if document_type == "signed_contract" else "uploaded",
         file_path=str(save_path),
         original_filename=uploaded.filename,
         stored_filename=safe_name,
@@ -318,6 +327,8 @@ def upload_contract_document(contract_id: int):
         uploaded_by_user_id=getattr(current_user, "id", None),
     )
 
+    if document.status == "signed":
+        document.signed_at = utcnow_naive()
     db.session.add(document)
     db.session.commit()
 
@@ -340,26 +351,34 @@ def download_contract_document(contract_id: int, document_id: int):
         download_name=document.original_filename or document.stored_filename,
     )
 
-
-@bp.post("/<int:contract_id>/documents/<int:document_id>/set-primary")
+@bp.post("/<int:contract_id>/documents/<int:document_id>/mark-signed")
 @login_required
-def set_primary_contract_document(contract_id: int, document_id: int):
+def mark_contract_document_signed(contract_id: int, document_id: int):
     contract = Contract.query.get_or_404(contract_id)
+
     document = ContractDocument.query.filter_by(
         id=document_id,
         contract_id=contract.id,
     ).first_or_404()
 
-    ContractDocument.query.filter_by(contract_id=contract.id, is_primary=True).update(
-        {"is_primary": False}
-    )
+    document.status = "signed"
+    document.signed_at = utcnow_naive()
+
+    ContractDocument.query.filter_by(
+        contract_id=contract.id,
+        is_primary=True,
+    ).update({"is_primary": False})
+
     document.is_primary = True
+
+    if contract.status in {"approved", "sent", "under_review"}:
+        contract.status = "signed"
+        contract.signed_at = utcnow_naive()
 
     db.session.commit()
 
-    flash("Primary contract document updated.", "success")
+    flash("Document marked as signed and set as the primary contract document.", "success")
     return redirect(url_for("contracts.view_contract", contract_id=contract.id))
-
 
 @bp.post("/<int:contract_id>/documents/<int:document_id>/delete")
 @login_required
@@ -382,6 +401,18 @@ def delete_contract_document(contract_id: int, document_id: int):
     db.session.commit()
 
     flash("Document deleted.", "success")
+    return redirect(url_for("contracts.view_contract", contract_id=contract.id))
+
+@bp.post("/<int:contract_id>/documents/generate-draft")
+@login_required
+def generate_draft_contract_document(contract_id: int):
+    contract = Contract.query.get_or_404(contract_id)
+
+    flash(
+        "Draft document generation route is ready. Next we will connect it to the PDF generator.",
+        "info",
+    )
+
     return redirect(url_for("contracts.view_contract", contract_id=contract.id))
 
 @bp.post("/<int:contract_id>/submit-review")
@@ -440,11 +471,20 @@ def mark_contract_sent(contract_id: int):
     flash("Contract marked as sent.", "success")
     return redirect(url_for("contracts.view_contract", contract_id=contract.id))
 
-
 @bp.post("/<int:contract_id>/mark-signed")
 @login_required
 def mark_contract_signed(contract_id: int):
     contract = Contract.query.get_or_404(contract_id)
+
+    primary_signed_doc = ContractDocument.query.filter_by(
+        contract_id=contract.id,
+        is_primary=True,
+        status="signed",
+    ).first()
+
+    if not primary_signed_doc:
+        flash("A primary signed contract document is required before marking the contract as signed.", "danger")
+        return redirect(url_for("contracts.view_contract", contract_id=contract.id))
 
     ok, message = can_mark_signed(contract)
     if not ok:
@@ -459,11 +499,23 @@ def mark_contract_signed(contract_id: int):
     flash("Contract marked as signed.", "success")
     return redirect(url_for("contracts.view_contract", contract_id=contract.id))
 
-
 @bp.post("/<int:contract_id>/activate")
 @login_required
 def activate_contract(contract_id: int):
     contract = Contract.query.get_or_404(contract_id)
+
+    primary_signed_doc = ContractDocument.query.filter_by(
+        contract_id=contract.id,
+        is_primary=True,
+        status="signed",
+    ).first()
+
+    if not primary_signed_doc:
+        flash(
+            "Upload or mark a primary signed contract document before activation.",
+            "warning",
+        )
+        return redirect(url_for("contracts.view_contract", contract_id=contract.id))
 
     ok, message = can_activate_contract(contract)
     if not ok:
@@ -477,7 +529,6 @@ def activate_contract(contract_id: int):
 
     flash("Contract activated.", "success")
     return redirect(url_for("contracts.view_contract", contract_id=contract.id))
-
 
 @bp.post("/<int:contract_id>/cancel")
 @login_required
@@ -597,7 +648,7 @@ def tender_sale(contract_id):
 
     if contract.status not in {"signed", "active", "approved", "partially_fulfilled"}:
         flash("Only approved, signed, or active contracts can be invoiced.", "danger")
-        return redirect(url_for("contracts.contract_detail", contract_id=contract.id))
+        return redirect(url_for("contracts.view_contract", contract_id=contract.id))
 
     batches = CommercialProcessingBatch.query.filter_by(contract_id=contract.id).all()
 
@@ -791,3 +842,26 @@ def link_processing_batch(contract_id, batch_id):
 
     flash("Processing batch linked to contract successfully.", "success")
     return redirect(url_for("contracts.tender_sale", contract_id=contract.id))            
+
+@bp.post("/<int:contract_id>/documents/<int:document_id>/set-primary")
+@login_required
+def set_primary_contract_document(contract_id: int, document_id: int):
+    contract = Contract.query.get_or_404(contract_id)
+
+    document = ContractDocument.query.filter_by(
+        id=document_id,
+        contract_id=contract.id,
+    ).first_or_404()
+
+    # Remove primary flag from other documents under this contract
+    ContractDocument.query.filter(
+        ContractDocument.contract_id == contract.id,
+        ContractDocument.id != document.id,
+    ).update({"is_primary": False})
+
+    document.is_primary = True
+
+    db.session.commit()
+
+    flash("Primary contract document updated.", "success")
+    return redirect(url_for("contracts.view_contract", contract_id=contract.id))

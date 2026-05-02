@@ -13,6 +13,32 @@ from app.utils.time import utcnow_naive
 bp = Blueprint("sales", __name__, url_prefix="/sales")
 
 
+def _contract_allows_sale_creation(contract) -> bool:
+    """
+    Sales should only be created/executed from active contracts.
+
+    Active means the contract has already passed:
+    - approval
+    - signing
+    - primary signed document validation
+    """
+    return bool(contract and contract.status == "active")
+
+
+def _redirect_if_contract_not_active(sale: Sale):
+    contract = sale.contract
+
+    if not contract:
+        flash("This sale is not linked to a contract.", "danger")
+        return redirect(url_for("sales.view_sale", sale_id=sale.id))
+
+    if not _contract_allows_sale_creation(contract):
+        flash("Only active contracts can create or progress sales.", "warning")
+        return redirect(url_for("contracts.view_contract", contract_id=contract.id))
+
+    return None
+
+
 @bp.get("/<int:sale_id>")
 @login_required
 def view_sale(sale_id: int):
@@ -67,10 +93,10 @@ def add_payment(sale_id: int):
     )
 
     db.session.add(payment)
-
-    # Recalculate totals after adding the new payment
     db.session.flush()
+
     calculate_sale_totals(sale)
+    sale.updated_at = utcnow_naive()
 
     db.session.commit()
 
@@ -82,6 +108,10 @@ def add_payment(sale_id: int):
 @login_required
 def confirm_sale(sale_id: int):
     sale = Sale.query.get_or_404(sale_id)
+
+    contract_redirect = _redirect_if_contract_not_active(sale)
+    if contract_redirect:
+        return contract_redirect
 
     if sale.status == "cancelled":
         flash("Cancelled sales cannot be confirmed.", "danger")
@@ -107,6 +137,10 @@ def confirm_sale(sale_id: int):
 def complete_sale(sale_id: int):
     sale = Sale.query.get_or_404(sale_id)
 
+    contract_redirect = _redirect_if_contract_not_active(sale)
+    if contract_redirect:
+        return contract_redirect
+
     if sale.status == "cancelled":
         flash("Cancelled sales cannot be completed.", "danger")
         return redirect(url_for("sales.view_sale", sale_id=sale.id))
@@ -120,11 +154,9 @@ def complete_sale(sale_id: int):
     sale.status = "completed"
     sale.updated_at = utcnow_naive()
 
-    # Optional: push linked contract forward as fulfillment progresses
-    if sale.contract:
-        active_statuses = {"signed", "active", "partially_fulfilled"}
-        if sale.contract.status in active_statuses:
-            sale.contract.status = "partially_fulfilled"
+    if sale.contract and sale.contract.status == "active":
+        sale.contract.status = "partially_fulfilled"
+        sale.contract.updated_at = utcnow_naive()
 
     db.session.commit()
 
@@ -149,10 +181,15 @@ def cancel_sale(sale_id: int):
     flash("Sale cancelled.", "warning")
     return redirect(url_for("sales.view_sale", sale_id=sale.id))
 
+
 @bp.post("/<int:sale_id>/authorize-processing")
 @login_required
 def authorize_processing(sale_id: int):
     sale = Sale.query.get_or_404(sale_id)
+
+    contract_redirect = _redirect_if_contract_not_active(sale)
+    if contract_redirect:
+        return contract_redirect
 
     if sale.status == "cancelled":
         flash("Cancelled sales cannot be authorized for processing.", "danger")
@@ -163,14 +200,10 @@ def authorize_processing(sale_id: int):
         return redirect(url_for("sales.view_sale", sale_id=sale.id))
 
     contract = sale.contract
-    if not contract:
-        flash("Sale is not linked to a contract.", "danger")
-        return redirect(url_for("sales.view_sale", sale_id=sale.id))
 
     prepayment_ok = False
     lc_ok = False
 
-    # Prepayment path
     if contract.prepayment_required:
         required_amount = Decimal("0")
 
@@ -178,20 +211,25 @@ def authorize_processing(sale_id: int):
             required_amount = Decimal(contract.required_prepayment_amount)
         elif contract.required_prepayment_percent and Decimal(sale.total_amount or 0) > 0:
             required_amount = (
-                Decimal(sale.total_amount) * Decimal(contract.required_prepayment_percent) / Decimal("100")
+                Decimal(sale.total_amount)
+                * Decimal(contract.required_prepayment_percent)
+                / Decimal("100")
             )
 
         if required_amount > 0 and Decimal(sale.amount_paid or 0) >= required_amount:
             prepayment_ok = True
 
-    # LC path
     if contract.lc_required and contract.lc_status:
         if str(contract.lc_status).strip().lower() in {"confirmed", "approved", "available"}:
             lc_ok = True
 
-    if not (prepayment_ok or lc_ok):
-        flash("Processing can only be authorized after required prepayment is received or LC is confirmed.", "danger")
-        return redirect(url_for("sales.view_sale", sale_id=sale.id))
+    if contract.prepayment_required or contract.lc_required:
+        if not (prepayment_ok or lc_ok):
+            flash(
+                "Processing can only be authorized after required prepayment is received or LC is confirmed.",
+                "danger",
+            )
+            return redirect(url_for("sales.view_sale", sale_id=sale.id))
 
     sale.processing_authorized = True
     sale.authorized_at = utcnow_naive()

@@ -46,7 +46,10 @@
   {% set buyer_edit_url = buyer_edit_url if buyer_edit_url is defined and buyer_edit_url else (url_for('admin.buyers_list') if b else None) %}
 
   <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-
+    <div class="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+      Export sales contracts are now managed from the Contracts module.
+      Use this page only for legacy documents or standalone buyer documents.
+    </div>
     {# LEFT COLUMN: editor + flashes + form #}
     <div class="lg:col-span-8 space-y-6">
 

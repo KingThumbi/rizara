@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import date, datetime
 from decimal import Decimal
+
 from flask import Blueprint, current_app, flash, redirect, render_template, request, url_for
 from flask_login import current_user
 
@@ -9,23 +10,24 @@ from app.extensions import db
 from app.models import (
     AggregationBatch,
     Buyer,
+    Contract,
     Invoice,
     InvoiceItem,
     InvoiceStatus,
     InventoryLot,
+    PipelineCase,
     ProcessingBatch,
     ProcessingBatchSale,
     ProcessingYield,
-    PipelineCase,
 )
-from app.utils.guards import admin_required
-from app.utils.request_parsers import parse_date, parse_float, parse_int, safe_enum_value
-from app.utils.time_helpers import utcnow_naive
 from app.utils.animal_helpers import (
     animal_label,
     get_animal_model,
     get_processing_relation_name,
 )
+from app.utils.guards import admin_required
+from app.utils.request_parsers import parse_date, parse_float, parse_int, safe_enum_value
+from app.utils.time_helpers import utcnow_naive
 
 processing_bp = Blueprint("processing", __name__)
 
@@ -41,18 +43,45 @@ def commit_or_rollback(action: str) -> bool:
         return False
 
 
+def contract_allows_processing(contract: Contract) -> tuple[bool, str]:
+    if not contract:
+        return False, "Processing must be linked to a contract."
+
+    if contract.status != "active":
+        return False, "Only active contracts can release processing."
+
+    if contract.processing_release_mode == "prepayment_required":
+        required = Decimal(contract.required_prepayment_amount or 0)
+
+        paid = Decimal("0.00")
+        for sale in contract.sales:
+            paid += Decimal(sale.amount_paid or 0)
+
+        if paid < required:
+            return False, "Processing cannot proceed until required prepayment is received."
+
+    if contract.processing_release_mode == "lc_confirmation_required":
+        lc_status = (contract.lc_status or "").strip().lower()
+        if lc_status not in {"confirmed", "approved", "available"}:
+            return False, "Processing cannot proceed until LC is confirmed."
+
+    return True, ""
+
+
 def get_processing_batch_or_404(batch_id: int) -> ProcessingBatch:
     return ProcessingBatch.query.get_or_404(batch_id)
 
 
 def animals_in_processing_batch(batch: ProcessingBatch):
     animal_type = (batch.animal_type or "").strip().lower()
+
     if animal_type == "goat":
         return batch.goats
     if animal_type == "sheep":
         return batch.sheep
     if animal_type == "cattle":
         return batch.cattle
+
     return []
 
 
@@ -111,12 +140,19 @@ def register_processing_routes(animal_type: str, template_add: str):
             }
             for row in batch_rows
         ]
-        
+
+        active_contracts = (
+            Contract.query
+            .filter(Contract.status == "active")
+            .order_by(Contract.created_at.desc())
+            .all()
+        )
 
         if request.method == "GET":
             return render_template(
                 template_add,
                 batches=available_batches,
+                contracts=active_contracts,
                 animal_type=animal_type,
                 animal_label=label,
                 date=date,
@@ -127,6 +163,9 @@ def register_processing_routes(animal_type: str, template_add: str):
         slaughter_date = parse_date(request.form.get("slaughter_date"))
         halal_cert_ref = (request.form.get("halal_cert_ref") or "").strip() or None
 
+        contract_id = parse_int(request.form.get("contract_id"))
+        contract = Contract.query.get(contract_id) if contract_id else None
+
         aggregation_batch_ids = [
             parse_int(batch_id)
             for batch_id in request.form.getlist("aggregation_batch_ids")
@@ -136,6 +175,19 @@ def register_processing_routes(animal_type: str, template_add: str):
         if not facility:
             flash("Facility is required.", "danger")
             return redirect(request.url)
+
+        if not slaughter_date:
+            flash("Slaughter date is required.", "danger")
+            return redirect(request.url)
+
+        if not contract:
+            flash("Select the active contract authorizing this processing run.", "danger")
+            return redirect(request.url)
+
+        ok, message = contract_allows_processing(contract)
+        if not ok:
+            flash(message, "warning")
+            return redirect(url_for("contracts.view_contract", contract_id=contract.id))
 
         if not aggregation_batch_ids:
             flash("Select at least one aggregation batch.", "danger")
@@ -188,6 +240,9 @@ def register_processing_routes(animal_type: str, template_add: str):
             created_by_user_id=current_user.id,
         )
 
+        if hasattr(processing_batch, "contract_id"):
+            processing_batch.contract_id = contract.id
+
         db.session.add(processing_batch)
 
         relation = getattr(processing_batch, relation_name)
@@ -210,7 +265,7 @@ def register_processing_routes(animal_type: str, template_add: str):
         flash(
             f"{label} processing batch created successfully from "
             f"{len(source_batches)} aggregation batches ({batch_numbers}) "
-            f"with {attached_count} animals.",
+            f"with {attached_count} animals under contract {contract.contract_number}.",
             "success",
         )
 
@@ -225,6 +280,7 @@ def register_processing_routes(animal_type: str, template_add: str):
 register_processing_routes("goat", "processing/batch_add.html")
 register_processing_routes("sheep", "processing/batch_add.html")
 register_processing_routes("cattle", "processing/batch_add.html")
+
 
 @processing_bp.route("/processing/<int:batch_id>/overview")
 @admin_required
@@ -243,23 +299,20 @@ def view_invoiceable_batch(batch_id):
         current_year=datetime.utcnow().year,
     )
 
+
 @processing_bp.route("/processing/<int:batch_id>/yield", methods=["GET", "POST"])
 @admin_required
 def record_processing_yield(batch_id):
     batch = get_processing_batch_or_404(batch_id)
 
-    existing = ProcessingYield.query.filter_by(
-        processing_batch_id=batch.id
-    ).first()
+    existing = ProcessingYield.query.filter_by(processing_batch_id=batch.id).first()
 
     if existing and request.method == "GET":
         flash("Yield already recorded for this batch.", "info")
         return redirect(url_for("processing.view_invoiceable_batch", batch_id=batch.id))
 
     if request.method == "POST":
-        total_carcass_weight_kg = parse_float(
-            request.form.get("total_carcass_weight_kg")
-        )
+        total_carcass_weight_kg = parse_float(request.form.get("total_carcass_weight_kg"))
         parts_included = request.form.get("parts_included_in_batch_sale") == "yes"
         parts_sold_separately = request.form.get("parts_sold_separately") == "yes"
         parts_notes = (request.form.get("parts_notes") or "").strip() or None
@@ -297,9 +350,7 @@ def record_processing_yield(batch_id):
 
         db.session.add(yield_record)
 
-        existing_lot = InventoryLot.query.filter_by(
-            processing_batch_id=batch.id
-        ).first()
+        existing_lot = InventoryLot.query.filter_by(processing_batch_id=batch.id).first()
 
         if existing_lot:
             existing_lot.quantity_kg = output_kg
@@ -333,6 +384,7 @@ def record_processing_yield(batch_id):
         current_year=datetime.utcnow().year,
     )
 
+
 @processing_bp.route("/processing/<int:batch_id>/sale", methods=["GET", "POST"])
 @admin_required
 def record_processing_batch_sale(batch_id):
@@ -341,6 +393,7 @@ def record_processing_batch_sale(batch_id):
         "warning",
     )
     return redirect(url_for("contracts.list_contracts"))
+
 
 @processing_bp.route("/sales/<int:sale_id>/invoice/generate", methods=["GET"])
 @admin_required
@@ -398,20 +451,18 @@ def generate_invoice_from_sale(sale_id):
             db.session.rollback()
             if attempt == 0:
                 continue
+
             flash("Invoice generation failed due to a numbering conflict. Try again.", "danger")
             return redirect(url_for("processing.view_invoiceable_batch", batch_id=batch.id))
 
     flash("Invoice generation failed.", "danger")
     return redirect(url_for("processing.view_invoiceable_batch", batch_id=batch.id))
 
+
 @processing_bp.route("/invoices")
 @admin_required
 def list_invoices():
-    invoices = (
-        Invoice.query
-        .order_by(Invoice.issue_date.desc(), Invoice.id.desc())
-        .all()
-    )
+    invoices = Invoice.query.order_by(Invoice.issue_date.desc(), Invoice.id.desc()).all()
 
     return render_template(
         "invoices/list.html",
@@ -419,6 +470,7 @@ def list_invoices():
         current_year=datetime.utcnow().year,
         safe_enum_value=safe_enum_value,
     )
+
 
 @processing_bp.route("/invoices/<int:invoice_id>")
 @admin_required
@@ -435,13 +487,13 @@ def view_invoice(invoice_id):
 
     signed_doc = None
     if contract:
-        signed_doc = next(
-            (
-                d for d in contract.documents
-                if d.document_type in {"signed_contract", "executed_contract"}
-            ),
-            None,
-        )
+      signed_doc = next(
+          (
+              d for d in contract.documents
+              if d.document_type in {"signed_contract", "executed_contract"}
+          ),
+          None,
+      )
 
     amount_paid = Decimal("0.00")
     balance_due = Decimal(str(invoice.total or 0))
@@ -450,7 +502,10 @@ def view_invoice(invoice_id):
     if sale:
         currency = sale.currency or "USD"
         amount_paid = sum(Decimal(str(p.amount or 0)) for p in sale.payments)
-        balance_due = max(Decimal(str(invoice.total or 0)) - amount_paid, Decimal("0.00"))
+        balance_due = max(
+            Decimal(str(invoice.total or 0)) - amount_paid,
+            Decimal("0.00"),
+        )
 
     return render_template(
         "invoices/invoice_view.html",
@@ -470,6 +525,7 @@ def view_invoice(invoice_id):
         invoice_status_value=safe_enum_value(invoice.status),
     )
 
+
 @processing_bp.route("/invoices/<int:invoice_id>/pdf", methods=["GET"])
 @admin_required
 def invoice_pdf(invoice_id):
@@ -484,4 +540,3 @@ def invoice_pdf(invoice_id):
         mimetype="application/pdf",
         headers={"Content-Disposition": f'inline; filename="{filename}"'},
     )
-

@@ -1,140 +1,282 @@
-{# ===========================
-   Buyer Signing — Admin Actions
-   =========================== #}
+{# =========================================================
+   Document Workflow Panel — Rizara Admin
+   Supports:
+   - Internally created documents: signing + preview/PDF workflow
+   - Upload-only documents: archive/reference workflow
+   ========================================================= #}
 
-{% if document.status == "draft" %}
-  <form method="POST"
-        action="{{ url_for('admin.send_document_for_signing', document_id=document.id) }}"
-        style="display:inline;">
-    <button class="btn btn-primary" type="submit">
-      {% if document.buyer_sign_token %}
-        Regenerate signing link
-      {% else %}
-        Send for signing
-      {% endif %}
-    </button>
-  </form>
-{% endif %}
-
-{# ===========================
-   Buyer Signing — Details Panel
-   =========================== #}
+{% set creatable_doc_types = creatable_doc_types | default({}) %}
+{% set upload_only_doc_types = upload_only_doc_types | default({}) %}
+{% set is_creatable = document.doc_type in creatable_doc_types %}
+{% set is_upload_only = document.doc_type in upload_only_doc_types %}
 
 <div class="card" style="margin-top:14px;">
-  <h3 style="margin:0 0 10px;">Buyer Signing</h3>
-
-  <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px;">
+  <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:16px;">
     <div>
-      <div class="muted" style="font-size:12px; font-weight:900;">Status</div>
-      <div style="font-weight:900;">{{ document.status }}</div>
+      <h3 style="margin:0 0 6px;">Document Workflow</h3>
+
+      <p class="muted" style="margin:0; font-size:13px;">
+        {% if is_creatable %}
+          This document is created by Rizara and may be previewed, exported, and sent for buyer signing.
+        {% elif is_upload_only %}
+          This is a supporting document obtained externally and should be uploaded, stored, and referenced.
+        {% else %}
+          This document type is not yet classified. Review its workflow configuration.
+        {% endif %}
+      </p>
     </div>
 
+    <span class="badge">
+      {{ document.status }}
+    </span>
+  </div>
+
+  <hr style="border:none; border-top:1px solid var(--border); margin:14px 0;" />
+
+  <div style="display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:12px;">
     <div>
-      <div class="muted" style="font-size:12px; font-weight:900;">Signed at</div>
+      <div class="muted" style="font-size:12px; font-weight:900;">Type</div>
       <div style="font-weight:900;">
-        {% if document.buyer_signed_at %}
-          {{ document.buyer_signed_at }}
-        {% else %}
-          <span class="muted">Not signed</span>
+        {{ creatable_doc_types.get(document.doc_type)
+           or upload_only_doc_types.get(document.doc_type)
+           or document.doc_type }}
+      </div>
+    </div>
+
+    <div>
+      <div class="muted" style="font-size:12px; font-weight:900;">Version</div>
+      <div style="font-weight:900;">v{{ document.version }}</div>
+    </div>
+
+    <div>
+      <div class="muted" style="font-size:12px; font-weight:900;">Buyer</div>
+      <div style="font-weight:800;">
+        {{ document.buyer.name }}
+        {% if document.buyer.email %}
+          <span class="muted">({{ document.buyer.email }})</span>
         {% endif %}
       </div>
     </div>
 
     <div>
-      <div class="muted" style="font-size:12px; font-weight:900;">Signer name</div>
-      <div style="font-weight:800;">
-        {% if document.buyer_sign_name %}
-          {{ document.buyer_sign_name }}
-        {% else %}
-          <span class="muted">—</span>
-        {% endif %}
-      </div>
+      <div class="muted" style="font-size:12px; font-weight:900;">Title</div>
+      <div style="font-weight:800;">{{ document.title }}</div>
     </div>
+  </div>
+</div>
 
-    <div>
-      <div class="muted" style="font-size:12px; font-weight:900;">Signer email</div>
-      <div style="font-weight:800;">
-        {% if document.buyer_sign_email %}
-          <a href="mailto:{{ document.buyer_sign_email }}">{{ document.buyer_sign_email }}</a>
-        {% else %}
-          <span class="muted">—</span>
-        {% endif %}
+
+{% if is_creatable %}
+  {# =====================================================
+     Rizara-created document actions
+     ===================================================== #}
+
+  <div class="card" style="margin-top:14px;">
+    <div style="display:flex; justify-content:space-between; align-items:center; gap:12px;">
+      <div>
+        <h3 style="margin:0 0 6px;">Rizara-Created Document</h3>
+        <p class="muted" style="margin:0; font-size:13px;">
+          Generate, preview, export PDF, and send to the buyer for signing.
+        </p>
       </div>
-    </div>
 
-    <div style="grid-column: 1 / -1;">
-      <div class="muted" style="font-size:12px; font-weight:900;">Signer IP</div>
-      <div style="font-weight:700;">
-        {% if document.buyer_sign_ip %}
-          <code>{{ document.buyer_sign_ip }}</code>
+      <div style="display:flex; gap:10px; flex-wrap:wrap;">
+        {% if document.doc_type == "loi" %}
+          <a class="btn" href="{{ url_for('admin.preview_loi', document_id=document.id) }}">
+            Preview LOI
+          </a>
+          <a class="btn btn-primary" href="{{ url_for('admin.download_loi_pdf', document_id=document.id) }}">
+            Download LOI PDF
+          </a>
         {% else %}
-          <span class="muted">—</span>
-        {% endif %}
-      </div>
-    </div>
-
-    <div style="grid-column: 1 / -1;">
-      <div class="muted" style="font-size:12px; font-weight:900;">User agent</div>
-      <div style="font-weight:700;">
-        {% if document.buyer_sign_user_agent %}
-          <code style="white-space:pre-wrap; word-break:break-word;">
-            {{ document.buyer_sign_user_agent }}
-          </code>
-        {% else %}
-          <span class="muted">—</span>
+          <a class="btn" href="{{ url_for('admin.document_detail', document_id=document.id) }}">
+            Preview Document
+          </a>
         {% endif %}
       </div>
     </div>
   </div>
 
-  {% if document.buyer_sign_token %}
-    <hr style="border:none; border-top:1px solid var(--border); margin:14px 0;" />
 
-    <div class="muted" style="font-size:12px; font-weight:900; margin-bottom:6px;">
-      Active signing link
-    </div>
+  {# =====================================================
+     Buyer Signing — Admin Actions
+     ===================================================== #}
 
-    {% set sign_url = request.host_url ~ 'sign/' ~ document.buyer_sign_token %}
+  <div class="card" style="margin-top:14px;">
+    <div style="display:flex; justify-content:space-between; align-items:center; gap:12px;">
+      <div>
+        <h3 style="margin:0 0 6px;">Buyer Signing</h3>
+        <p class="muted" style="margin:0; font-size:13px;">
+          Generate a secure buyer signing link and track signature details.
+        </p>
+      </div>
 
-    <code id="sign-link-{{ document.id }}"
-          style="display:block; padding:10px 12px;
-                 border:1px dashed var(--border);
-                 border-radius:12px;
-                 background:#f8f9ff;">
-      {{ sign_url }}
-    </code>
-
-    <div style="display:flex; gap:10px; align-items:center; margin-top:10px;">
-      <button type="button"
-              class="btn btn-primary"
-              style="padding:10px 12px;"
-              onclick="copySigningLink('sign-link-{{ document.id }}', this)">
-        Copy link
-      </button>
-
-      <span class="muted" style="font-size:12px;">
-        Valid until:
-        <strong>{{ document.buyer_sign_token_expires_at }}</strong>
-      </span>
-    </div>
-
-  {% else %}
-    <hr style="border:none; border-top:1px solid var(--border); margin:14px 0;" />
-    <div class="muted" style="font-size:12px;">
-      No active signing link yet.
       {% if document.status == "draft" %}
-        Use <strong>Send for signing</strong> to generate one.
+        <form method="POST"
+              action="{{ url_for('admin.send_document_for_signing', document_id=document.id) }}"
+              style="display:inline;">
+          <button class="btn btn-primary" type="submit">
+            {% if document.buyer_sign_token %}
+              Regenerate signing link
+            {% else %}
+              Send for signing
+            {% endif %}
+          </button>
+        </form>
       {% endif %}
     </div>
-  {% endif %}
-</div>
 
-{# ===========================
-   Page Scripts
-   =========================== #}
+    <hr style="border:none; border-top:1px solid var(--border); margin:14px 0;" />
+
+    <div style="display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:12px;">
+      <div>
+        <div class="muted" style="font-size:12px; font-weight:900;">Signed at</div>
+        <div style="font-weight:900;">
+          {% if document.buyer_signed_at %}
+            {{ document.buyer_signed_at }}
+          {% else %}
+            <span class="muted">Not signed</span>
+          {% endif %}
+        </div>
+      </div>
+
+      <div>
+        <div class="muted" style="font-size:12px; font-weight:900;">Signer name</div>
+        <div style="font-weight:800;">
+          {{ document.buyer_sign_name or "—" }}
+        </div>
+      </div>
+
+      <div>
+        <div class="muted" style="font-size:12px; font-weight:900;">Signer email</div>
+        <div style="font-weight:800;">
+          {% if document.buyer_sign_email %}
+            <a href="mailto:{{ document.buyer_sign_email }}">{{ document.buyer_sign_email }}</a>
+          {% else %}
+            <span class="muted">—</span>
+          {% endif %}
+        </div>
+      </div>
+
+      <div>
+        <div class="muted" style="font-size:12px; font-weight:900;">Signer IP</div>
+        <div style="font-weight:700;">
+          {% if document.buyer_sign_ip %}
+            <code>{{ document.buyer_sign_ip }}</code>
+          {% else %}
+            <span class="muted">—</span>
+          {% endif %}
+        </div>
+      </div>
+
+      <div style="grid-column:1 / -1;">
+        <div class="muted" style="font-size:12px; font-weight:900;">User agent</div>
+        <div style="font-weight:700;">
+          {% if document.buyer_sign_user_agent %}
+            <code style="white-space:pre-wrap; word-break:break-word;">
+              {{ document.buyer_sign_user_agent }}
+            </code>
+          {% else %}
+            <span class="muted">—</span>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    {% if document.buyer_sign_token %}
+      <hr style="border:none; border-top:1px solid var(--border); margin:14px 0;" />
+
+      {% set sign_url = request.host_url ~ 'sign/' ~ document.buyer_sign_token %}
+
+      <div class="muted" style="font-size:12px; font-weight:900; margin-bottom:6px;">
+        Active signing link
+      </div>
+
+      <code id="sign-link-{{ document.id }}"
+            style="display:block; padding:10px 12px; border:1px dashed var(--border); border-radius:12px; background:#f8f9ff; word-break:break-all;">
+        {{ sign_url }}
+      </code>
+
+      <div style="display:flex; gap:10px; align-items:center; margin-top:10px; flex-wrap:wrap;">
+        <button type="button"
+                class="btn btn-primary"
+                style="padding:10px 12px;"
+                onclick="copySigningLink('sign-link-{{ document.id }}', this)">
+          Copy link
+        </button>
+
+        <span class="muted" style="font-size:12px;">
+          Valid until:
+          <strong>{{ document.buyer_sign_token_expires_at }}</strong>
+        </span>
+      </div>
+    {% else %}
+      <hr style="border:none; border-top:1px solid var(--border); margin:14px 0;" />
+
+      <div class="muted" style="font-size:12px;">
+        No active signing link yet.
+        {% if document.status == "draft" %}
+          Use <strong>Send for signing</strong> to generate one.
+        {% endif %}
+      </div>
+    {% endif %}
+  </div>
+
+{% else %}
+  {# =====================================================
+     Upload-only / externally obtained document panel
+     ===================================================== #}
+
+  <div class="card" style="margin-top:14px;">
+    <h3 style="margin:0 0 6px;">Supporting Document</h3>
+
+    <p class="muted" style="margin:0 0 14px; font-size:13px;">
+      This document is normally obtained from a buyer, bank, authority, transporter, or clearing agent.
+      It should be uploaded and referenced, not generated by Rizara.
+    </p>
+
+    <div style="display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:12px;">
+      <div>
+        <div class="muted" style="font-size:12px; font-weight:900;">Storage status</div>
+        <div style="font-weight:900;">
+          {% if document.storage_key %}
+            Uploaded
+          {% else %}
+            <span class="muted">No file uploaded yet</span>
+          {% endif %}
+        </div>
+      </div>
+
+      <div>
+        <div class="muted" style="font-size:12px; font-weight:900;">File checksum</div>
+        <div style="font-weight:800;">
+          {% if document.file_sha256 %}
+            <code>{{ document.file_sha256 }}</code>
+          {% else %}
+            <span class="muted">—</span>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    <hr style="border:none; border-top:1px solid var(--border); margin:14px 0;" />
+
+    {% if document.storage_key %}
+      <a class="btn btn-primary" href="{{ url_for('admin.download_document_file', document_id=document.id) }}">
+        Download uploaded file
+      </a>
+    {% else %}
+      <a class="btn btn-primary" href="{{ url_for('admin.documents_upload') }}">
+        Upload supporting document
+      </a>
+    {% endif %}
+  </div>
+{% endif %}
+
 
 {% block scripts %}
   {{ super() }}
+
   <script>
     async function copySigningLink(codeId, btn) {
       const el = document.getElementById(codeId);

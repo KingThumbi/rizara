@@ -21,7 +21,7 @@
           <p class="text-sm font-semibold text-emerald-700 uppercase tracking-wide">Commercial</p>
           <h1 class="text-3xl lg:text-4xl font-bold text-gray-950 mt-2">Contracts</h1>
           <p class="text-gray-600 mt-3 max-w-2xl">
-            Manage agreements, track workflow status, and move approved contracts into pipeline execution.
+            Manage buyer agreements, signed legal documents, linked sales, and execution readiness.
           </p>
         </div>
 
@@ -32,89 +32,10 @@
       </div>
     </section>
 
-    <section class="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
-      {% for label, value in [
-        ('Total', contracts|length),
-        ('Draft', contracts|selectattr('status', 'equalto', 'draft')|list|length),
-        ('Under Review', contracts|selectattr('status', 'equalto', 'under_review')|list|length),
-        ('Active', contracts|selectattr('status', 'equalto', 'active')|list|length),
-        ('Fulfilled', contracts|selectattr('status', 'equalto', 'fulfilled')|list|length)
-      ] %}
-        <div class="bg-white rounded-3xl border border-gray-200 shadow-sm p-5">
-          <p class="text-sm text-gray-500">{{ label }}</p>
-          <p class="mt-2 text-2xl font-bold text-gray-950">{{ value }}</p>
-        </div>
-      {% endfor %}
-    </section>
-
-    <section class="bg-white rounded-[2rem] shadow-sm border border-gray-200 p-5 mb-8">
-      <div class="mb-4">
-        <h2 class="text-lg font-bold text-gray-950">Filter Contracts</h2>
-        <p class="text-sm text-gray-500 mt-1">Search by contract number, buyer, market, or product type.</p>
-      </div>
-
-      <form method="get" action="{{ url_for('contracts.list_contracts') }}">
-        <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <div>
-            <label for="q" class="block text-sm font-medium text-gray-700 mb-1">Search</label>
-            <input type="text" id="q" name="q" value="{{ q or '' }}"
-                   placeholder="CTR-00001, UAE, Goat Carcass"
-                   class="w-full rounded-2xl border border-gray-300 px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-jungle">
-          </div>
-
-          <div>
-            <label for="status" class="block text-sm font-medium text-gray-700 mb-1">Status</label>
-            <select id="status" name="status"
-                    class="w-full rounded-2xl border border-gray-300 px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-jungle">
-              <option value="">All statuses</option>
-              {% for value, label in [
-                ('draft', 'Draft'),
-                ('under_review', 'Under Review'),
-                ('approved', 'Approved'),
-                ('sent', 'Sent'),
-                ('signed', 'Signed'),
-                ('active', 'Active'),
-                ('partially_fulfilled', 'Partially Fulfilled'),
-                ('fulfilled', 'Fulfilled'),
-                ('cancelled', 'Cancelled')
-              ] %}
-                <option value="{{ value }}" {% if selected_status == value %}selected{% endif %}>{{ label }}</option>
-              {% endfor %}
-            </select>
-          </div>
-
-          <div>
-            <label for="buyer_id" class="block text-sm font-medium text-gray-700 mb-1">Buyer</label>
-            <select id="buyer_id" name="buyer_id"
-                    class="w-full rounded-2xl border border-gray-300 px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-jungle">
-              <option value="">All buyers</option>
-              {% for buyer in buyers %}
-                <option value="{{ buyer.id }}" {% if selected_buyer_id == buyer.id %}selected{% endif %}>
-                  {{ buyer.name }}
-                </option>
-              {% endfor %}
-            </select>
-          </div>
-
-          <div class="flex items-end gap-2">
-            <button type="submit"
-                    class="w-full rounded-2xl bg-gray-950 px-4 py-2.5 text-sm font-semibold text-white hover:bg-gray-800 transition">
-              Apply
-            </button>
-
-            <a href="{{ url_for('contracts.list_contracts') }}"
-               class="rounded-2xl border border-gray-300 px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-100 transition">
-              Reset
-            </a>
-          </div>
-        </div>
-      </form>
-    </section>
-
     <section class="bg-white rounded-[2rem] shadow-sm border border-gray-200 overflow-hidden">
       <div class="p-5 border-b border-gray-100">
         <h2 class="text-lg font-bold text-gray-950">All Contracts</h2>
-        <p class="text-sm text-gray-500">Click Open to inspect contract details.</p>
+        <p class="text-sm text-gray-500">Overview of commercial agreements and fulfillment progress.</p>
       </div>
 
       {% if contracts %}
@@ -122,26 +43,47 @@
           <table class="min-w-full divide-y divide-gray-200 text-sm">
             <thead class="bg-gray-50 text-gray-600">
               <tr>
-                <th class="px-5 py-4 text-left font-semibold">Contract</th>
+                <th class="px-5 py-4 text-left font-semibold">Contract No</th>
                 <th class="px-5 py-4 text-left font-semibold">Buyer</th>
                 <th class="px-5 py-4 text-left font-semibold">Status</th>
-                <th class="px-5 py-4 text-left font-semibold">Dates</th>
-                <th class="px-5 py-4 text-left font-semibold">Commercial</th>
+                <th class="px-5 py-4 text-left font-semibold">Signed Document</th>
+                <th class="px-5 py-4 text-left font-semibold">Sales</th>
+                <th class="px-5 py-4 text-left font-semibold">Remaining Qty</th>
                 <th class="px-5 py-4 text-right font-semibold">Actions</th>
               </tr>
             </thead>
 
             <tbody class="divide-y divide-gray-100">
               {% for contract in contracts %}
+                {% set sold_qty = namespace(value=0) %}
+
+                {% if contract.sales %}
+                  {% for sale in contract.sales %}
+                    {% if sale.items %}
+                      {% for item in sale.items %}
+                        {% set sold_qty.value = sold_qty.value + (item.quantity or 0) %}
+                      {% endfor %}
+                    {% endif %}
+                  {% endfor %}
+                {% endif %}
+
+                {% set contracted_qty = contract.contracted_quantity_kg or 0 %}
+                {% set remaining_qty = contracted_qty - sold_qty.value %}
+
                 <tr class="hover:bg-gray-50 transition">
+
                   <td class="px-5 py-4">
                     <p class="font-semibold text-gray-950">{{ contract.contract_number }}</p>
                     <p class="text-xs text-gray-500 mt-1">{{ contract.product_type or 'No product type set' }}</p>
                   </td>
 
                   <td class="px-5 py-4">
-                    <p class="font-medium text-gray-800">{{ contract.buyer.name if contract.buyer else '-' }}</p>
-                    <p class="text-xs text-gray-500 mt-1">{{ contract.destination_country or 'Destination not set' }}</p>
+                    <p class="font-medium text-gray-800">
+                      {{ contract.buyer.name if contract.buyer else '-' }}
+                    </p>
+                    <p class="text-xs text-gray-500 mt-1">
+                      {{ contract.destination_country or 'No destination' }}
+                    </p>
                   </td>
 
                   <td class="px-5 py-4">
@@ -149,13 +91,26 @@
                   </td>
 
                   <td class="px-5 py-4">
-                    <p class="text-gray-700">Contract: {{ contract.contract_date or '-' }}</p>
-                    <p class="text-xs text-gray-500 mt-1">Delivery: {{ contract.delivery_date or '-' }}</p>
+                    {% if contract.documents|selectattr("status", "equalto", "signed")|list %}
+                      <span class="text-green-700 font-medium">Available</span>
+                    {% else %}
+                      <span class="text-amber-700 font-medium">Missing</span>
+                    {% endif %}
                   </td>
 
-                  <td class="px-5 py-4">
-                    <p class="text-gray-700">{{ contract.currency }} {{ contract.contracted_value or '-' }}</p>
-                    <p class="text-xs text-gray-500 mt-1">{{ contract.price_basis or 'No price basis' }}</p>
+                  <td class="px-5 py-4 text-gray-700">
+                    <div class="font-medium text-gray-900">{{ contract.sales|length }}</div>
+                    <div class="text-xs text-gray-500">Sold: {{ sold_qty.value }} kg</div>
+                  </td>
+
+                  <td class="px-5 py-4 text-gray-700">
+                    {% if contract.contracted_quantity_kg %}
+                      <span class="{% if remaining_qty <= 0 %}text-green-700{% else %}text-gray-900{% endif %} font-medium">
+                        {{ remaining_qty }} kg
+                      </span>
+                    {% else %}
+                      <span class="text-gray-400">-</span>
+                    {% endif %}
                   </td>
 
                   <td class="px-5 py-4 text-right">
@@ -164,12 +119,14 @@
                          class="rounded-xl border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-100 transition">
                         Open
                       </a>
+
                       <a href="{{ url_for('contracts.edit_contract', contract_id=contract.id) }}"
                          class="rounded-xl border border-jungle px-3 py-1.5 text-xs font-medium text-jungle hover:bg-green-50 transition">
                         Edit
                       </a>
                     </div>
                   </td>
+
                 </tr>
               {% endfor %}
             </tbody>
@@ -178,12 +135,9 @@
       {% else %}
         <div class="px-6 py-14 text-center">
           <h3 class="text-base font-semibold text-gray-950">No contracts found</h3>
-          <p class="mt-2 text-sm text-gray-500">Clear filters or create a new contract.</p>
-          <div class="mt-5 flex items-center justify-center gap-3">
-            <a href="{{ url_for('contracts.list_contracts') }}"
-               class="rounded-xl border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 transition">
-              Reset Filters
-            </a>
+          <p class="mt-2 text-sm text-gray-500">Create your first contract to begin commercial operations.</p>
+
+          <div class="mt-5">
             <a href="{{ url_for('contracts.new_contract') }}"
                class="rounded-xl bg-gray-950 px-4 py-2 text-sm font-semibold text-white hover:bg-gray-800 transition">
               New Contract
@@ -191,6 +145,7 @@
           </div>
         </div>
       {% endif %}
+
     </section>
 
   </main>
