@@ -1,0 +1,17 @@
+<form method="POST" enctype="multipart/form-data">
+  <select name="buyer_id" required>
+    {% for b in buyers %}
+      <option value="{{ b.id }}">{{ b.name }}</option>
+    {% endfor %}
+  </select>
+
+  <select name="doc_type" required>
+    {% for code, label in doc_type_options %}
+      <option value="{{ code }}">{{ label }}</option>
+    {% endfor %}
+  </select>
+
+  <input type="file" name="file" required>
+
+  <button type="submit">Upload</button>
+</form>

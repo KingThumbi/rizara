@@ -219,12 +219,7 @@ class Contract(db.Model):
     contract_date = db.Column(db.Date, nullable=False)
     delivery_date = db.Column(db.Date, nullable=True)
 
-    status = db.Column(
-        db.String(30),
-        nullable=False,
-        default="draft",
-        index=True,
-    )
+    status = db.Column(db.String(30), nullable=False, default="draft", index=True)
 
     currency = db.Column(db.String(10), nullable=False, default="USD")
 
@@ -233,25 +228,13 @@ class Contract(db.Model):
     delivery_terms = db.Column(db.Text, nullable=True)
     destination_country = db.Column(db.String(100), nullable=True)
 
-    payment_security_type = db.Column(
-        db.String(30),
-        nullable=False,
-        default="none",
-    )
+    payment_security_type = db.Column(db.String(30), nullable=False, default="none")
 
-    prepayment_required = db.Column(
-        db.Boolean,
-        nullable=False,
-        default=False,
-    )
+    prepayment_required = db.Column(db.Boolean, nullable=False, default=False)
     required_prepayment_percent = db.Column(db.Numeric(8, 2), nullable=True)
     required_prepayment_amount = db.Column(db.Numeric(14, 2), nullable=True)
 
-    lc_required = db.Column(
-        db.Boolean,
-        nullable=False,
-        default=False,
-    )
+    lc_required = db.Column(db.Boolean, nullable=False, default=False)
     lc_number = db.Column(db.String(100), nullable=True)
     lc_issuing_bank = db.Column(db.String(150), nullable=True)
     lc_status = db.Column(db.String(30), nullable=True)
@@ -277,21 +260,9 @@ class Contract(db.Model):
     cancelled_at = db.Column(db.DateTime, nullable=True)
     cancel_reason = db.Column(db.Text, nullable=True)
 
-    created_by_user_id = db.Column(
-        db.Integer,
-        db.ForeignKey("user.id"),
-        nullable=True,
-    )
-    reviewed_by_user_id = db.Column(
-        db.Integer,
-        db.ForeignKey("user.id"),
-        nullable=True,
-    )
-    approved_by_user_id = db.Column(
-        db.Integer,
-        db.ForeignKey("user.id"),
-        nullable=True,
-    )
+    created_by_user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=True)
+    reviewed_by_user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=True)
+    approved_by_user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=True)
 
     created_at = db.Column(db.DateTime, nullable=False, default=utcnow_naive)
     updated_at = db.Column(
@@ -333,9 +304,63 @@ class Contract(db.Model):
         lazy="select",
     )
 
+    @property
+    def primary_document(self):
+        return next((doc for doc in self.documents if doc.is_primary), None)
+
+    @property
+    def primary_signed_document(self):
+        return next(
+            (
+                doc for doc in self.documents
+                if doc.is_primary and doc.status == "signed"
+            ),
+            None,
+        )
+
+    @property
+    def has_signed_document(self) -> bool:
+        return any(doc.status == "signed" for doc in self.documents)
+
+    @property
+    def can_activate(self) -> bool:
+        return (
+            self.status in {"approved", "signed"}
+            and self.primary_signed_document is not None
+        )
+
+    def mark_submitted(self):
+        self.status = "submitted"
+        self.submitted_for_review_at = utcnow_naive()
+
+    def mark_reviewed(self, user_id=None):
+        self.status = "reviewed"
+        self.reviewed_at = utcnow_naive()
+        self.reviewed_by_user_id = user_id
+
+    def mark_approved(self, user_id=None):
+        self.status = "approved"
+        self.approved_at = utcnow_naive()
+        self.approved_by_user_id = user_id
+
+    def mark_signed(self):
+        self.status = "signed"
+        self.signed_at = utcnow_naive()
+
+    def activate(self):
+        if not self.primary_signed_document:
+            raise ValueError("A primary signed contract document is required before activation.")
+
+        self.status = "active"
+        self.activated_at = utcnow_naive()
+
+    def cancel(self, reason=None):
+        self.status = "cancelled"
+        self.cancelled_at = utcnow_naive()
+        self.cancel_reason = reason
+
     def __repr__(self) -> str:
-        return f"<Contract {self.id} {self.contract_number} {self.status}>"
-    
+        return f"<Contract {self.id} {self.contract_number} {self.status}>"    
 
 class ContractItem(db.Model):
     __tablename__ = "contract_items"
@@ -378,6 +403,7 @@ class ContractDocument(db.Model):
     __tablename__ = "contract_documents"
 
     id = db.Column(db.Integer, primary_key=True)
+
     contract_id = db.Column(
         db.Integer,
         db.ForeignKey("contracts.id"),
@@ -385,8 +411,18 @@ class ContractDocument(db.Model):
         index=True,
     )
 
+    buyer_id = db.Column(
+        db.Integer,
+        db.ForeignKey("buyer.id"),
+        nullable=True,
+        index=True,
+    )
+
     document_type = db.Column(db.String(50), nullable=False, default="other")
     title = db.Column(db.String(255), nullable=False)
+
+    status = db.Column(db.String(30), nullable=False, default="draft")
+    # draft, uploaded, sent, signed, archived, cancelled
 
     file_path = db.Column(db.String(500), nullable=False)
     original_filename = db.Column(db.String(255), nullable=True)
@@ -399,19 +435,45 @@ class ContractDocument(db.Model):
 
     notes = db.Column(db.Text, nullable=True)
 
+    signed_at = db.Column(db.DateTime, nullable=True)
+    signed_by_name = db.Column(db.String(255), nullable=True)
+    signed_by_email = db.Column(db.String(255), nullable=True)
+
     uploaded_by_user_id = db.Column(
         db.Integer,
         db.ForeignKey("user.id"),
         nullable=True,
     )
+
     uploaded_at = db.Column(db.DateTime, nullable=False, default=utcnow_naive)
 
-    contract = db.relationship("Contract", back_populates="documents", lazy="joined")
-    uploaded_by = db.relationship("User", foreign_keys=[uploaded_by_user_id], lazy="joined")
+    contract = db.relationship(
+        "Contract",
+        back_populates="documents",
+        lazy="joined",
+    )
+
+    buyer = db.relationship(
+        "Buyer",
+        foreign_keys=[buyer_id],
+        lazy="joined",
+    )
+
+    uploaded_by = db.relationship(
+        "User",
+        foreign_keys=[uploaded_by_user_id],
+        lazy="joined",
+    )
+
+    def mark_signed(self, signed_by_name=None, signed_by_email=None):
+        self.status = "signed"
+        self.signed_at = utcnow_naive()
+        self.signed_by_name = signed_by_name
+        self.signed_by_email = signed_by_email
 
     def __repr__(self) -> str:
         return f"<ContractDocument {self.id} {self.document_type} {self.title}>"
-    
+        
 processing_batch_aggregation_batches = db.Table(
     "processing_batch_aggregation_batches",
     db.Column(
@@ -652,14 +714,20 @@ class SaleItem(db.Model):
 
     product_name = db.Column(db.String(120), nullable=False)
     product_code = db.Column(db.String(50), nullable=True)
+
     quantity = db.Column(db.Numeric(14, 2), nullable=False)
     unit_of_measure = db.Column(db.String(20), nullable=False, default="kg")
+
     unit_price = db.Column(db.Numeric(14, 2), nullable=False)
     line_total = db.Column(db.Numeric(14, 2), nullable=False)
 
     notes = db.Column(db.Text, nullable=True)
 
-    created_at = db.Column(db.DateTime, nullable=False, default=utcnow_naive)
+    created_at = db.Column(
+        db.DateTime,
+        nullable=False,
+        default=utcnow_naive,
+    )
     updated_at = db.Column(
         db.DateTime,
         nullable=False,
@@ -667,8 +735,18 @@ class SaleItem(db.Model):
         onupdate=utcnow_naive,
     )
 
-    sale = db.relationship("Sale", back_populates="items", lazy="joined")
-    contract_item = db.relationship("ContractItem", back_populates="sale_items", lazy="joined")
+    sale = db.relationship(
+        "Sale",
+        back_populates="items",
+        lazy="joined",
+    )
+
+    contract_item = db.relationship(
+        "ContractItem",
+        back_populates="sale_items",
+        lazy="joined",
+    )
+
     processing_batch_output = db.relationship(
         "ProcessingBatchOutput",
         back_populates="sale_items",
@@ -676,8 +754,7 @@ class SaleItem(db.Model):
     )
 
     def __repr__(self) -> str:
-        return f"<SaleItem {self.id} {self.product_name}>"
-    
+        return f"<SaleItem {self.id} {self.product_name}>"    
 
 class SalePayment(db.Model):
     __tablename__ = "sale_payments"
@@ -721,13 +798,19 @@ class SalePayment(db.Model):
 
 
 # =========================================================
-# Documents (LOI, agreements, specs) + signatures
+# Documents (LOI, Proforma, Commercial, Packing List) + Signatures
 # =========================================================
 class Document(db.Model):
     __tablename__ = "document"
 
+    # -----------------------------------------------------
+    # Primary Identity
+    # -----------------------------------------------------
     id = db.Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
 
+    # -----------------------------------------------------
+    # Core Relationships
+    # -----------------------------------------------------
     buyer_id = db.Column(
         db.Integer,
         db.ForeignKey("buyer.id", ondelete="CASCADE"),
@@ -736,24 +819,54 @@ class Document(db.Model):
     )
     buyer = db.relationship("Buyer", foreign_keys=[buyer_id], lazy="joined")
 
-    doc_type = db.Column(db.String(50), nullable=False, index=True)  # indexed in DB
+    # 🔥 NEW: Link document to Sale (CRITICAL for Packing List & Invoice)
+    sale_id = db.Column(
+        db.Integer,
+        db.ForeignKey("sales.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    sale = db.relationship("Sale", lazy="joined")
+
+    # -----------------------------------------------------
+    # Document Classification
+    # -----------------------------------------------------
+    doc_type = db.Column(db.String(50), nullable=False, index=True)
+    # examples: loi, proforma_invoice, commercial_invoice, packing_list
+
     title = db.Column(db.String(200), nullable=False)
 
-    status = db.Column(db.String(30), nullable=False, default="draft", index=True)  # indexed in DB
+    status = db.Column(
+        db.String(30),
+        nullable=False,
+        default="draft",
+        index=True,
+    )
+    # draft → issued → signed → completed
+
     version = db.Column(db.Integer, nullable=False, default=1)
 
+    # -----------------------------------------------------
+    # File / Storage
+    # -----------------------------------------------------
     storage_key = db.Column(db.String(500), nullable=True)
     file_sha256 = db.Column(db.String(64), nullable=True)
 
-    # IMPORTANT:
-    # Use MutableDict so SQLAlchemy tracks in-place JSON edits and persists them.
-    # DB column is jsonb (already migrated).
-    payload = db.Column(MutableDict.as_mutable(JSONB), nullable=True)
+    # JSON payload for flexible document data
+    payload = db.Column(
+        MutableDict.as_mutable(JSONB),
+        nullable=True,
+    )
 
-    # DB column is "timestamp without time zone" (naive datetime)
+    # -----------------------------------------------------
+    # Lifecycle Dates
+    # -----------------------------------------------------
     issued_at = db.Column(db.DateTime, nullable=True)
     expires_at = db.Column(db.DateTime, nullable=True)
 
+    # -----------------------------------------------------
+    # Ownership / Audit
+    # -----------------------------------------------------
     created_by_user_id = db.Column(
         db.Integer,
         db.ForeignKey("user.id", ondelete="SET NULL"),
@@ -762,33 +875,43 @@ class Document(db.Model):
     )
     created_by = db.relationship("User", foreign_keys=[created_by_user_id], lazy="joined")
 
-    # Match DB defaults: now()
-    created_at = db.Column(db.DateTime, nullable=False, server_default=sa.text("now()"))
+    created_at = db.Column(
+        db.DateTime,
+        nullable=False,
+        server_default=sa.text("now()"),
+    )
+
     updated_at = db.Column(
         db.DateTime,
         nullable=False,
         server_default=sa.text("now()"),
-        # DB already has a trigger trg_set_document_updated_at() for updated_at;
-        # keep ORM onupdate too (harmless; helps when trigger isn't present in some env).
         onupdate=utcnow_naive,
     )
 
-    # IMPORTANT: match DB schema
-    # DB: buyer_sign_token varchar(128), indexed, NOT unique constraint.
-    buyer_sign_token = db.Column(db.String(128), nullable=True, index=True)
+    # -----------------------------------------------------
+    # Buyer Digital Signature
+    # -----------------------------------------------------
+    buyer_sign_token = db.Column(
+        db.String(128),
+        nullable=True,
+        index=True,
+    )
+
     buyer_sign_token_expires_at = db.Column(db.DateTime, nullable=True)
 
     buyer_signed_at = db.Column(db.DateTime, nullable=True)
-    buyer_sign_name = db.Column(db.String(160), nullable=True)  # DB is varchar(160)
+    buyer_sign_name = db.Column(db.String(160), nullable=True)
     buyer_sign_email = db.Column(db.String(120), nullable=True)
 
     buyer_sign_ip = db.Column(db.String(64), nullable=True)
     buyer_sign_user_agent = db.Column(db.String(255), nullable=True)
 
+    # -----------------------------------------------------
+    # Token Helpers
+    # -----------------------------------------------------
     def new_sign_token(self, hours: int = 72) -> str:
-        token = secrets.token_urlsafe(32)  # ~43 chars
+        token = secrets.token_urlsafe(32)
         self.buyer_sign_token = token
-        # Store as naive UTC to match DB type
         self.buyer_sign_token_expires_at = utcnow_naive() + timedelta(hours=hours)
         return token
 
@@ -797,6 +920,9 @@ class Document(db.Model):
             return False
         return utcnow_naive() <= self.buyer_sign_token_expires_at
 
+    # -----------------------------------------------------
+    # Constraints & Indexes
+    # -----------------------------------------------------
     __table_args__ = (
         db.UniqueConstraint(
             "buyer_id",
@@ -812,6 +938,9 @@ class Document(db.Model):
         ),
     )
 
+    # -----------------------------------------------------
+    # Relationships
+    # -----------------------------------------------------
     signatures = db.relationship(
         "DocumentSignature",
         back_populates="document",
@@ -819,9 +948,16 @@ class Document(db.Model):
         cascade="all, delete-orphan",
     )
 
+    # -----------------------------------------------------
+    # Debug / Logging
+    # -----------------------------------------------------
     def __repr__(self) -> str:
-        return f"<Document {self.id} {self.doc_type} v{self.version} {self.status}>"
-
+        return (
+            f"<Document id={self.id} "
+            f"type={self.doc_type} "
+            f"v={self.version} "
+            f"status={self.status}>"
+        )
 
 class DocumentSignature(db.Model):
     __tablename__ = "document_signature"
@@ -880,6 +1016,27 @@ ALLOWED_TRANSITIONS = {
     "executed": {"void"},
     "expired": {"void"},
     "void": set(),
+}
+CREATABLE_DOC_TYPES = {
+    "loi": "Letter of Intent (LOI)",
+    "proforma_invoice": "Proforma Invoice",
+    "commercial_invoice": "Commercial Invoice",
+    "packing_list": "Packing List",
+}
+
+UPLOAD_ONLY_DOC_TYPES = {
+    "purchase_order": "Purchase Order",
+    "letter_of_credit": "Letter of Credit (LC)",
+    "health_certificate": "Health Certificate",
+    "certificate_of_origin": "Certificate of Origin",
+    "export_permit": "Export Permit",
+    "payment_confirmation": "Payment Confirmation",
+    "other": "Other Supporting Document",
+}
+
+DOCUMENT_TYPES = {
+    **CREATABLE_DOC_TYPES,
+    **UPLOAD_ONLY_DOC_TYPES,
 }
 
 # =========================================================

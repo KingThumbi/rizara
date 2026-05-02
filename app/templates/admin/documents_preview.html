@@ -1,0 +1,346 @@
+{% extends "layouts/base.html" %}
+
+{% block title %}
+  {{ (doc.payload or {}).get("document_title") or doc.title or "Document Preview" }} - Rizara
+{% endblock %}
+
+{% block body %}
+{% set payload = doc.payload or {} %}
+{% set items = payload.get("items", []) %}
+{% set currency = payload.get("currency") or "USD" %}
+{% set document_title = payload.get("document_title") or doc.doc_type|replace("_", " ")|title %}
+{% set document_number = payload.get("document_number") or payload.get("proforma_number") or doc.id %}
+{% set contract_number = payload.get("contract_number") %}
+{% set buyer_name = payload.get("buyer_name") or (doc.buyer.name if doc.buyer else "Buyer Name") %}
+{% set buyer_email = payload.get("buyer_email") or (doc.buyer.email if doc.buyer and doc.buyer.email else "") %}
+{% set buyer_phone = payload.get("buyer_phone") or (doc.buyer.phone if doc.buyer and doc.buyer.phone else "") %}
+{% set buyer_address = payload.get("buyer_address") or (doc.buyer.address if doc.buyer and doc.buyer.address else "") %}
+{% set destination = payload.get("destination_country") or "TBA" %}
+{% set payment_terms = payload.get("payment_terms") or "As agreed" %}
+{% set delivery_terms = payload.get("delivery_terms") or "As agreed" %}
+{% set price_basis = payload.get("price_basis") or "As agreed" %}
+{% set subtotal = payload.get("subtotal", 0)|float %}
+{% set discount = payload.get("discount", 0)|float %}
+{% set shipping = payload.get("shipping", 0)|float %}
+{% set tax = payload.get("tax", 0)|float %}
+{% set grand_total = payload.get("grand_total", subtotal)|float %}
+{% set amount_received = payload.get("amount_received", 0)|float %}
+{% set balance_due = payload.get("balance_due", grand_total)|float %}
+
+<style>
+  @page {
+    size: A4;
+    margin: 16mm 13mm;
+  }
+
+  body {
+    background: #f8fafc;
+  }
+
+  .pdf-shell {
+    font-family: Arial, sans-serif;
+  }
+
+  .doc-header {
+    border-bottom: 3px solid #1f6f54;
+  }
+
+  .doc-title {
+    letter-spacing: 0.08em;
+  }
+
+  .brand-line {
+    height: 6px;
+    background: linear-gradient(90deg, #1f6f54, #d4af37);
+    border-radius: 999px;
+    margin-bottom: 24px;
+  }
+
+  .pdf-table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+
+  .pdf-table th {
+    background: #f3f4f6;
+    font-size: 12px;
+    text-transform: uppercase;
+    color: #374151;
+  }
+
+  .pdf-table th,
+  .pdf-table td {
+    border: 1px solid #e5e7eb;
+    padding: 10px 12px;
+  }
+
+  .avoid-break {
+    page-break-inside: avoid;
+  }
+
+  table {
+    page-break-inside: auto;
+  }
+
+  tr {
+    page-break-inside: avoid;
+    page-break-after: auto;
+  }
+
+  thead {
+    display: table-header-group;
+  }
+
+  @media print {
+    body {
+      background: white !important;
+    }
+
+    .no-print {
+      display: none !important;
+    }
+
+    .pdf-page {
+      padding: 0 !important;
+      margin: 0 !important;
+      max-width: none !important;
+    }
+
+    .pdf-shell {
+      border: none !important;
+      box-shadow: none !important;
+      padding: 0 !important;
+      border-radius: 0 !important;
+    }
+  }
+</style>
+
+<div class="pdf-page max-w-5xl mx-auto px-4 py-8">
+  {% if not pdf_mode %}
+    <div class="no-print flex items-center justify-between mb-6">
+      <div>
+        <h1 class="text-2xl font-bold text-gray-900">Document Preview</h1>
+        <p class="text-sm text-gray-500">
+          {{ document_title }} · {{ doc.title or "Draft" }}
+        </p>
+      </div>
+
+      <div class="flex gap-3">
+        <a href="{{ url_for('admin.documents_view', document_id=doc.id) }}"
+           class="px-4 py-2 rounded-xl border text-sm font-semibold hover:bg-gray-50">
+          Back
+        </a>
+
+        <a href="{{ url_for('admin.documents_pdf', document_id=doc.id) }}"
+           target="_blank"
+           class="px-4 py-2 rounded-xl bg-jungle text-white text-sm font-semibold hover:bg-jungleLight">
+          Open PDF
+        </a>
+      </div>
+    </div>
+  {% endif %}
+
+  <div class="pdf-shell bg-white border rounded-3xl shadow-sm p-10 text-gray-900">
+    <div class="brand-line"></div>
+
+    <div class="doc-header flex justify-between pb-6 mb-8">
+      <div>
+        <h2 class="text-3xl font-extrabold text-jungle">RIZARA MEATS LTD</h2>
+        <p class="text-sm text-gray-600 mt-2">
+          Premium Halal Meat Aggregation, Processing & Export
+        </p>
+        <p class="text-sm text-gray-600">
+          Email: sales@rizarameats.co.ke · Tel: +254700912362
+        </p>
+      </div>
+
+      <div class="text-right">
+        <h3 class="doc-title text-2xl font-bold uppercase">{{ document_title }}</h3>
+
+        <p class="text-sm text-gray-600 mt-2">
+          No: <strong>{{ document_number }}</strong>
+        </p>
+
+        {% if contract_number %}
+          <p class="text-sm text-gray-600">
+            Contract: <strong>{{ contract_number }}</strong>
+          </p>
+        {% endif %}
+
+        <p class="text-sm text-gray-600">
+          Date: {{ doc.created_at.strftime("%d %b %Y") if doc.created_at else "" }}
+        </p>
+
+        <p class="text-sm text-gray-600">
+          Version: v{{ doc.version or 1 }}
+        </p>
+      </div>
+    </div>
+
+    <div class="grid grid-cols-2 gap-8 mb-8 avoid-break">
+      <div>
+        <h4 class="text-xs font-bold uppercase text-gray-500 mb-2 tracking-wide">Buyer</h4>
+        <div class="rounded-2xl border p-4">
+          <p class="font-bold">{{ buyer_name }}</p>
+
+          {% if buyer_email %}
+            <p class="text-sm text-gray-600">{{ buyer_email }}</p>
+          {% endif %}
+
+          {% if buyer_phone %}
+            <p class="text-sm text-gray-600">{{ buyer_phone }}</p>
+          {% endif %}
+
+          {% if buyer_address %}
+            <p class="text-sm text-gray-600">{{ buyer_address }}</p>
+          {% endif %}
+
+          <p class="text-sm text-gray-600">{{ destination }}</p>
+        </div>
+      </div>
+
+      <div>
+        <h4 class="text-xs font-bold uppercase text-gray-500 mb-2 tracking-wide">Commercial Terms</h4>
+        <div class="rounded-2xl border p-4 text-sm text-gray-700">
+          <p><strong>Currency:</strong> {{ currency }}</p>
+          <p><strong>Price Basis:</strong> {{ price_basis }}</p>
+          <p><strong>Payment Terms:</strong> {{ payment_terms }}</p>
+          <p><strong>Delivery Terms:</strong> {{ delivery_terms }}</p>
+          <p><strong>Destination:</strong> {{ destination }}</p>
+        </div>
+      </div>
+    </div>
+
+    <table class="pdf-table mb-8">
+      <thead>
+        <tr>
+          <th class="text-left">Description</th>
+          <th class="text-right">Qty</th>
+          <th class="text-right">Unit Price</th>
+          <th class="text-right">Amount</th>
+        </tr>
+      </thead>
+
+      <tbody>
+        {% if items %}
+          {% for item in items %}
+            <tr class="text-sm">
+              <td>
+                <div class="font-semibold">
+                  {{ item.description or item.product_name or "Processed Halal Meat" }}
+                </div>
+
+                {% if item.product_code %}
+                  <div class="text-xs text-gray-500 mt-1">
+                    Code: {{ item.product_code }}
+                  </div>
+                {% endif %}
+
+                {% if item.quality_spec %}
+                  <div class="text-xs text-gray-500 mt-1">
+                    {{ item.quality_spec }}
+                  </div>
+                {% endif %}
+              </td>
+
+              <td class="text-right">
+                {{ "%.2f"|format(item.quantity|float) }}
+                {{ item.unit_of_measure or "kg" }}
+              </td>
+
+              <td class="text-right">
+                {{ currency }} {{ "%.2f"|format(item.unit_price|float) }}
+              </td>
+
+              <td class="text-right font-semibold">
+                {{ currency }} {{ "%.2f"|format(item.line_total|float) }}
+              </td>
+            </tr>
+          {% endfor %}
+        {% else %}
+          <tr class="text-sm">
+            <td>{{ payload.get("product_type") or "Processed Halal Meat" }}</td>
+            <td class="text-right">
+              {{ "%.2f"|format(payload.get("quantity_kg", 0)|float) }} kg
+            </td>
+            <td class="text-right">
+              {{ currency }} {{ "%.2f"|format(payload.get("unit_price", 0)|float) }}
+            </td>
+            <td class="text-right font-semibold">
+              {{ currency }} {{ "%.2f"|format(grand_total) }}
+            </td>
+          </tr>
+        {% endif %}
+      </tbody>
+    </table>
+
+    <div class="flex justify-end mb-10 avoid-break">
+      <div class="w-96 rounded-2xl border p-5 space-y-2">
+        <div class="flex justify-between text-sm">
+          <span>Subtotal</span>
+          <strong>{{ currency }} {{ "%.2f"|format(subtotal) }}</strong>
+        </div>
+
+        <div class="flex justify-between text-sm">
+          <span>Discount</span>
+          <strong>{{ currency }} {{ "%.2f"|format(discount) }}</strong>
+        </div>
+
+        <div class="flex justify-between text-sm">
+          <span>Shipping / Freight</span>
+          <strong>{{ currency }} {{ "%.2f"|format(shipping) }}</strong>
+        </div>
+
+        <div class="flex justify-between text-sm">
+          <span>Tax</span>
+          <strong>{{ currency }} {{ "%.2f"|format(tax) }}</strong>
+        </div>
+
+        {% if amount_received > 0 %}
+          <div class="flex justify-between text-sm border-t pt-2">
+            <span>Amount Received</span>
+            <strong>{{ currency }} {{ "%.2f"|format(amount_received) }}</strong>
+          </div>
+
+          <div class="flex justify-between text-sm">
+            <span>Balance Due</span>
+            <strong>{{ currency }} {{ "%.2f"|format(balance_due) }}</strong>
+          </div>
+        {% endif %}
+
+        <div class="flex justify-between text-lg font-extrabold border-t pt-3">
+          <span>Grand Total</span>
+          <span>{{ currency }} {{ "%.2f"|format(grand_total) }}</span>
+        </div>
+      </div>
+    </div>
+
+    {% if payload.get("terms_note") %}
+      <div class="rounded-2xl border bg-gray-50 p-4 mb-10 avoid-break">
+        <h4 class="text-xs font-bold uppercase text-gray-500 mb-2 tracking-wide">Notes</h4>
+        <p class="text-sm text-gray-700 whitespace-pre-line">{{ payload.get("terms_note") }}</p>
+      </div>
+    {% endif %}
+
+    <div class="grid grid-cols-2 gap-8 mt-12 avoid-break">
+      <div>
+        <p class="text-sm font-bold mb-10">For Rizara Meats Ltd</p>
+        <div class="border-t pt-2 text-sm text-gray-600">
+          Authorized Signature
+        </div>
+      </div>
+
+      <div>
+        <p class="text-sm font-bold mb-10">For Buyer</p>
+        <div class="border-t pt-2 text-sm text-gray-600">
+          Buyer Signature / Stamp
+        </div>
+      </div>
+    </div>
+
+    <div class="mt-10 pt-4 border-t text-[11px] text-gray-400 text-center">
+      Generated by Rizara Document Engine · {{ document_title }} · {{ document_number }}
+    </div>
+  </div>
+</div>
+{% endblock %}

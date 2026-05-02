@@ -4,9 +4,9 @@ from __future__ import annotations
 import re
 import secrets
 from datetime import datetime, timedelta, timezone
-
+from decimal import Decimal
 import sqlalchemy as sa
-from flask import Blueprint, flash, jsonify, make_response, redirect, render_template, request, url_for, abort, current_app
+from flask import Blueprint, flash, jsonify, make_response, redirect, render_template, request, url_for, abort, current_app, Response, send_file
 from flask_login import current_user
 from sqlalchemy import desc
 from sqlalchemy.exc import IntegrityError
@@ -14,15 +14,20 @@ from sqlalchemy.orm.attributes import flag_modified
 from weasyprint import HTML
 from werkzeug.security import generate_password_hash
 from werkzeug.exceptions import NotFound
-
+from io import BytesIO
 from zoneinfo import ZoneInfo
-
+from app.config.company import company_context
 from .constants.roles import ROLES
 from app.extensions import db
 from app.models import (
     Buyer,
+    Contract,
     Document,
     DocumentSignature,
+    Buyer,
+    DOCUMENT_TYPES,
+    CREATABLE_DOC_TYPES,
+    UPLOAD_ONLY_DOC_TYPES,
     User,
     Farmer,
     Goat,
@@ -34,6 +39,7 @@ from app.models import (
 
 from .utils.auth import allowed_roles_for
 from .utils.guards import admin_required
+from .utils.packing_list_pdf import build_packing_list_context, cartons_from_weight, money_safe, weight_safe
 
 from app.services.document_files import (
     load_document_snapshot_bytes,
@@ -42,13 +48,14 @@ from app.services.document_files import (
 )
 
 from app.services.documents_scaffold import (
-    DOC_TYPE_OPTIONS,
     DOC_TYPE_LOI,
     DOC_TYPE_EXPORT_SALES_CONTRACT,
     make_payload_scaffold,
     default_title_for,
     next_admin_url_for,
 )
+DOC_TYPE_OPTIONS = list(CREATABLE_DOC_TYPES.items())
+UPLOAD_DOC_TYPE_OPTIONS = list(UPLOAD_ONLY_DOC_TYPES.items())
 
 admin_bp = Blueprint("admin", __name__, url_prefix="/admin")
 
@@ -98,6 +105,12 @@ def _safe_filename(s: str) -> str:
     s = (s or "").strip()
     s = re.sub(r"[^A-Za-z0-9._-]+", "_", s)
     return s[:120] or "document"
+
+def _money(value):
+    if value is None:
+        return Decimal("0.00")
+    return Decimal(str(value))
+
 
 # -------------------------------------------------------------------
 # Dashboard
@@ -440,14 +453,27 @@ def documents_list():
 def documents_new():
     buyers = Buyer.query.order_by(Buyer.name.asc()).all()
 
+    allowed_doc_types = {
+        key
+        for key, _label in DOC_TYPE_OPTIONS
+        if key not in {
+            DOC_TYPE_EXPORT_SALES_CONTRACT,
+            "export_sales_contract",
+        }
+    }
+
     def _render_form(*, status_code: int = 200):
         return (
             render_template(
                 "admin/documents_new.html",
                 buyers=buyers,
                 doc_statuses=sorted(DOC_STATUSES),
-                doc_type_options=DOC_TYPE_OPTIONS,
-                default_doc_type=DOC_TYPE_EXPORT_SALES_CONTRACT,
+                doc_type_options=[
+                    (key, label)
+                    for key, label in DOC_TYPE_OPTIONS
+                    if key in allowed_doc_types
+                ],
+                default_doc_type="",
                 default_version=1,
             ),
             status_code,
@@ -463,50 +489,58 @@ def documents_new():
     version = request.form.get("version", type=int) or 1
     status = _clean_str(request.form.get("status") or "draft") or "draft"
 
-    # Debug-friendly safety (remove later if you want)
+    # Export Sales Contracts now belong to the Contracts module.
+    if doc_type in {DOC_TYPE_EXPORT_SALES_CONTRACT, "export_sales_contract"}:
+        flash("Create an export sales contract from the Contracts module.", "info")
+        return redirect(url_for("contracts.new_contract"))
+
     if buyer_id is None:
-        flash("Buyer is required (buyer_id missing from form submission).", "danger")
-        return _render_form(400)
+        flash("Buyer is required.", "danger")
+        return _render_form(status_code=400)
 
     buyer = Buyer.query.get(buyer_id)
     if not buyer:
         flash("Buyer not found.", "danger")
-        return _render_form(404)
+        return _render_form(status_code=404)
 
-    allowed_doc_types = {k for k, _label in DOC_TYPE_OPTIONS}
     if not doc_type:
         flash("Document type is required.", "danger")
-        return _render_form(400)
+        return _render_form(status_code=400)
 
     if doc_type not in allowed_doc_types:
         flash("Invalid document type selected.", "danger")
-        return _render_form(400)
+        return _render_form(status_code=400)
 
     if len(doc_type) > DOC_TYPE_MAXLEN:
-        flash(f"Document type too long (max {DOC_TYPE_MAXLEN}).", "danger")
-        return _render_form(400)
+        flash(f"Document type too long. Maximum allowed is {DOC_TYPE_MAXLEN} characters.", "danger")
+        return _render_form(status_code=400)
 
     if not title:
         title = default_title_for(doc_type)
 
     if len(title) > DOC_TITLE_MAXLEN:
-        flash(f"Title too long (max {DOC_TITLE_MAXLEN}).", "danger")
-        return _render_form(400)
+        flash(f"Title too long. Maximum allowed is {DOC_TITLE_MAXLEN} characters.", "danger")
+        return _render_form(status_code=400)
 
     if status not in DOC_STATUSES:
-        flash("Invalid status.", "danger")
-        return _render_form(400)
+        flash("Invalid status selected.", "danger")
+        return _render_form(status_code=400)
 
     existing_max = (
         db.session.query(sa.func.max(Document.version))
-        .filter(Document.buyer_id == buyer_id, Document.doc_type == doc_type)
+        .filter(
+            Document.buyer_id == buyer_id,
+            Document.doc_type == doc_type,
+        )
         .scalar()
     )
+
     if existing_max is not None and version <= int(existing_max):
         version = int(existing_max) + 1
-        flash(f"Version already exists for this buyer + type. Auto-set to v{version}.", "info")
-
-    payload = make_payload_scaffold(doc_type)
+        flash(
+            f"A document already exists for this buyer and type. Version has been auto-set to v{version}.",
+            "info",
+        )
 
     doc = Document(
         buyer_id=buyer_id,
@@ -514,25 +548,32 @@ def documents_new():
         title=title,
         status=status,
         version=version,
-        payload=payload,
+        payload=make_payload_scaffold(doc_type),
         created_by_user_id=getattr(current_user, "id", None),
     )
 
     db.session.add(doc)
+
     try:
         db.session.commit()
+
     except IntegrityError:
         db.session.rollback()
-        flash("That buyer + document type + version already exists. Try a higher version.", "danger")
-        return _render_form(409)
+        flash(
+            "That buyer, document type, and version already exists. Try a higher version.",
+            "danger",
+        )
+        return _render_form(status_code=409)
+
     except Exception as exc:
         db.session.rollback()
         flash(f"Create document failed: {exc}", "danger")
-        return _render_form(500)
+        return _render_form(status_code=500)
 
-    flash("Document created.", "success")
+    flash("Document created successfully.", "success")
+
     next_endpoint = next_admin_url_for(doc_type)
-    return redirect(url_for(next_endpoint, document_id=str(doc.id)))
+    return redirect(url_for("admin.documents_view", document_id=str(doc.id)))
 
 @admin_bp.route("/documents/<uuid:document_id>/send-for-signing", methods=["POST"])
 @admin_required
@@ -608,6 +649,8 @@ def documents_view(document_id):
         signatures=signatures,
         doc_statuses=sorted(DOC_STATUSES),
         events=events,
+        creatable_doc_types=CREATABLE_DOC_TYPES,
+        upload_only_doc_types=UPLOAD_ONLY_DOC_TYPES,
     )
 
 @admin_bp.route("/documents/<uuid:document_id>/status", methods=["POST"])
@@ -1014,3 +1057,300 @@ def documents_signed_pdf(document_id):
     resp.headers["Content-Type"] = "application/pdf"
     resp.headers["Content-Disposition"] = f'attachment; filename="{filename}"'
     return resp
+
+@admin_bp.route("/documents/upload", methods=["GET", "POST"])
+@admin_required
+def documents_upload():
+    buyers = Buyer.query.order_by(Buyer.name.asc()).all()
+
+    if request.method == "GET":
+        return render_template(
+            "admin/documents_upload.html",
+            buyers=buyers,
+            doc_type_options=UPLOAD_DOC_TYPE_OPTIONS,
+        )
+
+    # --- POST ---
+    buyer_id = request.form.get("buyer_id", type=int)
+    doc_type = request.form.get("doc_type")
+    file = request.files.get("file")
+
+    if not buyer_id or not doc_type or not file:
+        flash("All fields are required.", "danger")
+        return redirect(url_for("admin.documents_upload"))
+
+    # TODO: save file (S3/local)
+    storage_key = save_file(file)  # your existing helper or implement
+
+    doc = Document(
+        buyer_id=buyer_id,
+        doc_type=doc_type,
+        title=file.filename,
+        status="draft",
+        version=1,
+        storage_key=storage_key,
+        created_by_user_id=current_user.id,
+    )
+
+    db.session.add(doc)
+    db.session.commit()
+
+    flash("Document uploaded successfully.", "success")
+    return redirect(url_for("admin.documents_view", document_id=str(doc.id)))    
+
+@admin_bp.route("/documents/<uuid:document_id>/preview", methods=["GET"])
+@admin_required
+def documents_preview(document_id):
+    doc = Document.query.get_or_404(document_id)
+
+    return render_template(
+        "admin/documents_preview.html",
+        doc=doc,
+        document=doc,
+        company=company_context(),
+        pdf_mode=False,
+    )
+
+
+@admin_bp.route("/documents/<uuid:document_id>/pdf", methods=["GET"])
+@admin_required
+def documents_pdf(document_id):
+    from app.utils.proforma_pdf import render_proforma_pdf
+    from app.utils.document_pdf import render_document_invoice_pdf
+    from weasyprint import HTML
+
+    doc = Document.query.get_or_404(document_id)
+
+    # 🔥 THIS IS WHERE YOU ADD THE LOGIC
+    if doc.doc_type == "proforma_invoice":
+        pdf_bytes = render_proforma_pdf(doc)
+
+    elif doc.doc_type == "commercial_invoice":
+        pdf_bytes = render_document_invoice_pdf(doc)
+
+    else:
+        # fallback (LOI, agreements, etc.)
+        html = render_template(
+            "admin/documents_preview.html",
+            doc=doc,
+            document=doc,
+            company=company_context(),
+            pdf_mode=True,
+        )
+        pdf_bytes = HTML(string=html, base_url=request.url_root).write_pdf()
+
+    payload = doc.payload or {}
+    document_number = payload.get("document_number") or str(doc.id)
+
+    filename = f"Rizara_{doc.doc_type}_{document_number}.pdf"
+
+    return Response(
+        pdf_bytes,
+        mimetype="application/pdf",
+        headers={
+            "Content-Disposition": f'inline; filename="{filename}"'
+        },
+    )
+
+@admin_bp.route("/documents/<uuid:document_id>/packing-list")
+@admin_required
+def packing_list_preview(document_id):
+    doc = Document.query.get_or_404(document_id)
+
+    if doc.doc_type != "packing_list":
+        abort(400, "Invalid document type")
+
+    sale = doc.sale  # must be linked
+
+    items = []
+    total_net = 0
+    total_gross = 0
+    total_cartons = 0
+
+    for item in sale.items:
+        lot = item.inventory_lot
+
+        net_weight = float(item.quantity_kg)
+        gross_weight = net_weight * 1.05  # simple 5% packaging assumption
+        cartons = int(net_weight / 20)  # assume 20kg per carton
+
+        items.append({
+            "product": lot.product_type,
+            "description": "Frozen Meat",
+            "batch": lot.lot_number,
+            "cartons": cartons,
+            "net": net_weight,
+            "gross": gross_weight,
+        })
+
+        total_net += net_weight
+        total_gross += gross_weight
+        total_cartons += cartons
+
+    return render_template(
+        "documents/packing_list.html",
+        doc=doc,
+        sale=sale,
+        items=items,
+        total_net=total_net,
+        total_gross=total_gross,
+        total_cartons=total_cartons,
+    )
+
+def set_if_column(model, obj, field, value):
+    if field in model.__table__.columns:
+        setattr(obj, field, value)
+
+
+@admin_bp.route("/contracts/<int:contract_id>/generate-proforma", methods=["POST"])
+@admin_required
+def generate_proforma_from_contract(contract_id):
+    contract = Contract.query.get_or_404(contract_id)
+
+    if not contract.buyer_id:
+        flash("This contract has no buyer, so a Proforma Invoice cannot be generated.", "danger")
+        return redirect(url_for("contracts.view_contract", contract_id=contract.id))
+
+    currency = contract.currency or "USD"
+    contract_number = contract.contract_number or f"CTR-{contract.id}"
+    proforma_number = f"PFI-{contract_number}"
+
+    items = []
+    subtotal = Decimal("0.00")
+
+    for item in contract.items:
+        qty = _money(getattr(item, "quantity", 0))
+        unit_price = _money(getattr(item, "unit_price", 0))
+        line_total = qty * unit_price
+
+        subtotal += line_total
+
+        items.append({
+            "description": getattr(item, "product_name", None)
+            or contract.product_type
+            or "Processed Halal Meat",
+            "product_code": getattr(item, "product_code", None) or "",
+            "unit_of_measure": getattr(item, "unit_of_measure", None) or "kg",
+            "quality_spec": getattr(item, "quality_spec", None) or "",
+            "quantity": str(qty),
+            "unit_price": str(unit_price),
+            "line_total": str(line_total),
+        })
+
+    if not items:
+        qty = _money(getattr(contract, "contracted_quantity_kg", 0))
+        total = _money(getattr(contract, "contracted_value", 0))
+        unit_price = total / qty if qty > 0 else Decimal("0.00")
+
+        subtotal = total
+
+        items.append({
+            "description": contract.product_type or "Processed Halal Meat",
+            "product_code": "",
+            "unit_of_measure": "kg",
+            "quality_spec": "",
+            "quantity": str(qty),
+            "unit_price": str(unit_price),
+            "line_total": str(total),
+        })
+
+    # =====================================================
+    # CIF + Pricing Engine
+    # =====================================================
+    freight_per_kg = Decimal("2.50")
+    margin_percent = Decimal("0.00")
+
+    total_qty = sum(Decimal(str(item.get("quantity", 0))) for item in items)
+
+    freight_total = total_qty * freight_per_kg
+    margin_amount = subtotal * (margin_percent / Decimal("100"))
+    grand_total = subtotal + freight_total + margin_amount
+
+    buyer = contract.buyer
+
+    payload = {
+        "document_title": "PROFORMA INVOICE",
+        "document_number": proforma_number,
+        "status": "draft",
+        "source": "contract",
+        "contract_id": contract.id,
+        "contract_number": contract_number,
+
+        "buyer_name": buyer.name if buyer else "",
+        "buyer_phone": buyer.phone if buyer else "",
+        "buyer_email": buyer.email if buyer else "",
+        "buyer_address": buyer.address if buyer else "",
+
+        "currency": currency,
+        "destination_country": contract.destination_country,
+        "price_basis": contract.price_basis or "CIF",
+        "pricing_mode": "CIF",
+
+        "payment_terms": contract.payment_terms or "Payment as agreed.",
+        "delivery_terms": contract.delivery_terms or "Delivery as agreed.",
+
+        "items": items,
+
+        "subtotal": str(subtotal),
+        "discount": "0.00",
+        "tax": "0.00",
+
+        "freight_per_kg": str(freight_per_kg),
+        "freight_total": str(freight_total),
+        "shipping": str(freight_total),
+
+        "margin_percent": str(margin_percent),
+        "margin_amount": str(margin_amount),
+
+        "grand_total": str(grand_total),
+        "amount_received": "0.00",
+        "balance_due": str(grand_total),
+
+        "payment_instructions": {
+            "account_name": "Rizara Meats Ltd",
+            "account_number": "1350721255",
+            "bank_name": "KCB",
+            "branch_name": "GARDEN CITY",
+            "branch_code": "325",
+            "bank_code": "01",
+            "swift_code": "KCBLKENX",
+        },
+
+        "terms_note": (
+            "This Proforma Invoice is issued for quotation, payment processing, "
+            "and contract fulfilment planning. It is not a tax invoice."
+        ),
+    }
+
+    doc = Document(
+        buyer_id=contract.buyer_id,
+        doc_type="proforma_invoice",
+        title=f"Proforma Invoice - {contract_number}",
+        status="draft",
+        version=1,
+        payload=payload,
+        created_by_user_id=getattr(current_user, "id", None),
+    )
+
+    db.session.add(doc)
+    db.session.commit()
+
+    flash("Proforma Invoice generated successfully.", "success")
+    return redirect(url_for("admin.documents_view", document_id=str(doc.id)))
+
+@admin_bp.route("/documents/<uuid:document_id>/packing-list/pdf", methods=["GET"])
+@admin_required
+def documents_packing_list_pdf(document_id):
+    doc = Document.query.get_or_404(document_id)
+
+    if doc.doc_type != "packing_list":
+        abort(400, "This document is not a packing list.")
+
+    pdf_bytes = generate_packing_list_pdf(doc)
+
+    return send_file(
+        BytesIO(pdf_bytes),
+        mimetype="application/pdf",
+        as_attachment=True,
+        download_name=f"packing-list-{doc.id}.pdf",
+    )

@@ -1,0 +1,219 @@
+{# app/templates/documents/packing_list_pdf.html #}
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Packing List</title>
+
+  <style>
+    @page {
+      size: A4;
+      margin: 28mm 18mm 22mm 18mm;
+    }
+
+    body {
+      font-family: Arial, sans-serif;
+      color: #111827;
+      font-size: 12px;
+      line-height: 1.45;
+    }
+
+    .header {
+      display: table;
+      width: 100%;
+      margin-bottom: 28px;
+    }
+
+    .header-left,
+    .header-right {
+      display: table-cell;
+      vertical-align: top;
+      width: 50%;
+    }
+
+    .header-right {
+      text-align: right;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 22px;
+      color: #1f6f54;
+    }
+
+    h2 {
+      margin: 0 0 8px 0;
+      font-size: 20px;
+      letter-spacing: 1px;
+    }
+
+    .muted {
+      color: #6b7280;
+    }
+
+    .section {
+      margin-bottom: 20px;
+    }
+
+    .section-title {
+      font-weight: bold;
+      color: #1f6f54;
+      margin-bottom: 6px;
+      text-transform: uppercase;
+      font-size: 11px;
+      letter-spacing: .5px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 8px;
+    }
+
+    th {
+      background: #f3f4f6;
+      color: #374151;
+      border: 1px solid #d1d5db;
+      padding: 8px;
+      font-size: 11px;
+      text-align: left;
+    }
+
+    td {
+      border: 1px solid #d1d5db;
+      padding: 8px;
+      vertical-align: top;
+    }
+
+    .text-right {
+      text-align: right;
+    }
+
+    .totals {
+      width: 45%;
+      margin-left: auto;
+      margin-top: 18px;
+    }
+
+    .totals td {
+      padding: 7px 8px;
+    }
+
+    .totals .label {
+      font-weight: bold;
+      background: #f9fafb;
+    }
+
+    .declaration {
+      margin-top: 34px;
+      font-size: 11px;
+      color: #374151;
+    }
+
+    .signature {
+      margin-top: 48px;
+    }
+
+    .signature-line {
+      width: 220px;
+      border-top: 1px solid #111827;
+      padding-top: 6px;
+    }
+  </style>
+</head>
+
+<body>
+
+  <div class="header">
+    <div class="header-left">
+      <h1>Rizara Meats Ltd</h1>
+      <div class="muted">Kenya</div>
+      <div class="muted">Fresh & frozen halal meat exports</div>
+    </div>
+
+    <div class="header-right">
+      <h2>PACKING LIST</h2>
+      <div><strong>No:</strong> {{ document.title or document.id }}</div>
+      <div>
+        <strong>Date:</strong>
+        {% if document.created_at %}
+          {{ document.created_at.strftime("%d %b %Y") }}
+        {% else %}
+          -
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">Consignee / Buyer</div>
+    <div><strong>{{ buyer.name if buyer else "N/A" }}</strong></div>
+    <div class="muted">{{ buyer.country if buyer and buyer.country else "" }}</div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">Sale Reference</div>
+    <div><strong>Sale No:</strong> {{ sale.sale_number if sale and sale.sale_number else sale.id if sale else "-" }}</div>
+    <div><strong>Currency:</strong> {{ sale.currency if sale and sale.currency else "USD" }}</div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">Packed Goods</div>
+
+    <table>
+      <thead>
+        <tr>
+          <th style="width: 22%;">Product</th>
+          <th style="width: 26%;">Description</th>
+          <th style="width: 18%;">Batch / Lot</th>
+          <th class="text-right" style="width: 10%;">Cartons</th>
+          <th class="text-right" style="width: 12%;">Net Kg</th>
+          <th class="text-right" style="width: 12%;">Gross Kg</th>
+        </tr>
+      </thead>
+
+      <tbody>
+        {% for item in items %}
+        <tr>
+          <td>{{ item.product_name }}</td>
+          <td>{{ item.description }}</td>
+          <td>{{ item.batch_number }}</td>
+          <td class="text-right">{{ item.cartons }}</td>
+          <td class="text-right">{{ "%.2f"|format(item.net_kg) }}</td>
+          <td class="text-right">{{ "%.2f"|format(item.gross_kg) }}</td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="6" class="text-right">No packing items found.</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    <table class="totals">
+      <tr>
+        <td class="label">Total Cartons</td>
+        <td class="text-right">{{ total_cartons }}</td>
+      </tr>
+      <tr>
+        <td class="label">Total Net Weight</td>
+        <td class="text-right">{{ "%.2f"|format(total_net_kg) }} kg</td>
+      </tr>
+      <tr>
+        <td class="label">Total Gross Weight</td>
+        <td class="text-right">{{ "%.2f"|format(total_gross_kg) }} kg</td>
+      </tr>
+    </table>
+  </div>
+
+  <div class="declaration">
+    We hereby certify that the goods listed above have been packed as described
+    and are prepared for shipment according to the referenced sale.
+  </div>
+
+  <div class="signature">
+    <div class="signature-line">Authorized Signature</div>
+  </div>
+
+</body>
+</html>
