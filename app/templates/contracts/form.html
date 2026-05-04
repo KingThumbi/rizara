@@ -47,16 +47,15 @@
   <form method="post" action="{{ form_action }}">
     <div class="grid grid-cols-1 xl:grid-cols-3 gap-6">
       <div class="xl:col-span-2 space-y-6">
+
         <div class="bg-white rounded-2xl shadow-sm border border-gray-200">
-          <div class="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
-            <div>
-              <h2 class="text-sm font-semibold text-gray-900">Buyer & Timeline</h2>
-              <p class="text-xs text-gray-500 mt-1">Define who the contract is with and the core dates.</p>
-            </div>
+          <div class="px-6 py-4 border-b border-gray-200">
+            <h2 class="text-sm font-semibold text-gray-900">Buyer & Timeline</h2>
+            <p class="text-xs text-gray-500 mt-1">Define who the contract is with and the core dates.</p>
           </div>
 
           <div class="p-6 grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div class="md:col-span-1">
+            <div>
               <label for="buyer_id" class="block text-sm font-medium text-gray-700 mb-1">
                 Buyer <span class="text-red-500">*</span>
               </label>
@@ -136,14 +135,34 @@
             </div>
 
             <div>
-              <label for="product_type" class="block text-sm font-medium text-gray-700 mb-1">Product Type</label>
+              <label for="product_catalog_id" class="block text-sm font-medium text-gray-700 mb-1">
+                Product <span class="text-red-500">*</span>
+              </label>
+
+              <select
+                id="product_catalog_id"
+                name="product_catalog_id"
+                required
+                class="w-full rounded-xl border border-gray-300 px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-jungle"
+              >
+                <option value="">Select product</option>
+
+                {% for product in products %}
+                  <option
+                    value="{{ product.id }}"
+                    {% if contract and contract.product_catalog_id == product.id %}selected{% endif %}
+                  >
+                    {{ product.name }}
+                    {% if product.animal_type %} · {{ product.animal_type|title }}{% endif %}
+                    {% if product.unit %} · {{ product.unit }}{% endif %}
+                  </option>
+                {% endfor %}
+              </select>
+
               <input
-                type="text"
-                id="product_type"
+                type="hidden"
                 name="product_type"
                 value="{{ contract.product_type if contract else '' }}"
-                placeholder="Goat carcass, cuts, offals"
-                class="w-full rounded-xl border border-gray-300 px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-jungle"
               >
             </div>
 
@@ -154,6 +173,7 @@
                 id="destination_country"
                 name="destination_country"
                 value="{{ contract.destination_country if contract else '' }}"
+                placeholder="UAE / Qatar / Saudi Arabia"
                 class="w-full rounded-xl border border-gray-300 px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-jungle"
               >
             </div>
@@ -189,7 +209,7 @@
                 name="quality_spec"
                 rows="4"
                 class="w-full rounded-xl border border-gray-300 px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-jungle"
-                placeholder="Define quality, packing, carcass condition, grade, or any export specification"
+                placeholder="Define quality, packing, carcass condition, grade, or export specification"
               >{{ contract.quality_spec if contract else '' }}</textarea>
             </div>
           </div>
@@ -371,18 +391,35 @@
                   <dt class="text-gray-500">Contract No</dt>
                   <dd class="font-semibold text-gray-900">{{ contract.contract_number }}</dd>
                 </div>
+
                 <div class="flex justify-between gap-4">
                   <dt class="text-gray-500">Status</dt>
                   <dd class="font-medium text-gray-900">{{ contract.status|replace('_', ' ')|title }}</dd>
                 </div>
+
                 <div class="flex justify-between gap-4">
                   <dt class="text-gray-500">Buyer</dt>
                   <dd class="font-medium text-gray-900">{{ contract.buyer.name if contract.buyer else '-' }}</dd>
                 </div>
+
+                <div class="flex justify-between gap-4">
+                  <dt class="text-gray-500">Product</dt>
+                  <dd class="font-medium text-gray-900">
+                    {% if contract.product %}
+                      {{ contract.product.name }}
+                    {% elif contract.product_type %}
+                      {{ contract.product_type }}
+                    {% else %}
+                      -
+                    {% endif %}
+                  </dd>
+                </div>
+
                 <div class="flex justify-between gap-4">
                   <dt class="text-gray-500">Currency</dt>
                   <dd class="font-medium text-gray-900">{{ contract.currency }}</dd>
                 </div>
+
                 <div class="flex justify-between gap-4">
                   <dt class="text-gray-500">Created</dt>
                   <dd class="font-medium text-gray-900">{{ contract.created_at or '-' }}</dd>

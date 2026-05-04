@@ -27,6 +27,7 @@ from app.models import (
     Contract,
     ContractDocument,
     ContractItem,
+    ProductCatalog,
     Sale,
     SaleItem,
     SalePayment,
@@ -45,6 +46,41 @@ from app.services.sale_service import (
 )
 
 bp = Blueprint("contracts", __name__, url_prefix="/contracts")
+
+def apply_contract_form(contract):
+    product_catalog_id = request.form.get("product_catalog_id", type=int)
+    product = db.session.get(ProductCatalog, product_catalog_id)
+    contract.buyer_id = request.form.get("buyer_id", type=int)
+    contract.contract_date = request.form.get("contract_date")
+    contract.delivery_date = request.form.get("delivery_date") or None
+
+    contract.product_catalog_id = product_catalog_id
+    contract.product_type = product.name if product else None
+
+    contract.currency = (request.form.get("currency") or "USD").strip()
+    contract.price_basis = request.form.get("price_basis") or None
+    contract.payment_terms = request.form.get("payment_terms") or None
+    contract.delivery_terms = request.form.get("delivery_terms") or None
+    contract.destination_country = request.form.get("destination_country") or None
+
+    contract.payment_security_type = (request.form.get("payment_security_type") or "none").strip()
+    contract.prepayment_required = bool(request.form.get("prepayment_required"))
+    contract.required_prepayment_percent = request.form.get("required_prepayment_percent") or None
+    contract.required_prepayment_amount = request.form.get("required_prepayment_amount") or None
+
+    contract.lc_required = bool(request.form.get("lc_required"))
+    contract.lc_number = request.form.get("lc_number") or None
+    contract.lc_issuing_bank = request.form.get("lc_issuing_bank") or None
+    contract.lc_status = request.form.get("lc_status") or None
+
+    contract.processing_release_mode = (
+        request.form.get("processing_release_mode") or "manual_approval"
+    ).strip()
+
+    contract.contracted_quantity_kg = request.form.get("contracted_quantity_kg") or None
+    contract.contracted_value = request.form.get("contracted_value") or None
+    contract.quality_spec = request.form.get("quality_spec") or None
+    contract.notes = request.form.get("notes") or None
 
 @bp.get("")
 @login_required
@@ -91,20 +127,26 @@ def list_contracts():
 @login_required
 def new_contract():
     buyers = Buyer.query.order_by(Buyer.name.asc()).all()
+
+    products = (
+        ProductCatalog.query
+        .order_by(ProductCatalog.animal_type.asc(), ProductCatalog.name.asc())
+        .all()
+    )
+
     return render_template(
         "contracts/form.html",
         contract=None,
         buyers=buyers,
+        products=products,
         form_action=url_for("contracts.create_contract"),
     )
-
 
 @bp.post("")
 @login_required
 def create_contract():
     buyer_id = request.form.get("buyer_id", type=int)
     contract_date = request.form.get("contract_date")
-    delivery_date = request.form.get("delivery_date") or None
 
     if not buyer_id or not contract_date:
         flash("Buyer and contract date are required.", "danger")
@@ -112,37 +154,16 @@ def create_contract():
 
     contract = Contract(
         contract_number=generate_contract_number(),
-        buyer_id=buyer_id,
-        contract_date=contract_date,
-        delivery_date=delivery_date,
-        currency=(request.form.get("currency") or "USD").strip(),
-        price_basis=(request.form.get("price_basis") or None),
-        payment_terms=(request.form.get("payment_terms") or None),
-        delivery_terms=(request.form.get("delivery_terms") or None),
-        destination_country=(request.form.get("destination_country") or None),
-        payment_security_type=(request.form.get("payment_security_type") or "none").strip(),
-        prepayment_required=bool(request.form.get("prepayment_required")),
-        required_prepayment_percent=request.form.get("required_prepayment_percent") or None,
-        required_prepayment_amount=request.form.get("required_prepayment_amount") or None,
-        lc_required=bool(request.form.get("lc_required")),
-        lc_number=(request.form.get("lc_number") or None),
-        lc_issuing_bank=(request.form.get("lc_issuing_bank") or None),
-        lc_status=(request.form.get("lc_status") or None),
-        processing_release_mode=(request.form.get("processing_release_mode") or "manual_approval").strip(),
-        contracted_quantity_kg=request.form.get("contracted_quantity_kg") or None,
-        contracted_value=request.form.get("contracted_value") or None,
-        product_type=(request.form.get("product_type") or None),
-        quality_spec=(request.form.get("quality_spec") or None),
-        notes=(request.form.get("notes") or None),
         created_by_user_id=getattr(current_user, "id", None),
     )
+
+    apply_contract_form(contract)
 
     db.session.add(contract)
     db.session.commit()
 
     flash("Contract created successfully.", "success")
     return redirect(url_for("contracts.view_contract", contract_id=contract.id))
-
 
 @bp.get("/<int:contract_id>")
 @login_required
@@ -167,13 +188,19 @@ def edit_contract(contract_id: int):
     contract = Contract.query.get_or_404(contract_id)
     buyers = Buyer.query.order_by(Buyer.name.asc()).all()
 
+    products = (
+        ProductCatalog.query
+        .order_by(ProductCatalog.animal_type.asc(), ProductCatalog.name.asc())
+        .all()
+    )
+
     return render_template(
         "contracts/form.html",
         contract=contract,
         buyers=buyers,
+        products=products,
         form_action=url_for("contracts.update_contract", contract_id=contract.id),
     )
-
 
 @bp.post("/<int:contract_id>/update")
 @login_required
@@ -184,34 +211,12 @@ def update_contract(contract_id: int):
         flash("Finalized contracts cannot be edited.", "warning")
         return redirect(url_for("contracts.view_contract", contract_id=contract.id))
 
-    contract.buyer_id = request.form.get("buyer_id", type=int)
-    contract.contract_date = request.form.get("contract_date")
-    contract.delivery_date = request.form.get("delivery_date") or None
-    contract.currency = (request.form.get("currency") or "USD").strip()
-    contract.price_basis = request.form.get("price_basis") or None
-    contract.payment_terms = request.form.get("payment_terms") or None
-    contract.delivery_terms = request.form.get("delivery_terms") or None
-    contract.destination_country = request.form.get("destination_country") or None
-    contract.payment_security_type = (request.form.get("payment_security_type") or "none").strip()
-    contract.prepayment_required = bool(request.form.get("prepayment_required"))
-    contract.required_prepayment_percent = request.form.get("required_prepayment_percent") or None
-    contract.required_prepayment_amount = request.form.get("required_prepayment_amount") or None
-    contract.lc_required = bool(request.form.get("lc_required"))
-    contract.lc_number = request.form.get("lc_number") or None
-    contract.lc_issuing_bank = request.form.get("lc_issuing_bank") or None
-    contract.lc_status = request.form.get("lc_status") or None
-    contract.processing_release_mode = (request.form.get("processing_release_mode") or "manual_approval").strip()
-    contract.contracted_quantity_kg = request.form.get("contracted_quantity_kg") or None
-    contract.contracted_value = request.form.get("contracted_value") or None
-    contract.product_type = request.form.get("product_type") or None
-    contract.quality_spec = request.form.get("quality_spec") or None
-    contract.notes = request.form.get("notes") or None
+    apply_contract_form(contract)
 
     db.session.commit()
 
     flash("Contract updated successfully.", "success")
     return redirect(url_for("contracts.view_contract", contract_id=contract.id))
-
 
 @bp.post("/<int:contract_id>/delete")
 @login_required

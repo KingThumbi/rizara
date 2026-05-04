@@ -1295,16 +1295,35 @@ def animal_pipeline_view(animal_type, status):
         return redirect(url_for("main.dashboard"))
 
     Model = model_map[animal_type]
-    animals = Model.query.filter_by(status=status).order_by(Model.created_at.desc()).all()
+    page = request.args.get("page", 1, type=int)
+    per_page = request.args.get("per_page", 25, type=int)
+
+    if per_page not in {25, 50, 100}:
+        per_page = 25
+
+    query = (
+        Model.query
+        .filter_by(status=status)
+        .order_by(Model.created_at.desc())
+    )
+
+    pagination = query.paginate(
+        page=page,
+        per_page=per_page,
+        error_out=False,
+    )
+
+    animals = pagination.items
 
     return render_template(
         "animals/pipeline_list.html",
         animals=animals,
+        pagination=pagination,
+        per_page=per_page,
         animal_type=animal_type,
         status=status,
         current_year=datetime.utcnow().year,
     )
-
 
 def _get_processing_batch_or_404(batch_id: int) -> ProcessingBatch:
     return ProcessingBatch.query.get_or_404(batch_id)

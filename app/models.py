@@ -304,6 +304,15 @@ class Contract(db.Model):
         lazy="select",
     )
 
+    product_catalog_id = db.Column(
+        db.Integer,
+        db.ForeignKey("product_catalog.id"),
+        nullable=True,
+    )
+
+    product = db.relationship("ProductCatalog")
+
+
     @property
     def primary_document(self):
         return next((doc for doc in self.documents if doc.is_primary), None)
@@ -1657,10 +1666,10 @@ class InvoiceStatus(enum.Enum):
     OVERDUE = "overdue"
     VOID = "void"
 
-
 # =========================================================
 # Invoice
 # References Contract Document + sells from InventoryLot via InvoiceItem
+# Supports line-level discounts on InvoiceItem
 # =========================================================
 class Invoice(db.Model):
     __tablename__ = "invoice"
@@ -1721,7 +1730,16 @@ class Invoice(db.Model):
 
     currency = db.Column(db.String(10), nullable=False, default="USD")
 
+    # Gross before line discounts
+    gross_subtotal = db.Column(db.Numeric(14, 2), nullable=False, default=0)
+
+    # Total of all item-level discounts
+    discount_total = db.Column(db.Numeric(14, 2), nullable=False, default=0)
+
+    # Net subtotal after line discounts.
+    # Kept as "subtotal" for backward compatibility with existing PDFs/reports.
     subtotal = db.Column(db.Numeric(14, 2), nullable=False, default=0)
+
     tax = db.Column(db.Numeric(14, 2), nullable=False, default=0)
     total = db.Column(db.Numeric(14, 2), nullable=False, default=0)
 
@@ -1790,7 +1808,12 @@ class Invoice(db.Model):
         return self.balance or 0
 
     def recalculate_totals(self):
+        self.gross_subtotal = sum((item.gross_line_total or 0) for item in self.items)
+        self.discount_total = sum((item.discount_amount or 0) for item in self.items)
+
+        # Net subtotal after item-level discounts
         self.subtotal = sum((item.line_total or 0) for item in self.items)
+
         self.total = (self.subtotal or 0) + (self.tax or 0)
 
         total_paid = sum((payment.amount or 0) for payment in self.payments)
@@ -1818,6 +1841,7 @@ class Invoice(db.Model):
 # =========================================================
 # Invoice Item
 # Sells from InventoryLot
+# Supports line-level discount
 # =========================================================
 class InvoiceItem(db.Model):
     __tablename__ = "invoice_item"
@@ -1843,7 +1867,17 @@ class InvoiceItem(db.Model):
     quantity = db.Column(db.Numeric(14, 2), nullable=False, default=1)
     unit = db.Column(db.String(20), default="kg", nullable=False)
 
+    # Original agreed/base price before discount, e.g. CIF contract price 9.50
+    gross_unit_price = db.Column(db.Numeric(14, 2), nullable=False, default=0)
+
+    # Discount per unit, e.g. 1.00 per kg
+    discount_per_unit = db.Column(db.Numeric(14, 2), nullable=False, default=0)
+
+    # Final selling price after discount, e.g. 8.50
     unit_price = db.Column(db.Numeric(14, 2), nullable=False, default=0)
+
+    gross_line_total = db.Column(db.Numeric(14, 2), nullable=False, default=0)
+    discount_amount = db.Column(db.Numeric(14, 2), nullable=False, default=0)
     line_total = db.Column(db.Numeric(14, 2), nullable=False, default=0)
 
     invoice = db.relationship(
@@ -1858,9 +1892,27 @@ class InvoiceItem(db.Model):
         lazy="joined",
     )
 
-    def __repr__(self) -> str:
-        return f"<InvoiceItem {self.id} {self.description} qty={self.quantity}>"
+    def recalculate_totals(self):
+        qty = self.quantity or 0
+        gross_price = self.gross_unit_price or self.unit_price or 0
+        discount = self.discount_per_unit or 0
 
+        net_price = gross_price - discount
+
+        if net_price < 0:
+            net_price = 0
+
+        self.unit_price = net_price
+        self.gross_line_total = qty * gross_price
+        self.discount_amount = qty * discount
+        self.line_total = qty * net_price
+
+    def __repr__(self) -> str:
+        return (
+            f"<InvoiceItem {self.id} {self.description} "
+            f"qty={self.quantity} unit_price={self.unit_price}>"
+        )
+    
 # =========================================================
 # Invoice Payment
 # Appended payment/receipt records for invoice settlement
@@ -2758,3 +2810,34 @@ class InventoryLot(db.Model):
 
     def __repr__(self) -> str:
         return f"<InventoryLot {self.id} {self.product_name} available={self.available_kg}>"        
+
+# =========================================================
+# Product Catalog
+# Controlled commercial products used in contracts/invoices
+# =========================================================
+class ProductCatalog(db.Model):
+    __tablename__ = "product_catalog"
+
+    id = db.Column(db.Integer, primary_key=True)
+
+    name = db.Column(db.String(120), nullable=False, unique=True, index=True)
+    code = db.Column(db.String(40), nullable=True, unique=True, index=True)
+
+    animal_type = db.Column(db.String(40), nullable=False, index=True)
+    product_type = db.Column(db.String(80), nullable=False, index=True)
+
+    unit = db.Column(db.String(20), nullable=False, default="kg")
+    is_active = db.Column(db.Boolean, nullable=False, default=True)
+
+    description = db.Column(db.Text, nullable=True)
+
+    created_at = db.Column(db.DateTime, default=utcnow_naive, nullable=False)
+    updated_at = db.Column(
+        db.DateTime,
+        default=utcnow_naive,
+        onupdate=utcnow_naive,
+        nullable=False,
+    )
+
+    def __repr__(self):
+        return f"<ProductCatalog {self.name}>"        
