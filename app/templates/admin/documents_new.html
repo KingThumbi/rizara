@@ -7,7 +7,7 @@
       <div>
         <h1 class="text-3xl font-bold text-jungle">New Document</h1>
         <p class="text-gray-600 mt-1">
-          Choose a document type so Rizara creates the right payload scaffold and workflow.
+          Create supporting buyer documents for commercial, compliance, and archive workflows.
         </p>
       </div>
 
@@ -28,6 +28,8 @@
                 bg-red-100 text-red-800
               {% elif category == 'warning' %}
                 bg-yellow-100 text-yellow-800
+              {% elif category == 'info' %}
+                bg-blue-100 text-blue-800
               {% else %}
                 bg-gray-100 text-gray-800
               {% endif %}
@@ -39,7 +41,12 @@
       {% endif %}
     {% endwith %}
 
-    {# IMPORTANT: explicitly post to the combined GET/POST route to avoid hitting any stale POST handler #}
+    <div class="mb-6 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+      <span class="font-semibold">Note:</span>
+      Export Sales Contracts are now created from the Contracts module.
+      Use this area for LOIs, LC files, POs, and supporting buyer documents.
+    </div>
+
     <form method="POST" action="{{ url_for('admin.documents_new') }}" class="bg-white rounded-xl shadow p-6 space-y-4">
       <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>
@@ -52,7 +59,7 @@
             {% endfor %}
           </select>
           <p class="text-xs text-gray-500 mt-1">
-            The buyer is required (documents are always tied to a buyer).
+            The buyer is required because supporting documents are tied to buyer records.
           </p>
         </div>
 
@@ -64,19 +71,24 @@
 
             {% if doc_type_options %}
               {% for value, label in doc_type_options %}
-                <option value="{{ value }}"
-                        {% if (default_doc_type and default_doc_type == value) %}selected{% endif %}>
-                  {{ label }}
-                </option>
+                {% if value != 'export_sales_contract' %}
+                  <option value="{{ value }}"
+                          {% if (default_doc_type and default_doc_type == value) %}selected{% endif %}>
+                    {{ label }}
+                  </option>
+                {% endif %}
               {% endfor %}
             {% else %}
               <option value="loi">Letter of Intent (LOI)</option>
-              <option value="export_sales_contract">Export Sales Contract</option>
+              <option value="letter_of_credit">Letter of Credit</option>
+              <option value="purchase_order">Purchase Order</option>
+              <option value="buyer_signed_document">Buyer-facing Signed Document</option>
+              <option value="general">General Document Archive</option>
             {% endif %}
           </select>
 
           <p class="text-xs text-gray-500 mt-1">
-            LOI routes you to LOI preview/edit. Export Sales Contract routes you to the contract terms editor.
+            Choose LOI, LC, PO, buyer-facing signed document, or a general supporting document.
           </p>
         </div>
       </div>
@@ -97,7 +109,7 @@
           <input name="version" type="number" min="1" value="{{ (default_version or 1) }}"
                  class="w-full border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-jungle/30" />
           <p class="text-xs text-gray-500 mt-1">
-            If a version already exists for this buyer + type, Rizara will auto-bump it.
+            If a version already exists for this buyer and document type, Rizara will auto-bump it.
           </p>
         </div>
 
@@ -107,11 +119,13 @@
                   class="w-full border border-gray-200 rounded-lg px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-jungle/30">
             {% set statuses = (doc_statuses or ['draft','buyer_signed','executed','expired','void']) %}
             {% for s in statuses %}
-              <option value="{{ s }}" {% if s == 'draft' %}selected{% endif %}>{{ s }}</option>
+              <option value="{{ s }}" {% if s == 'draft' %}selected{% endif %}>
+                {{ s|replace('_', ' ')|title }}
+              </option>
             {% endfor %}
           </select>
           <p class="text-xs text-gray-500 mt-1">
-            Normally start with <span class="font-semibold">draft</span>. Signing transitions status automatically.
+            Normally start with <span class="font-semibold">Draft</span>. Signing transitions status automatically.
           </p>
         </div>
       </div>

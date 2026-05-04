@@ -7,6 +7,7 @@ from flask_login import current_user
 from .settings import Config
 from .extensions import db, migrate, login_manager, limiter
 
+from . import models  # MUST include Sale model
 
 def create_app() -> Flask:
     app = Flask(__name__)

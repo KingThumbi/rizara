@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import io
 from datetime import date
+from decimal import Decimal
 
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_LEFT, TA_RIGHT
@@ -40,7 +41,11 @@ def _payload(doc) -> dict:
 
 
 def _doc_number(doc, payload: dict) -> str:
-    return payload.get("document_number") or payload.get("proforma_number") or f"PFI-{str(doc.id)[:8].upper()}"
+    return (
+        payload.get("document_number")
+        or payload.get("proforma_number")
+        or f"PFI-{str(doc.id)[:8].upper()}"
+    )
 
 
 def _doc_date(doc):
@@ -56,14 +61,27 @@ def _doc_date(doc):
 
 def _buyer_value(doc, payload: dict, field: str, default: str = "") -> str:
     buyer = getattr(doc, "buyer", None)
-    return payload.get(f"buyer_{field}") or (getattr(buyer, field, None) if buyer else None) or default
+    return (
+        payload.get(f"buyer_{field}")
+        or (getattr(buyer, field, None) if buyer else None)
+        or default
+    )
 
 
 def _proforma_note(payload: dict) -> str:
     return payload.get("terms_note") or (
-        "This Proforma Invoice is issued for quotation, payment processing, and contract fulfilment planning. "
-        "It is not a tax invoice and does not confirm dispatch until the agreed payment/security conditions are satisfied."
+        "This Proforma Invoice is issued for quotation, payment processing, "
+        "and contract fulfilment planning. It is not a tax invoice and does not "
+        "confirm dispatch until the agreed payment/security conditions are satisfied."
     )
+
+
+def _price_basis(payload: dict) -> str:
+    return (payload.get("price_basis") or payload.get("pricing_mode") or "CIF").upper().strip()
+
+
+def _is_cif(payload: dict) -> bool:
+    return _price_basis(payload) == "CIF"
 
 
 def _draw_section_title(c, title: str, x: float, y: float):
@@ -72,8 +90,59 @@ def _draw_section_title(c, title: str, x: float, y: float):
     c.drawString(x, y, title)
 
 
+def _items_from_payload(payload: dict) -> list[dict]:
+    return payload.get("items") or []
+
+
+def _calculate_items_total(items: list[dict]) -> Decimal:
+    total = Decimal("0.00")
+
+    for item in items:
+        quantity = decimalize(item.get("quantity", 0))
+        unit_price = decimalize(item.get("unit_price", 0))
+        line_total = decimalize(item.get("line_total", quantity * unit_price))
+        total += line_total
+
+    return total
+
+
+def _calculate_totals(payload: dict) -> dict:
+    currency = payload.get("currency") or "USD"
+    items = _items_from_payload(payload)
+
+    item_total = _calculate_items_total(items)
+
+    fallback_subtotal = decimalize(payload.get("subtotal", 0))
+    subtotal = item_total if item_total > 0 else fallback_subtotal
+
+    discount = decimalize(payload.get("discount", 0))
+    tax = decimalize(payload.get("tax", 0))
+
+    raw_freight = decimalize(payload.get("freight_total", payload.get("shipping", 0)))
+
+    if _is_cif(payload):
+        freight_total = Decimal("0.00")
+        freight_label = "Freight Included"
+    else:
+        freight_total = raw_freight
+        freight_label = "Freight / Logistics"
+
+    total = subtotal - discount + tax + freight_total
+
+    return {
+        "currency": currency,
+        "subtotal": subtotal,
+        "discount": discount,
+        "tax": tax,
+        "freight_total": freight_total,
+        "freight_label": freight_label,
+        "total": total,
+    }
+
+
 def render_proforma_pdf(doc) -> bytes:
     payload = _payload(doc)
+    totals = _calculate_totals(payload)
 
     buffer = io.BytesIO()
     c = NumberedCanvas(buffer, pagesize=A4, footer_func=draw_footer)
@@ -123,16 +192,17 @@ def render_proforma_pdf(doc) -> bytes:
         alignment=TA_RIGHT,
     )
 
-    currency = payload.get("currency") or "USD"
+    currency = totals["currency"]
+    subtotal = totals["subtotal"]
+    discount = totals["discount"]
+    tax = totals["tax"]
+    freight_total = totals["freight_total"]
+    freight_label = totals["freight_label"]
+    total = totals["total"]
+
     proforma_no = _doc_number(doc, payload)
     issue_date = fmt_date(_doc_date(doc))
     validity = payload.get("valid_until") or payload.get("validity_date") or "As agreed"
-
-    subtotal = decimalize(payload.get("subtotal", 0))
-    discount = decimalize(payload.get("discount", 0))
-    tax = decimalize(payload.get("tax", 0))
-    freight_total = decimalize(payload.get("freight_total", payload.get("shipping", 0)))
-    total = decimalize(payload.get("grand_total", subtotal - discount + freight_total + tax))
 
     buyer_name = _buyer_value(doc, payload, "name", "-")
     buyer_phone = _buyer_value(doc, payload, "phone", "")
@@ -141,7 +211,7 @@ def render_proforma_pdf(doc) -> bytes:
 
     contract_number = payload.get("contract_number") or "-"
     destination = payload.get("destination_country") or "TBA"
-    price_basis = payload.get("price_basis") or payload.get("pricing_mode") or "CIF"
+    price_basis = _price_basis(payload)
     payment_terms = payload.get("payment_terms") or "As agreed"
     delivery_terms = payload.get("delivery_terms") or "As agreed"
 
@@ -218,7 +288,10 @@ def render_proforma_pdf(doc) -> bytes:
         ("As At", fmt_date(today)),
     ]
 
-    reference_data = [[p(f"{label}:", label_style), p(str(value), value_style)] for label, value in reference_rows]
+    reference_data = [
+        [p(f"{label}:", label_style), p(str(value), value_style)]
+        for label, value in reference_rows
+    ]
 
     reference_table = Table(reference_data, colWidths=[25 * mm, right_w - 33 * mm], hAlign="LEFT")
     reference_table.setStyle(TableStyle([
@@ -244,12 +317,16 @@ def render_proforma_pdf(doc) -> bytes:
         p("Line Total", styles["white_header_right"]),
     ]]
 
-    items = payload.get("items") or []
+    items = _items_from_payload(payload)
 
     for item in items:
         description = item.get("description") or item.get("product_name") or "Processed Halal Meat"
+
         if item.get("quality_spec"):
-            description = f"{safe_text(description)}<br/><font color='#6b7280'>{safe_text(item.get('quality_spec'))}</font>"
+            description = (
+                f"{safe_text(description)}<br/>"
+                f"<font color='#6b7280'>{safe_text(item.get('quality_spec'))}</font>"
+            )
 
         quantity = decimalize(item.get("quantity", 0))
         unit = item.get("unit_of_measure") or "kg"
@@ -267,15 +344,21 @@ def render_proforma_pdf(doc) -> bytes:
         product = payload.get("product_type") or "Processed Halal Meat"
         quantity = decimalize(payload.get("quantity_kg", 0))
         unit_price = decimalize(payload.get("unit_price", 0))
+        line_total = quantity * unit_price
 
         item_data.append([
             p(product, styles["small_dark"]),
             p(f"{quantity:,.2f} kg", value_right_style),
             p(f"{unit_price:,.2f}", value_right_style),
-            p(f"{total:,.2f}", value_right_style),
+            p(f"{line_total:,.2f}", value_right_style),
         ])
 
-    item_table = Table(item_data, colWidths=[94 * mm, 25 * mm, 31 * mm, 31 * mm], hAlign="LEFT", repeatRows=1)
+    item_table = Table(
+        item_data,
+        colWidths=[94 * mm, 25 * mm, 31 * mm, 31 * mm],
+        hAlign="LEFT",
+        repeatRows=1,
+    )
     item_table.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, 0), JUNGLE),
         ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, LIGHT]),
@@ -312,7 +395,11 @@ def render_proforma_pdf(doc) -> bytes:
     c.setFont(TEXT_BOLD, 10)
     c.drawString(payment_x + 4 * mm, y - 8 * mm, "Payment Instructions")
 
-    pay_data = [[p(f"{label}:", label_style), p(str(value), value_style)] for label, value in payment_rows]
+    pay_data = [
+        [p(f"{label}:", label_style), p(str(value), value_style)]
+        for label, value in payment_rows
+    ]
+
     pay_table = Table(pay_data, colWidths=[27 * mm, payment_w - 35 * mm], hAlign="LEFT")
     pay_table.setStyle(TableStyle([
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
@@ -330,8 +417,8 @@ def render_proforma_pdf(doc) -> bytes:
     c.roundRect(totals_box_x, totals_box_y, totals_box_w, totals_box_h, 6, stroke=1, fill=1)
 
     total_rows = [
-        ("Goods Value", subtotal, False),
-        ("CIF Freight", freight_total, False),
+        ("CIF Goods Value" if price_basis == "CIF" else "Goods Value", subtotal, False),
+        (freight_label, freight_total, False),
         ("Discount", discount, False),
         ("Tax", tax, False),
         ("Total Proforma Value", total, True),
