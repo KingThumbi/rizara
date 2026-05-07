@@ -1,0 +1,152 @@
+{% extends "layouts/base_admin.html" %}
+{% block page_title %}Traceability Backfill Preview · Rizara Admin{% endblock %}
+
+{% block content %}
+  <div class="flex flex-col md:flex-row md:items-end md:justify-between gap-4 mb-6">
+    <div>
+      <h1 class="text-3xl font-bold text-jungle">Trace Identity Backfill Preview</h1>
+      <p class="text-gray-600 mt-1">Read-only inspection of animals missing trace codes or QR tokens.</p>
+    </div>
+
+    <div class="flex flex-wrap gap-2">
+      <a href="{{ url_for('traceability.traceability_completeness') }}"
+         class="bg-white border border-gray-200 text-gray-800 font-semibold px-4 py-2 rounded hover:bg-gray-50 transition">
+        Completeness dashboard
+      </a>
+      <a href="{{ url_for('traceability.traceability_events') }}"
+         class="bg-white border border-gray-200 text-gray-800 font-semibold px-4 py-2 rounded hover:bg-gray-50 transition">
+        Trace events
+      </a>
+      <a href="{{ url_for('traceability.traceability_lookup') }}"
+         class="bg-white border border-gray-200 text-gray-800 font-semibold px-4 py-2 rounded hover:bg-gray-50 transition">
+        Traceability Lookup
+      </a>
+    </div>
+  </div>
+
+  {% if backfill_message %}
+    <div class="mb-6 rounded-lg border px-4 py-3
+      {% if backfill_message_category == 'success' %}
+        bg-green-50 border-green-200 text-green-800
+      {% elif backfill_message_category == 'danger' %}
+        bg-red-50 border-red-200 text-red-800
+      {% elif backfill_message_category == 'warning' %}
+        bg-amber-50 border-amber-200 text-amber-800
+      {% else %}
+        bg-blue-50 border-blue-200 text-blue-800
+      {% endif %}">
+      {{ backfill_message }}
+    </div>
+  {% endif %}
+
+  {% include "admin/traceability_operations_note.html" %}
+
+  <section class="bg-white rounded-xl shadow p-6 mb-6">
+    <div class="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-6">
+      <div>
+        <h2 class="text-lg font-bold text-jungle">Explicit Backfill Action</h2>
+        <p class="text-sm text-gray-600 mt-1">
+          This action writes missing trace_code and qr_code_token values, then records a trace_identity_backfilled audit event.
+        </p>
+        <p class="text-sm font-semibold text-amber-700 mt-3">
+          First version limit: max {{ backfill_limit }} animals per POST.
+        </p>
+      </div>
+
+      <form method="post"
+            action="{{ url_for('traceability.backfill_identities') }}"
+            class="w-full lg:max-w-md border border-gray-200 rounded-lg p-4">
+        <label class="flex items-start gap-3 text-sm text-gray-700 mb-3">
+          <input type="checkbox" name="dry_run" value="yes" checked class="mt-1">
+          <span>
+            <span class="font-semibold text-gray-900">Dry run</span>
+            <span class="block text-gray-500">Default. Counts eligible animals without writing trace identities.</span>
+          </span>
+        </label>
+
+        <label class="flex items-start gap-3 text-sm text-gray-700 mb-4">
+          <input type="checkbox" name="confirm_backfill" value="yes" class="mt-1">
+          <span>
+            <span class="font-semibold text-gray-900">I confirm this write action</span>
+            <span class="block text-gray-500">Required only when dry-run is unchecked.</span>
+          </span>
+        </label>
+
+        <button type="submit"
+                class="w-full bg-jungle text-white font-semibold px-4 py-2 rounded hover:bg-jungle/90 transition">
+          Run Backfill Action
+        </button>
+      </form>
+    </div>
+  </section>
+
+  <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+    {% for preview in previews %}
+      <section class="bg-white rounded-xl shadow p-6">
+        <h2 class="text-lg font-bold text-jungle mb-4">{{ preview.animal_type|title }}</h2>
+        <dl class="space-y-3 text-sm">
+          <div class="flex items-center justify-between gap-4">
+            <dt class="text-gray-500">Total Animals</dt>
+            <dd class="font-semibold text-gray-900">{{ preview.total_animals }}</dd>
+          </div>
+          <div class="flex items-center justify-between gap-4">
+            <dt class="text-gray-500">Missing Trace Code</dt>
+            <dd class="font-semibold text-gray-900">{{ preview.missing_trace_code }}</dd>
+          </div>
+          <div class="flex items-center justify-between gap-4">
+            <dt class="text-gray-500">Missing QR Token</dt>
+            <dd class="font-semibold text-gray-900">{{ preview.missing_qr_code_token }}</dd>
+          </div>
+          <div class="flex items-center justify-between gap-4">
+            <dt class="text-gray-500">Missing Either</dt>
+            <dd class="font-semibold text-gray-900">{{ preview.missing_either }}</dd>
+          </div>
+        </dl>
+      </section>
+    {% endfor %}
+  </div>
+
+  {% for preview in previews %}
+    <section class="bg-white rounded-xl shadow overflow-hidden mb-6">
+      <div class="px-6 py-4 border-b border-gray-100">
+        <h2 class="text-lg font-bold text-jungle">{{ preview.animal_type|title }} Sample</h2>
+        <p class="text-sm text-gray-500 mt-1">Up to 20 records missing one or more trace identity fields.</p>
+      </div>
+
+      <div class="overflow-auto">
+        <table class="w-full text-sm">
+          <thead class="bg-gray-50 border-b">
+            <tr>
+              <th class="text-left px-4 py-3 font-semibold text-gray-700">ID</th>
+              <th class="text-left px-4 py-3 font-semibold text-gray-700">Rizara ID</th>
+              <th class="text-left px-4 py-3 font-semibold text-gray-700">Status</th>
+              <th class="text-left px-4 py-3 font-semibold text-gray-700">Source</th>
+              <th class="text-left px-4 py-3 font-semibold text-gray-700">Aggregation</th>
+              <th class="text-left px-4 py-3 font-semibold text-gray-700">Procurement</th>
+              <th class="text-left px-4 py-3 font-semibold text-gray-700">Missing Fields</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% if preview.sample %}
+              {% for animal in preview.sample %}
+                <tr class="border-b hover:bg-gray-50">
+                  <td class="px-4 py-3 font-mono text-xs text-gray-800">{{ animal.id }}</td>
+                  <td class="px-4 py-3 font-semibold text-gray-900">{{ animal.rizara_id or "—" }}</td>
+                  <td class="px-4 py-3 text-gray-700">{{ animal.status or "—" }}</td>
+                  <td class="px-4 py-3 text-gray-700">{{ animal.source_name or animal.source_type or "—" }}</td>
+                  <td class="px-4 py-3 text-gray-700">{{ animal.aggregation_batch_id or "—" }}</td>
+                  <td class="px-4 py-3 text-gray-700">{{ animal.procurement_record_id or "—" }}</td>
+                  <td class="px-4 py-3 text-gray-700">{{ animal.missing_fields|join(", ") }}</td>
+                </tr>
+              {% endfor %}
+            {% else %}
+              <tr>
+                <td colspan="7" class="px-4 py-6 text-gray-500">No missing trace identity fields found.</td>
+              </tr>
+            {% endif %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  {% endfor %}
+{% endblock %}

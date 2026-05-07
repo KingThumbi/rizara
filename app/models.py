@@ -1098,6 +1098,8 @@ class BaseAnimal(db.Model):
 
     farmer_tag = db.Column(db.String(64), nullable=True)
     rizara_id = db.Column(db.String(64), unique=True, nullable=False)
+    trace_code = db.Column(db.String(80), nullable=True, index=True)
+    qr_code_token = db.Column(db.String(128), nullable=True, index=True)
 
     sex = db.Column(db.String(10), nullable=True)
     breed = db.Column(db.String(50), nullable=True)
@@ -1547,13 +1549,19 @@ class AnimalEvent(db.Model):
 
     event_type = db.Column(db.String(50), nullable=False)
     event_datetime = db.Column(db.DateTime, default=utcnow_naive, nullable=False)
+    event_date = db.Column(db.Date, nullable=True)
 
     performed_by_user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=True)
+    created_by_user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=True)
     from_farmer_id = db.Column(db.Integer, db.ForeignKey("farmer.id"), nullable=True)
     to_farmer_id = db.Column(db.Integer, db.ForeignKey("farmer.id"), nullable=True)
 
     from_location = db.Column(db.String(120), nullable=True)
     to_location = db.Column(db.String(120), nullable=True)
+
+    source_module = db.Column(db.String(80), nullable=True)
+    reference_type = db.Column(db.String(80), nullable=True)
+    reference_id = db.Column(db.Integer, nullable=True)
 
     notes = db.Column(db.Text, nullable=True)
     attachment_url = db.Column(db.String(255), nullable=True)
@@ -1561,6 +1569,13 @@ class AnimalEvent(db.Model):
     is_verified = db.Column(db.Boolean, default=True, nullable=False)
     verified_by_user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=True)
     verified_at = db.Column(db.DateTime, nullable=True)
+    created_at = db.Column(db.DateTime, default=utcnow_naive, nullable=False)
+
+    __table_args__ = (
+        db.Index("ix_animal_event_animal", "animal_type", "animal_id"),
+        db.Index("ix_animal_event_type_datetime", "event_type", "event_datetime"),
+        db.Index("ix_animal_event_reference", "reference_type", "reference_id"),
+    )
 
 
 # =========================================================
@@ -2840,4 +2855,4 @@ class ProductCatalog(db.Model):
     )
 
     def __repr__(self):
-        return f"<ProductCatalog {self.name}>"        
+        return f"<ProductCatalog {self.name}>"

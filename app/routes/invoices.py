@@ -17,10 +17,10 @@ from app.models import (
     InvoiceStatus,
     InvoicePayment,
 )
+from app.services.traceability_service import record_traceability_event
 from app.utils.guards import operation_required
 
 bp = Blueprint("invoices", __name__, url_prefix="/admin/invoices")
-
 
 def money(value) -> Decimal:
     try:
@@ -75,6 +75,21 @@ def deduct_inventory_lot(lot: InventoryLot, requested_kg: Decimal) -> None:
         lot.status = "partially_sold"
     else:
         lot.status = "available"
+
+
+def animals_for_inventory_lot(lot: InventoryLot):
+    batch = getattr(lot, "processing_batch", None)
+    animal_type = (getattr(batch, "animal_type", "") or "").strip().lower()
+
+    if animal_type == "goat":
+        return animal_type, list(batch.goats)
+    if animal_type == "sheep":
+        return animal_type, list(batch.sheep)
+    if animal_type == "cattle":
+        return animal_type, list(batch.cattle)
+
+    return animal_type, []
+
 
 def add_invoice_items_from_inventory(
     invoice: Invoice,
@@ -237,6 +252,41 @@ def create_invoice():
             db.session.add(initial_payment)
 
         db.session.add(invoice)
+        db.session.flush()
+
+        try:
+            seen_animals = set()
+            for item in invoice.items:
+                lot = item.inventory_lot
+                if not lot:
+                    continue
+
+                animal_type, animals = animals_for_inventory_lot(lot)
+                for animal in animals:
+                    animal_key = (animal_type, getattr(animal, "id", None))
+                    if animal_key in seen_animals:
+                        continue
+                    seen_animals.add(animal_key)
+
+                    record_traceability_event(
+                        animal=animal,
+                        animal_type=animal_type,
+                        event_type="invoiced_or_sold",
+                        source_module="invoices",
+                        reference_type="invoice",
+                        reference_id=invoice.id,
+                        notes=(
+                            f"Inventory lot #{lot.id} consumed by invoice "
+                            f"{invoice.invoice_number}."
+                        ),
+                        created_by_user_id=current_user.id,
+                    )
+        except Exception:
+            current_app.logger.exception(
+                "Traceability event recording failed for invoice %s",
+                invoice.id,
+            )
+
         db.session.commit()
 
         flash(f"Invoice {invoice.invoice_number} created successfully.", "success")

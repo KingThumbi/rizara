@@ -49,6 +49,7 @@ def create_app() -> Flask:
     from .routes.aggregation import aggregation_bp
     from .routes.pipeline import pipeline_bp
     from .routes.pipeline_pages import pipeline_pages_bp
+    from .routes.traceability import traceability_bp
     from app.routes.contracts import bp as contracts_bp
     from app.routes.procurement import bp as procurement_bp
     from app.routes.invoices import bp as invoices_bp
@@ -66,6 +67,7 @@ def create_app() -> Flask:
     app.register_blueprint(aggregation_bp)
     app.register_blueprint(pipeline_bp)
     app.register_blueprint(pipeline_pages_bp)
+    app.register_blueprint(traceability_bp)
     app.register_blueprint(contracts_bp)
     app.register_blueprint(procurement_bp)
     app.register_blueprint(invoices_bp)

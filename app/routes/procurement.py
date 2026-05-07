@@ -4,7 +4,7 @@ from __future__ import annotations
 from datetime import date
 from decimal import Decimal
 
-from flask import Blueprint, flash, redirect, render_template, request, url_for
+from flask import Blueprint, current_app, flash, redirect, render_template, request, url_for
 from flask_login import current_user, login_required
 
 from app.extensions import db
@@ -12,6 +12,10 @@ from app.models import (
     AggregationBatch,
     ProcurementRecord,
     ProcurementSource,
+)
+from app.services.traceability_service import (
+    ensure_animal_trace_identity,
+    record_events_for_animals,
 )
 
 bp = Blueprint("procurement", __name__, url_prefix="/procurement")
@@ -228,6 +232,43 @@ def generate_animals(record_id: int):
 
     try:
         created_animals = record.generate_animals()
+        for animal in created_animals:
+            ensure_animal_trace_identity(animal, record.animal_type)
+        db.session.flush()
+
+        try:
+            record_events_for_animals(
+                created_animals,
+                animal_type=record.animal_type,
+                event_type="procured",
+                event_date=record.purchase_date,
+                source_module="procurement",
+                reference_type="procurement_record",
+                reference_id=record.id,
+                notes=f"Generated from procurement record #{record.id}.",
+                created_by_user_id=current_user.id,
+            )
+            if record.aggregation_batch_id:
+                record_events_for_animals(
+                    created_animals,
+                    animal_type=record.animal_type,
+                    event_type="aggregated",
+                    event_date=record.purchase_date,
+                    source_module="procurement",
+                    reference_type="aggregation_batch",
+                    reference_id=record.aggregation_batch_id,
+                    notes=(
+                        f"Attached to aggregation batch "
+                        f"#{record.aggregation_batch_id} from procurement."
+                    ),
+                    created_by_user_id=current_user.id,
+                )
+        except Exception:
+            current_app.logger.exception(
+                "Traceability event recording failed for procurement record %s",
+                record.id,
+            )
+
         db.session.commit()
 
         flash(

@@ -1,0 +1,82 @@
+{% extends "layouts/base_admin.html" %}
+{% block page_title %}Trace Completeness · Rizara Admin{% endblock %}
+
+{% block content %}
+  <div class="flex flex-col md:flex-row md:items-end md:justify-between gap-4 mb-6">
+    <div>
+      <h1 class="text-3xl font-bold text-jungle">Trace Completeness</h1>
+      <p class="text-gray-600 mt-1">Read-only coverage snapshot for trace identities and lifecycle events.</p>
+    </div>
+
+    <div class="flex flex-wrap gap-2">
+      <a href="{{ url_for('traceability.traceability_events') }}"
+         class="bg-white border border-gray-200 text-gray-800 font-semibold px-4 py-2 rounded hover:bg-gray-50 transition">
+        Trace events
+      </a>
+      <a href="{{ url_for('traceability.traceability_lookup') }}"
+         class="bg-white border border-gray-200 text-gray-800 font-semibold px-4 py-2 rounded hover:bg-gray-50 transition">
+        Traceability Lookup
+      </a>
+    </div>
+  </div>
+
+  {% include "admin/traceability_operations_note.html" %}
+
+  <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+    {% for row in metrics %}
+      <section class="bg-white rounded-xl shadow p-6">
+        <h2 class="text-lg font-bold text-jungle mb-4">{{ row.animal_type|title }}</h2>
+        <dl class="space-y-3 text-sm">
+          <div class="flex items-center justify-between gap-4">
+            <dt class="text-gray-500">Total Animals</dt>
+            <dd class="font-semibold text-gray-900">{{ row.total_animals }}</dd>
+          </div>
+          <div class="flex items-center justify-between gap-4">
+            <dt class="text-gray-500">With Trace Code</dt>
+            <dd class="font-semibold text-gray-900">{{ row.with_trace_code }}</dd>
+          </div>
+          <div class="flex items-center justify-between gap-4">
+            <dt class="text-gray-500">With QR Token</dt>
+            <dd class="font-semibold text-gray-900">{{ row.with_qr_code_token }}</dd>
+          </div>
+          <div class="flex items-center justify-between gap-4">
+            <dt class="text-gray-500">Missing Either</dt>
+            <dd class="font-semibold text-gray-900">{{ row.missing_either }}</dd>
+          </div>
+        </dl>
+      </section>
+    {% endfor %}
+  </div>
+
+  <section class="bg-white rounded-xl shadow overflow-hidden">
+    <div class="px-6 py-4 border-b border-gray-100">
+      <h2 class="text-lg font-bold text-jungle">Lifecycle Event Coverage</h2>
+      <p class="text-sm text-gray-500 mt-1">Distinct animals with at least one event of each type.</p>
+    </div>
+
+    <div class="overflow-auto">
+      <table class="w-full text-sm">
+        <thead class="bg-gray-50 border-b">
+          <tr>
+            <th class="text-left px-4 py-3 font-semibold text-gray-700">Animal Type</th>
+            {% for event_type in lifecycle_events %}
+              <th class="text-right px-4 py-3 font-semibold text-gray-700 whitespace-nowrap">
+                {{ event_type|replace("_", " ")|title }}
+              </th>
+            {% endfor %}
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in metrics %}
+            <tr class="border-b hover:bg-gray-50">
+              <td class="px-4 py-3 font-semibold text-gray-900">{{ row.animal_type|title }}</td>
+              {% for event_type in lifecycle_events %}
+                <td class="px-4 py-3 text-right text-gray-700">{{ row.event_coverage[event_type] }}</td>
+              {% endfor %}
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+{% endblock %}
