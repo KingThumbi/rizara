@@ -26,6 +26,10 @@ class Config:
     # ======================
     SECRET_KEY = os.environ.get("SECRET_KEY", "dev-secret-key")
 
+    LOGIN_MAX_FAILED_ATTEMPTS = int(os.environ.get("LOGIN_MAX_FAILED_ATTEMPTS", "5"))
+    LOGIN_LOCKOUT_MINUTES = int(os.environ.get("LOGIN_LOCKOUT_MINUTES", "10"))
+    LOGIN_RATE_LIMIT = os.environ.get("LOGIN_RATE_LIMIT", "10 per minute")
+
     # ======================
     # Database
     # ======================

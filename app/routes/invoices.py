@@ -17,6 +17,7 @@ from app.models import (
     InvoiceStatus,
     InvoicePayment,
 )
+from app.utils.guards import operation_required
 
 bp = Blueprint("invoices", __name__, url_prefix="/admin/invoices")
 
@@ -173,7 +174,7 @@ def new_invoice():
     )
 
 @bp.post("/new")
-@login_required
+@operation_required("invoices:generate")
 def create_invoice():
     try:
         buyer_id = request.form.get("buyer_id", type=int)
@@ -317,7 +318,7 @@ def invoice_pdf(invoice_id):
     )    
 
 @bp.post("/<int:invoice_id>/pay")
-@login_required
+@operation_required("payments:record")
 def record_payment(invoice_id):
     from app.services.invoice_payments import record_invoice_payment
 

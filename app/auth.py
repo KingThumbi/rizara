@@ -4,15 +4,22 @@ from __future__ import annotations
 from datetime import datetime
 from urllib.parse import urlparse, urljoin
 
-from flask import Blueprint, request, redirect, url_for, render_template, flash
+from flask import Blueprint, current_app, request, redirect, url_for, render_template, flash
 from flask_login import login_user, logout_user, current_user, login_required
 from werkzeug.security import check_password_hash, generate_password_hash
 from sqlalchemy import or_
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 from .models import User
-from .extensions import login_manager, db
+from .extensions import login_manager, db, limiter
 from .utils.guards import admin_required, requires_terms
+from .utils.auth_security import (
+    audit_auth_event,
+    lockout_is_active,
+    register_failed_login,
+    reset_login_security,
+)
+from .utils.passwords import verify_password
 
 auth = Blueprint("auth", __name__)
 
@@ -116,6 +123,7 @@ def change_password():
 # Login / Logout
 # =========================================================
 @auth.route("/login", methods=["GET", "POST"])
+@limiter.limit(lambda: current_app.config.get("LOGIN_RATE_LIMIT", "10 per minute"), methods=["POST"])
 def login():
     if getattr(current_user, "is_authenticated", False):
         return redirect(url_for("main.dashboard"))
@@ -133,23 +141,47 @@ def login():
         user = User.query.filter(db.func.lower(User.email) == email).first()
 
         # If your model has is_active, enforce it
+        if user and lockout_is_active(user):
+            audit_auth_event("login_locked", email=email, user=user, reason="active_lockout")
+            flash("This account is temporarily locked. Please try again later.", "danger")
+            return render_template("login.html", next=next_url, current_year=datetime.utcnow().year), 423
+
         if user and hasattr(user, "is_active") and user.is_active is False:
+            audit_auth_event("login_failed", email=email, user=user, reason="inactive_account")
             flash("This account is inactive. Contact an admin.", "danger")
             return render_template("login.html", next=next_url, current_year=datetime.utcnow().year)
 
-        if not user or not check_password_hash(user.password_hash, password):
+        if not user:
+            audit_auth_event("login_failed", email=email, reason="unknown_user")
             flash("Invalid email or password.", "danger")
             return render_template("login.html", next=next_url, current_year=datetime.utcnow().year)
 
-        login_user(user)
-
-        # Stamp last_login_at if exists
-        if hasattr(user, "last_login_at"):
+        if not verify_password(user.password_hash, password):
+            locked = register_failed_login(user)
             try:
-                user.last_login_at = datetime.utcnow()
                 db.session.commit()
             except SQLAlchemyError:
                 db.session.rollback()
+
+            audit_auth_event(
+                "login_lockout" if locked else "login_failed",
+                email=email,
+                user=user,
+                reason="invalid_password",
+            )
+            flash("Invalid email or password.", "danger")
+            return render_template("login.html", next=next_url, current_year=datetime.utcnow().year)
+
+        reset_login_security(user)
+        login_user(user)
+
+        # Stamp last_login_at if exists
+        try:
+            if hasattr(user, "last_login_at"):
+                user.last_login_at = datetime.utcnow()
+            db.session.commit()
+        except SQLAlchemyError:
+            db.session.rollback()
 
         return redirect(_next_or_dashboard())
 

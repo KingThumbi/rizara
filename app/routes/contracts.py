@@ -44,6 +44,7 @@ from app.services.sale_service import (
     calculate_sale_totals,
     generate_sale_number,
 )
+from app.utils.guards import operation_required
 
 bp = Blueprint("contracts", __name__, url_prefix="/contracts")
 
@@ -571,7 +572,7 @@ def new_sale_from_contract(contract_id: int):
 
 
 @bp.post("/<int:contract_id>/sales")
-@login_required
+@operation_required("sales:create")
 def create_sale_from_contract(contract_id: int):
     contract = Contract.query.get_or_404(contract_id)
 
@@ -632,7 +633,7 @@ def create_sale_from_contract(contract_id: int):
     return redirect(url_for("sales.view_sale", sale_id=sale.id))
 
 @bp.route("/<int:contract_id>/tender-sale", methods=["GET", "POST"])
-@login_required
+@operation_required("sales:create")
 def tender_sale(contract_id):
     from decimal import Decimal
     from datetime import date
@@ -820,7 +821,7 @@ def tender_sale(contract_id):
     return redirect(url_for("processing.view_invoice", invoice_id=invoice.id))
 
 @bp.post("/<int:contract_id>/link-processing-batch/<int:batch_id>")
-@login_required
+@operation_required("pipeline:mutate")
 def link_processing_batch(contract_id, batch_id):
     from app.models import Contract, CommercialProcessingBatch, ProcessingBatch
 

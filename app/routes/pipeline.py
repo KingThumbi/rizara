@@ -15,6 +15,7 @@ from flask_login import login_required, current_user
 from app.extensions import db
 from app.models import PipelineCase, Sale, SalePayment, PipelineDelivery, utcnow_naive, Invoice
 from app.services.pipeline_status_service import PipelineStatusService
+from app.utils.guards import operation_required
 
 pipeline_bp = Blueprint("pipeline", __name__, url_prefix="/api/pipeline")
 
@@ -217,7 +218,7 @@ def get_case(case_id: int):
     )
 
 @pipeline_bp.post("/cases/<int:case_id>/mark-contract-signed")
-@login_required
+@operation_required("pipeline:mutate")
 def mark_contract_signed(case_id: int):
     case = PipelineCase.query.get_or_404(case_id)
 
@@ -236,7 +237,7 @@ def mark_contract_signed(case_id: int):
 
 
 @pipeline_bp.post("/cases/<int:case_id>/create-sale")
-@login_required
+@operation_required("sales:create")
 def create_sale(case_id: int):
     case = PipelineCase.query.get_or_404(case_id)
 
@@ -312,7 +313,7 @@ def create_sale(case_id: int):
         }), 500
 
 @pipeline_bp.post("/cases/<int:case_id>/record-payment")
-@login_required
+@operation_required("payments:record")
 def record_payment(case_id: int):
     case = PipelineCase.query.get_or_404(case_id)
 
@@ -396,7 +397,7 @@ def record_payment(case_id: int):
         }), 500
     
 @pipeline_bp.post("/cases/<int:case_id>/dispatch-delivery")
-@login_required
+@operation_required("pipeline:mutate")
 def dispatch_delivery(case_id: int):
     case = PipelineCase.query.get_or_404(case_id)
 
@@ -425,7 +426,7 @@ def dispatch_delivery(case_id: int):
     return jsonify({"ok": True, "delivery_id": delivery.id, "case": serialize_case(case)})    
 
 @pipeline_bp.post("/cases/<int:case_id>/generate-invoice")
-@login_required
+@operation_required("invoices:generate")
 def generate_invoice(case_id: int):
     case = PipelineCase.query.get_or_404(case_id)
 
@@ -520,7 +521,7 @@ def generate_invoice(case_id: int):
         }), 500
     
 @pipeline_bp.post("/cases/<int:case_id>/confirm-delivery")
-@login_required
+@operation_required("pipeline:mutate")
 def confirm_delivery(case_id: int):
     case = PipelineCase.query.get_or_404(case_id)
 
@@ -545,7 +546,7 @@ def confirm_delivery(case_id: int):
     return jsonify({"ok": True, "case": serialize_case(case)})        
 
 @pipeline_bp.post("/cases/<int:case_id>/close")
-@login_required
+@operation_required("pipeline:mutate")
 def close_case(case_id: int):
     case = PipelineCase.query.get_or_404(case_id)
 

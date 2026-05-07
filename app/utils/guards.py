@@ -12,6 +12,7 @@ from flask_login import login_required, current_user
 
 # Roles that should NOT be forced to accept external Terms & Conditions
 TERMS_EXEMPT_ROLES = {"admin", "super_admin", "staff"}
+INTERNAL_OPERATION_ROLES = {"admin", "super_admin", "staff"}
 
 
 def requires_terms(user) -> bool:
@@ -59,6 +60,25 @@ def role_required(*allowed_roles: str) -> Callable[[Callable[..., Any]], Callabl
         def wrapped(*args, **kwargs):
             role = getattr(current_user, "role", None)
             if role not in allowed_roles:
+                abort(403)
+            return view(*args, **kwargs)
+        return wrapped
+    return decorator
+
+
+def operation_required(_operation: str) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
+    """
+    Additive operation gate for high-risk mutations.
+
+    This intentionally starts with the existing internal roles only. It gives
+    mutation endpoints a named permission surface without redesigning RBAC.
+    """
+    def decorator(view: Callable[..., Any]) -> Callable[..., Any]:
+        @wraps(view)
+        @login_required
+        def wrapped(*args, **kwargs):
+            role = getattr(current_user, "role", None)
+            if role not in INTERNAL_OPERATION_ROLES:
                 abort(403)
             return view(*args, **kwargs)
         return wrapped
