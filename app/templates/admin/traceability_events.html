@@ -1,0 +1,113 @@
+{% extends "layouts/base_admin.html" %}
+{% block page_title %}Trace Events · Rizara Admin{% endblock %}
+
+{% block content %}
+  <div class="flex flex-col md:flex-row md:items-end md:justify-between gap-4 mb-6">
+    <div>
+      <h1 class="text-3xl font-bold text-jungle">Trace Events</h1>
+      <p class="text-gray-600 mt-1">Read-only audit history for livestock traceability events.</p>
+    </div>
+
+    <div class="flex flex-wrap gap-2">
+      <a href="{{ url_for('traceability.traceability_completeness') }}"
+         class="bg-white border border-gray-200 text-gray-800 font-semibold px-4 py-2 rounded hover:bg-gray-50 transition">
+        Completeness dashboard
+      </a>
+      <a href="{{ csv_export_url }}"
+         class="bg-white border border-gray-200 text-gray-800 font-semibold px-4 py-2 rounded hover:bg-gray-50 transition">
+        Export CSV
+      </a>
+      <a href="{{ url_for('traceability.traceability_lookup') }}"
+         class="bg-white border border-gray-200 text-gray-800 font-semibold px-4 py-2 rounded hover:bg-gray-50 transition">
+        Traceability Lookup
+      </a>
+    </div>
+  </div>
+
+  <form method="GET" class="bg-white rounded-xl shadow p-6 mb-6">
+    <div class="grid grid-cols-1 md:grid-cols-6 gap-4 items-end">
+      <div>
+        <label for="animal_type" class="block text-sm font-semibold text-gray-700 mb-1">Animal Type</label>
+        <select id="animal_type" name="animal_type"
+                class="w-full border border-gray-200 rounded-lg px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-jungle/30">
+          {% for value, label in [("all", "All"), ("goat", "Goat"), ("sheep", "Sheep"), ("cattle", "Cattle")] %}
+            <option value="{{ value }}" {% if filters.animal_type == value %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div>
+        <label for="event_type" class="block text-sm font-semibold text-gray-700 mb-1">Event Type</label>
+        <input id="event_type" name="event_type" value="{{ filters.event_type or '' }}"
+               class="w-full border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-jungle/30" />
+      </div>
+
+      <div>
+        <label for="source_module" class="block text-sm font-semibold text-gray-700 mb-1">Source Module</label>
+        <input id="source_module" name="source_module" value="{{ filters.source_module or '' }}"
+               class="w-full border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-jungle/30" />
+      </div>
+
+      <div>
+        <label for="date_from" class="block text-sm font-semibold text-gray-700 mb-1">Date From</label>
+        <input id="date_from" name="date_from" type="date" value="{{ filters.date_from or '' }}"
+               class="w-full border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-jungle/30" />
+      </div>
+
+      <div>
+        <label for="date_to" class="block text-sm font-semibold text-gray-700 mb-1">Date To</label>
+        <input id="date_to" name="date_to" type="date" value="{{ filters.date_to or '' }}"
+               class="w-full border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-jungle/30" />
+      </div>
+
+      <button type="submit"
+              class="bg-jungle text-white font-semibold px-4 py-2 rounded hover:bg-jungleLight transition">
+        Filter
+      </button>
+    </div>
+
+    <p class="text-xs text-gray-500 mt-3">Showing up to {{ limit }} newest matching events.</p>
+  </form>
+
+  <section class="bg-white rounded-xl shadow overflow-hidden">
+    <div class="overflow-auto">
+      <table class="w-full text-sm">
+        <thead class="bg-gray-50 border-b">
+          <tr>
+            <th class="text-left px-4 py-3 font-semibold text-gray-700">Event Time</th>
+            <th class="text-left px-4 py-3 font-semibold text-gray-700">Animal</th>
+            <th class="text-left px-4 py-3 font-semibold text-gray-700">Event Type</th>
+            <th class="text-left px-4 py-3 font-semibold text-gray-700">Source</th>
+            <th class="text-left px-4 py-3 font-semibold text-gray-700">Reference</th>
+            <th class="text-left px-4 py-3 font-semibold text-gray-700">Created By</th>
+            <th class="text-left px-4 py-3 font-semibold text-gray-700">Notes</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% if events %}
+            {% for event in events %}
+              <tr class="border-b hover:bg-gray-50">
+                <td class="px-4 py-3 text-gray-700 whitespace-nowrap">{{ event.event_datetime or event.event_date or "—" }}</td>
+                <td class="px-4 py-3">
+                  <div class="font-semibold text-gray-900">{{ event.animal_type or "—" }}</div>
+                  <div class="font-mono text-xs text-gray-500 break-all">{{ event.animal_id or "—" }}</div>
+                </td>
+                <td class="px-4 py-3 font-semibold text-gray-900">{{ event.event_type or "—" }}</td>
+                <td class="px-4 py-3 text-gray-700">{{ event.source_module or "—" }}</td>
+                <td class="px-4 py-3 text-gray-700">
+                  {{ event.reference_type or "—" }}{% if event.reference_id %} #{{ event.reference_id }}{% endif %}
+                </td>
+                <td class="px-4 py-3 text-gray-700">{{ event.created_by_user_id or "—" }}</td>
+                <td class="px-4 py-3 text-gray-700">{{ event.notes or "—" }}</td>
+              </tr>
+            {% endfor %}
+          {% else %}
+            <tr>
+              <td colspan="7" class="px-4 py-6 text-gray-500">No traceability events match these filters.</td>
+            </tr>
+          {% endif %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+{% endblock %}

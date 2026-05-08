@@ -7,6 +7,7 @@ from flask_login import current_user
 
 from app.extensions import db
 from app.models import AggregationBatch
+from app.services.traceability_service import record_events_for_animals
 from app.utils.animal_helpers import animal_label, get_animal_model
 from app.utils.guards import admin_required
 from app.utils.request_parsers import parse_date, parse_float, parse_uuid
@@ -83,6 +84,7 @@ def register_aggregation_routes(animal_type: str, template_add: str):
         db.session.add(batch)
         db.session.flush()  # ensures batch.id exists before linking animals
 
+        attached_animals = []
         attached_count = 0
 
         for raw_id in selected_ids:
@@ -115,6 +117,7 @@ def register_aggregation_routes(animal_type: str, template_add: str):
             animal.aggregated_at = utcnow_naive()
             animal.aggregated_by_user_id = current_user.id
 
+            attached_animals.append(animal)
             attached_count += 1
 
         if attached_count == 0:
@@ -125,6 +128,24 @@ def register_aggregation_routes(animal_type: str, template_add: str):
                 "danger",
             )
             return redirect(request.url)
+
+        try:
+            record_events_for_animals(
+                attached_animals,
+                animal_type=animal_type,
+                event_type="aggregated",
+                event_date=date_received,
+                source_module="aggregation",
+                reference_type="aggregation_batch",
+                reference_id=batch.id,
+                notes=f"Aggregated into batch #{batch.id} at {site_name}.",
+                created_by_user_id=current_user.id,
+            )
+        except Exception:
+            current_app.logger.exception(
+                "Traceability event recording failed for aggregation batch %s",
+                batch.id,
+            )
 
         if not commit_or_rollback(f"Create {label} aggregation batch"):
             return redirect(request.url)

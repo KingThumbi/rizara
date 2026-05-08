@@ -77,6 +77,7 @@ packaging==26.0
     #   limits
 pillow==12.1.0
     # via
+    #   qrcode
     #   reportlab
     #   weasyprint
 pluggy==1.6.0
@@ -88,6 +89,8 @@ pycparser==3.0
 pydyf==0.11.0
     # via
     #   -r requirements.in
+qrcode[pil]==8.2
+    # via -r requirements.in
     #   weasyprint
 pygments==2.20.0
     # via pytest

@@ -37,6 +37,11 @@
            class="{% if request.path.startswith('/procurement') %}text-gold{% else %}hover:text-gold{% endif %} transition">
           Procurement
         </a>
+
+        <a href="{{ url_for('traceability.traceability_lookup') }}"
+           class="{% if request.path.startswith('/admin/traceability') %}text-gold{% else %}hover:text-gold{% endif %} transition">
+          Traceability
+        </a>
       </div>
     </div>
 

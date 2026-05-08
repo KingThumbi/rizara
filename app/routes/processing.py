@@ -20,6 +20,7 @@ from app.models import (
     ProcessingBatchSale,
     ProcessingYield,
 )
+from app.services.traceability_service import record_events_for_animals
 from app.utils.animal_helpers import (
     animal_label,
     get_animal_model,
@@ -244,6 +245,7 @@ def register_processing_routes(animal_type: str, template_add: str):
             processing_batch.contract_id = contract.id
 
         db.session.add(processing_batch)
+        db.session.flush()
 
         relation = getattr(processing_batch, relation_name)
         attached_count = 0
@@ -256,6 +258,24 @@ def register_processing_routes(animal_type: str, template_add: str):
         for source_batch in source_batches:
             source_batch.is_locked = True
             source_batch.locked_at = utcnow_naive()
+
+        try:
+            record_events_for_animals(
+                animals,
+                animal_type=animal_type,
+                event_type="moved_to_processing",
+                event_date=slaughter_date,
+                source_module="processing",
+                reference_type="processing_batch",
+                reference_id=processing_batch.id,
+                notes=f"Moved into processing batch #{processing_batch.id}.",
+                created_by_user_id=current_user.id,
+            )
+        except Exception:
+            current_app.logger.exception(
+                "Traceability event recording failed for processing batch %s",
+                processing_batch.id,
+            )
 
         if not commit_or_rollback(f"Create {label} processing batch"):
             return redirect(request.url)
@@ -334,7 +354,9 @@ def record_processing_yield(batch_id):
 
         processed_count = 0
 
-        for animal in animals_in_processing_batch(batch):
+        batch_animals = list(animals_in_processing_batch(batch))
+
+        for animal in batch_animals:
             current_status = (animal.status or "").strip().lower()
 
             if current_status in ("aggregated", "processing"):
@@ -353,6 +375,7 @@ def record_processing_yield(batch_id):
         existing_lot = InventoryLot.query.filter_by(processing_batch_id=batch.id).first()
 
         if existing_lot:
+            inventory_lot = existing_lot
             existing_lot.quantity_kg = output_kg
             existing_lot.available_kg = output_kg
             existing_lot.unit = "kg"
@@ -366,6 +389,47 @@ def record_processing_yield(batch_id):
                 status="available",
             )
             db.session.add(inventory_lot)
+            db.session.flush()
+
+        try:
+            record_events_for_animals(
+                batch_animals,
+                animal_type=batch.animal_type,
+                event_type="slaughtered_or_processed",
+                event_date=batch.slaughter_date or date.today(),
+                source_module="processing",
+                reference_type="processing_batch",
+                reference_id=batch.id,
+                notes=f"Processed in batch #{batch.id}.",
+                created_by_user_id=current_user.id,
+            )
+            record_events_for_animals(
+                batch_animals,
+                animal_type=batch.animal_type,
+                event_type="yield_recorded",
+                event_date=date.today(),
+                source_module="processing",
+                reference_type="processing_batch",
+                reference_id=batch.id,
+                notes=f"Yield recorded for processing batch #{batch.id}.",
+                created_by_user_id=current_user.id,
+            )
+            record_events_for_animals(
+                batch_animals,
+                animal_type=batch.animal_type,
+                event_type="inventory_created",
+                event_date=date.today(),
+                source_module="processing",
+                reference_type="inventory_lot",
+                reference_id=getattr(inventory_lot, "id", None),
+                notes=f"Inventory lot created or updated from processing batch #{batch.id}.",
+                created_by_user_id=current_user.id,
+            )
+        except Exception:
+            current_app.logger.exception(
+                "Traceability event recording failed for yield on processing batch %s",
+                batch.id,
+            )
 
         if not commit_or_rollback("Record processing yield and create inventory lot"):
             return redirect(request.url)

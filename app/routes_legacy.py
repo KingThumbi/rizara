@@ -61,6 +61,7 @@ from app.services.document_files import (
     load_document_snapshot_bytes,
 )
 from app.services.document_renderer import render_export_sales_contract_pdf_bytes
+from app.services.traceability_service import record_events_for_animals
 
 main = Blueprint("main", __name__)
 
@@ -742,7 +743,9 @@ def aggregation_route(animal_type: str, template_add: str):
             created_by_user_id=current_user.id,
         )
         db.session.add(batch)
+        db.session.flush()
 
+        attached_animals = []
         attached = 0
 
         for raw_id in selected_ids:
@@ -769,12 +772,31 @@ def aggregation_route(animal_type: str, template_add: str):
             animal.aggregated_at = datetime.utcnow()
             animal.aggregated_by_user_id = current_user.id
 
+            attached_animals.append(animal)
             attached += 1
 
         if attached == 0:
             db.session.rollback()
             flash("No animals were aggregated.", "danger")
             return redirect(request.url)
+
+        try:
+            record_events_for_animals(
+                attached_animals,
+                animal_type=animal_type,
+                event_type="aggregated",
+                event_date=date_received,
+                source_module="aggregation",
+                reference_type="aggregation_batch",
+                reference_id=batch.id,
+                notes=f"Aggregated into batch #{batch.id} at {site_name}.",
+                created_by_user_id=current_user.id,
+            )
+        except Exception:
+            current_app.logger.exception(
+                "Traceability event recording failed for aggregation batch %s",
+                batch.id,
+            )
 
         if not _commit_or_rollback("Create aggregation batch"):
             return redirect(request.url)
@@ -1382,11 +1404,42 @@ def record_processing_yield(batch_id):
             recorded_by_user_id=current_user.id,
         )
 
-        for animal in _animals_in_processing_batch(batch):
+        batch_animals = list(_animals_in_processing_batch(batch))
+
+        for animal in batch_animals:
             if (animal.status or "").strip() == "processing":
                 animal.status = "processed"
 
         db.session.add(y)
+        try:
+            record_events_for_animals(
+                batch_animals,
+                animal_type=batch.animal_type,
+                event_type="slaughtered_or_processed",
+                event_date=batch.slaughter_date or date.today(),
+                source_module="processing",
+                reference_type="processing_batch",
+                reference_id=batch.id,
+                notes=f"Processed in batch #{batch.id}.",
+                created_by_user_id=current_user.id,
+            )
+            record_events_for_animals(
+                batch_animals,
+                animal_type=batch.animal_type,
+                event_type="yield_recorded",
+                event_date=date.today(),
+                source_module="processing",
+                reference_type="processing_batch",
+                reference_id=batch.id,
+                notes=f"Yield recorded for processing batch #{batch.id}.",
+                created_by_user_id=current_user.id,
+            )
+        except Exception:
+            current_app.logger.exception(
+                "Traceability event recording failed for yield on processing batch %s",
+                batch.id,
+            )
+
         if not _commit_or_rollback("Record processing yield"):
             return redirect(request.url)
 
@@ -1825,4 +1878,3 @@ def public_download_contract_draft_pdf(token: str):
         mimetype="application/pdf",
         headers={"Content-Disposition": f'inline; filename="{filename}"'},
     )
-
