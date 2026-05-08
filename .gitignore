@@ -27,3 +27,7 @@ env/
 instance/
 __pycache__/
 *.py[cod]
+
+# Local Codex safety files
+.env.local.backup
+.codex/

@@ -18,3 +18,6 @@ reportlab>=4.0.0
 
 weasyprint==62.3
 pydyf==0.11.0
+
+# Test tooling
+pytest>=8.0.0

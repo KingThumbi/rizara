@@ -8,7 +8,8 @@ from flask_login import current_user, login_required
 from app.extensions import db
 from app.models import Sale, SalePayment
 from app.services.sale_service import calculate_sale_totals
-from app.utils.time import utcnow_naive
+from app.utils.guards import operation_required
+from app.utils.time_helpers import utcnow_naive
 
 bp = Blueprint("sales", __name__, url_prefix="/sales")
 
@@ -47,7 +48,7 @@ def view_sale(sale_id: int):
 
 
 @bp.post("/<int:sale_id>/payments")
-@login_required
+@operation_required("payments:record")
 def add_payment(sale_id: int):
     sale = Sale.query.get_or_404(sale_id)
 
@@ -183,7 +184,7 @@ def cancel_sale(sale_id: int):
 
 
 @bp.post("/<int:sale_id>/authorize-processing")
-@login_required
+@operation_required("pipeline:mutate")
 def authorize_processing(sale_id: int):
     sale = Sale.query.get_or_404(sale_id)
 

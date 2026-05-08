@@ -53,6 +53,8 @@ html5lib==1.1
     # via weasyprint
 idna==3.11
     # via requests
+iniconfig==2.3.0
+    # via pytest
 itsdangerous==2.2.0
     # via flask
 jinja2==3.1.6
@@ -77,6 +79,8 @@ pillow==12.1.0
     # via
     #   reportlab
     #   weasyprint
+pluggy==1.6.0
+    # via pytest
 psycopg2-binary==2.9.11
     # via -r requirements.in
 pycparser==3.0
@@ -85,8 +89,12 @@ pydyf==0.11.0
     # via
     #   -r requirements.in
     #   weasyprint
+pygments==2.20.0
+    # via pytest
 pyphen==0.17.2
     # via weasyprint
+pytest==8.4.2
+    # via -r requirements.in
 python-dotenv==1.2.1
     # via -r requirements.in
 reportlab==4.4.9
