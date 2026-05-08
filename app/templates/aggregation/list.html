@@ -1,25 +1,15 @@
 {# /home/thumbi/rizara/app/templates/aggregation/list.html #}
-{% extends "layouts/base.html" %}
+{% extends "layouts/base_admin.html" %}
 
-{% block title %}Aggregation Batches | Rizara{% endblock %}
+{% block page_title %}Aggregation Batches | Rizara{% endblock %}
 
-{% block body %}
+{% block breadcrumbs %}
+  <a href="{{ url_for('main.dashboard') }}" class="font-semibold text-jungle hover:text-jungleLight transition">Dashboard</a>
+  <span>/</span>
+  <span class="font-medium text-gray-700">Aggregation</span>
+{% endblock %}
 
-  <nav class="bg-jungle text-white px-6 py-4 flex justify-between items-center shadow">
-    <div class="text-xl font-bold tracking-wide">Rizara Meats</div>
-    <div class="flex items-center gap-3">
-      <a href="{{ url_for('main.dashboard') }}"
-         class="bg-gold text-jungle font-semibold px-4 py-2 rounded hover:bg-yellow-400 transition">
-        ← Back to Dashboard
-      </a>
-      <a href="{{ url_for('auth.logout') }}"
-         class="bg-white/10 text-white font-semibold px-4 py-2 rounded hover:bg-white/20 transition">
-        Logout
-      </a>
-    </div>
-  </nav>
-
-  <main class="max-w-6xl mx-auto px-6 py-10">
+{% block content %}
 
     <div class="mb-8">
       <h1 class="text-3xl font-bold text-jungle">Aggregation Batches</h1>
@@ -118,11 +108,5 @@
         </div>
       {% endif %}
     </div>
-
-  </main>
-
-  <footer class="text-center text-sm text-gray-500 py-6">
-    © {{ current_year or 2026 }} Rizara Meats Ltd — Secure • Traceable • Halal
-  </footer>
 
 {% endblock %}

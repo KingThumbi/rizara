@@ -1,10 +1,20 @@
-{% extends "layouts/base.html" %}
+{% extends "layouts/base_admin.html" %}
 
-{% block title %}
+{% block page_title %}
   {{ (doc.payload or {}).get("document_title") or doc.title or "Document Preview" }} - Rizara
 {% endblock %}
 
-{% block body %}
+{% block breadcrumbs %}
+  <a href="{{ url_for('main.dashboard') }}" class="font-semibold text-jungle hover:text-jungleLight transition">Dashboard</a>
+  <span>/</span>
+  <a href="{{ url_for('admin.documents_list') }}" class="font-semibold text-jungle hover:text-jungleLight transition">Documents</a>
+  <span>/</span>
+  <a href="{{ url_for('admin.documents_view', document_id=doc.id) }}" class="font-semibold text-jungle hover:text-jungleLight transition">Document</a>
+  <span>/</span>
+  <span class="font-medium text-gray-700">Preview</span>
+{% endblock %}
+
+{% block content %}
 {% set payload = doc.payload or {} %}
 {% set items = payload.get("items", []) %}
 {% set currency = payload.get("currency") or "USD" %}

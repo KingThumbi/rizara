@@ -1,9 +1,17 @@
-{% extends "layouts/base.html" %}
+{% extends "layouts/base_admin.html" %}
 
-{% block title %}New Market Purchase{% endblock %}
+{% block page_title %}New Market Purchase{% endblock %}
 
-{% block body %}
-<div class="max-w-5xl mx-auto px-6 py-8">
+{% block breadcrumbs %}
+  <a href="{{ url_for('main.dashboard') }}" class="font-semibold text-jungle hover:text-jungleLight transition">Dashboard</a>
+  <span>/</span>
+  <a href="{{ url_for('market_purchase.market_purchase_list') }}" class="font-semibold text-jungle hover:text-jungleLight transition">Market Purchases</a>
+  <span>/</span>
+  <span class="font-medium text-gray-700">New</span>
+{% endblock %}
+
+{% block content %}
+<div class="max-w-5xl">
 
   <!-- Header -->
   <div class="mb-8">

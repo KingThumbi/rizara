@@ -1,44 +1,15 @@
 {# /home/thumbi/rizara/app/templates/processing/list.html #}
-{% extends "layouts/base.html" %}
+{% extends "layouts/base_admin.html" %}
 
-{% block title %}Processing Batches | Rizara{% endblock %}
+{% block page_title %}Processing Batches | Rizara{% endblock %}
 
-{% block head %}
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script>
-    tailwind.config = {
-      theme: {
-        extend: {
-          colors: {
-            jungle: '#1f6f54',
-            jungleLight: '#2f8f6b',
-            gold: '#d4af37',
-            grayDark: '#1f2937'
-          }
-        }
-      }
-    }
-  </script>
+{% block breadcrumbs %}
+  <a href="{{ url_for('main.dashboard') }}" class="font-semibold text-jungle hover:text-jungleLight transition">Dashboard</a>
+  <span>/</span>
+  <span class="font-medium text-gray-700">Processing</span>
 {% endblock %}
 
-{% block body %}
-
-  <!-- Navbar -->
-  <nav class="bg-jungle text-white px-6 py-4 flex justify-between items-center shadow">
-    <div class="text-xl font-bold tracking-wide">Rizara Meats</div>
-    <div class="flex items-center gap-3">
-      <a href="{{ url_for('main.dashboard') }}"
-         class="bg-gold text-jungle font-semibold px-4 py-2 rounded hover:bg-yellow-400 transition">
-        ← Back to Dashboard
-      </a>
-      <a href="{{ url_for('auth.logout') }}"
-         class="bg-white/10 text-white font-semibold px-4 py-2 rounded hover:bg-white/20 transition">
-        Logout
-      </a>
-    </div>
-  </nav>
-
-  <main class="max-w-6xl mx-auto px-6 py-10">
+{% block content %}
 
     <!-- Header -->
     <div class="mb-8">
@@ -144,7 +115,7 @@
                   </td>
 
                   <td class="p-4">
-                    <a href="{{ url_for('main.processing_batch_detail', batch_id=batch.id) }}"
+                    <a href="{{ url_for('processing.view_invoiceable_batch', batch_id=batch.id) }}"
                        class="px-4 py-2 rounded-lg bg-jungle text-white text-sm font-semibold hover:bg-jungleLight transition">
                       View
                     </a>
@@ -156,11 +127,5 @@
         </div>
       {% endif %}
     </div>
-
-  </main>
-
-  <footer class="text-center text-sm text-gray-500 py-6">
-    © {{ current_year or 2026 }} Rizara Meats Ltd — Secure • Traceable • Halal
-  </footer>
 
 {% endblock %}

@@ -1,5 +1,12 @@
 {# app/templates/partials/admin_chrome.html #}
 
+{% macro admin_nav_link(endpoint, label, active_prefix=None, endpoint_args=None) -%}
+  <a href="{{ url_for(endpoint, **(endpoint_args or {})) }}"
+     class="{% if active_prefix and request.path.startswith(active_prefix) %}text-gold{% elif request.endpoint == endpoint %}text-gold{% else %}hover:text-gold{% endif %} transition">
+    {{ label }}
+  </a>
+{%- endmacro %}
+
 <nav class="bg-jungle text-white px-6 py-4 shadow-sm border-b border-white/10">
   <div class="max-w-7xl mx-auto flex flex-col md:flex-row md:items-center md:justify-between gap-4">
 
@@ -8,40 +15,16 @@
         Rizara Meats
       </a>
 
-      <div class="flex flex-wrap items-center gap-5 text-sm font-medium">
-        <a href="{{ url_for('main.dashboard') }}"
-           class="{% if request.path in ['/dashboard', '/admin/dashboard'] %}text-gold{% else %}hover:text-gold{% endif %} transition">
-          Dashboard
-        </a>
-
-        <a href="{{ url_for('pipeline_pages.pipeline_dashboard') }}"
-           class="{% if request.path.startswith('/admin/pipeline') %}text-gold{% else %}hover:text-gold{% endif %} transition">
-          Pipeline
-        </a>
-
-        <a href="{{ url_for('main.dashboard') }}"
-          class="{% if request.path.startswith('/aggregation') %}text-gold{% else %}hover:text-gold{% endif %} transition">
-          Aggregation
-        </a>
-
-        <a href="{{ url_for('main.dashboard') }}"
-          class="{% if request.path.startswith('/processing') %}text-gold{% else %}hover:text-gold{% endif %} transition">
-          Processing
-        </a>
-
-        <a href="{{ url_for('contracts.list_contracts') }}"
-          class="{% if request.path.startswith('/contracts') %}text-gold{% else %}hover:text-gold{% endif %} transition">
-          Contracts
-        </a>
-        <a href="{{ url_for('procurement.dashboard') }}"
-           class="{% if request.path.startswith('/procurement') %}text-gold{% else %}hover:text-gold{% endif %} transition">
-          Procurement
-        </a>
-
-        <a href="{{ url_for('traceability.traceability_lookup') }}"
-           class="{% if request.path.startswith('/admin/traceability') %}text-gold{% else %}hover:text-gold{% endif %} transition">
-          Traceability
-        </a>
+      <div class="flex flex-wrap items-center gap-x-5 gap-y-3 text-sm font-medium">
+        {{ admin_nav_link('main.dashboard', 'Dashboard', '/admin/dashboard') }}
+        {{ admin_nav_link('procurement.dashboard', 'Procurement', '/procurement') }}
+        {{ admin_nav_link('main.animal_pipeline_view', 'Animals', '/animals', {'animal_type': 'goat', 'status': 'on_farm'}) }}
+        {{ admin_nav_link('aggregation.add_goat_aggregation', 'Aggregation', '/goat/aggregation') }}
+        {{ admin_nav_link('processing.add_goat_processing', 'Processing', '/goat/processing') }}
+        {{ admin_nav_link('contracts.list_contracts', 'Contracts', '/contracts') }}
+        {{ admin_nav_link('pipeline_pages.pipeline_dashboard', 'Pipeline', '/admin/pipeline') }}
+        {{ admin_nav_link('admin.documents_list', 'Documents', '/admin/documents') }}
+        {{ admin_nav_link('traceability.traceability_lookup', 'Traceability', '/admin/traceability') }}
       </div>
     </div>
 

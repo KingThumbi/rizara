@@ -1,9 +1,14 @@
-{% extends "layouts/base.html" %}
+{% extends "layouts/base_admin.html" %}
 
-{% block title %}Invoices | Rizara{% endblock %}
+{% block page_title %}Invoices | Rizara{% endblock %}
 
-{% block body %}
-<main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+{% block breadcrumbs %}
+  <a href="{{ url_for('main.dashboard') }}" class="font-semibold text-jungle hover:text-jungleLight transition">Dashboard</a>
+  <span>/</span>
+  <span class="font-medium text-gray-700">Invoices</span>
+{% endblock %}
+
+{% block content %}
 
   <div class="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4 mb-8">
     <div>
@@ -14,15 +19,21 @@
       </p>
     </div>
 
-    <a href="{{ url_for('invoices.new_invoice') }}"
-       class="inline-flex items-center justify-center px-5 py-3 rounded-2xl bg-jungle text-white font-semibold shadow-sm hover:bg-jungleLight transition">
-      New Invoice
-    </a>
+    <div class="flex flex-col sm:flex-row gap-3">
+      <a href="{{ url_for('main.dashboard') }}"
+         class="inline-flex items-center justify-center px-5 py-3 rounded-2xl border border-gray-200 text-gray-700 font-semibold hover:bg-gray-50 transition">
+        Back to Dashboard
+      </a>
+      <a href="{{ url_for('invoices.new_invoice') }}"
+         class="inline-flex items-center justify-center px-5 py-3 rounded-2xl bg-jungle text-white font-semibold shadow-sm hover:bg-jungleLight transition">
+        New Invoice
+      </a>
+    </div>
   </div>
 
   <div class="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden">
     <div class="overflow-x-auto">
-      <table class="w-full text-sm">
+      <table class="min-w-[960px] w-full text-sm">
         <thead class="bg-gray-50 border-b border-gray-200">
           <tr>
             <th class="p-4 text-left">Invoice</th>
@@ -104,5 +115,4 @@
     </div>
   </div>
 
-</main>
 {% endblock %}

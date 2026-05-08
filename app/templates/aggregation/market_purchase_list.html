@@ -1,9 +1,15 @@
-{% extends "layouts/base.html" %}
+{% extends "layouts/base_admin.html" %}
 
-{% block title %}Market Purchases{% endblock %}
+{% block page_title %}Market Purchases{% endblock %}
 
-{% block body %}
-<div class="max-w-7xl mx-auto px-6 py-8">
+{% block breadcrumbs %}
+  <a href="{{ url_for('main.dashboard') }}" class="font-semibold text-jungle hover:text-jungleLight transition">Dashboard</a>
+  <span>/</span>
+  <span class="font-medium text-gray-700">Market Purchases</span>
+{% endblock %}
+
+{% block content %}
+<div>
 
   <!-- Header -->
   <div class="flex flex-col md:flex-row md:items-start md:justify-between gap-4 mb-8">

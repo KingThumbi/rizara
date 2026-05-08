@@ -1,13 +1,9 @@
 {# app/templates/admin/dashboard.html #}
-{% extends "layouts/base.html" %}
+{% extends "layouts/base_admin.html" %}
 
-{% block title %}Rizara Operations Dashboard{% endblock %}
+{% block page_title %}Rizara Operations Dashboard{% endblock %}
 
-{% block body %}
-<div class="min-h-screen bg-gray-50">
-  {% include "partials/admin_chrome.html" %}
-
-  <main class="max-w-7xl mx-auto px-6 py-8">
+{% block content %}
 
     {% with messages = get_flashed_messages(with_categories=true) %}
       {% if messages %}
@@ -355,13 +351,6 @@
       </div>
 
     </section>
-
-  </main>
-
-  <footer class="text-center text-sm text-gray-500 py-6">
-    © {{ current_year or 2026 }} Rizara Meats Ltd — Ethical • Traceable • Halal
-  </footer>
-</div>
 
 <style>
   .dash-card {

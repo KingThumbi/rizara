@@ -1,48 +1,31 @@
 {# /home/thumbi/rizara/app/templates/processing/detail.html #}
-{% extends "layouts/base.html" %}
+{% extends "layouts/base_admin.html" %}
 
-{% block title %}Processing Batch #{{ batch.id }} | Rizara{% endblock %}
+{% block page_title %}Processing Batch #{{ batch.id }} | Rizara{% endblock %}
 
-{% block head %}
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script>
-    tailwind.config = {
-      theme: {
-        extend: {
-          colors: {
-            jungle: '#1f6f54',
-            jungleLight: '#2f8f6b',
-            gold: '#d4af37',
-            grayDark: '#1f2937'
-          }
-        }
-      }
-    }
-  </script>
+{% block breadcrumbs %}
+  <a href="{{ url_for('main.dashboard') }}" class="font-semibold text-jungle hover:text-jungleLight transition">Dashboard</a>
+  <span>/</span>
+  <span class="font-medium text-gray-700">Processing Batch #{{ batch.id }}</span>
 {% endblock %}
 
-{% block body %}
+{% block content %}
+  {% set processing_entry_endpoint =
+    'processing.add_sheep_processing' if batch.animal_type == 'sheep'
+    else 'processing.add_cattle_processing' if batch.animal_type == 'cattle'
+    else 'processing.add_goat_processing'
+  %}
 
-  <!-- Navbar -->
-  <nav class="bg-jungle text-white px-6 py-4 flex justify-between items-center shadow">
-    <div class="text-xl font-bold tracking-wide">Rizara Meats</div>
-    <div class="flex items-center gap-3">
-      <a href="{{ url_for('main.processing_list') }}"
-         class="bg-gold text-jungle font-semibold px-4 py-2 rounded hover:bg-yellow-400 transition">
-        ← Back to Processing
-      </a>
-      <a href="{{ url_for('main.dashboard') }}"
-         class="bg-white/10 text-white font-semibold px-4 py-2 rounded hover:bg-white/20 transition">
-        Dashboard
-      </a>
-      <a href="{{ url_for('auth.logout') }}"
-         class="bg-white/10 text-white font-semibold px-4 py-2 rounded hover:bg-white/20 transition">
-        Logout
-      </a>
-    </div>
-  </nav>
-
-  <main class="max-w-6xl mx-auto px-6 py-10">
+  <div class="mb-6 flex flex-wrap gap-3">
+    <a href="{{ url_for(processing_entry_endpoint) }}"
+       class="inline-flex items-center gap-2 text-sm font-semibold text-gray-500 hover:text-gray-900 transition">
+      ← Back to Processing
+    </a>
+    <a href="{{ url_for('main.dashboard') }}"
+       class="inline-flex items-center gap-2 text-sm font-semibold text-gray-500 hover:text-gray-900 transition">
+      Back to Dashboard
+    </a>
+  </div>
 
     <!-- Header -->
     <div class="mb-8">
@@ -181,11 +164,5 @@
       </div>
 
     </div>
-
-  </main>
-
-  <footer class="text-center text-sm text-gray-500 py-6">
-    © {{ current_year or 2026 }} Rizara Meats Ltd — Secure • Traceable • Halal
-  </footer>
 
 {% endblock %}

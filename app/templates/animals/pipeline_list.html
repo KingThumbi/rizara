@@ -1,20 +1,55 @@
-{% extends "layouts/base.html" %}
+{% extends "layouts/base_admin.html" %}
 
-{% block title %}
+{% block page_title %}
   {{ animal_type|capitalize }} Pipeline | {{ status.replace('_',' ')|capitalize }} | Rizara
 {% endblock %}
 
-{% block body %}
-<div class="max-w-6xl mx-auto px-6 py-10">
+{% block breadcrumbs %}
+  <a href="{{ url_for('main.dashboard') }}" class="font-semibold text-jungle hover:text-jungleLight transition">Dashboard</a>
+  <span>/</span>
+  <a href="{{ url_for('main.animal_pipeline_view', animal_type=animal_type, status='on_farm') }}" class="font-semibold text-jungle hover:text-jungleLight transition">Animals</a>
+  <span>/</span>
+  <a href="{{ url_for('main.animal_pipeline_view', animal_type=animal_type, status='on_farm') }}" class="font-semibold text-jungle hover:text-jungleLight transition">{{ animal_type|capitalize }}</a>
+  <span>/</span>
+  <span class="font-medium text-gray-700">{{ status.replace('_',' ')|title }}</span>
+{% endblock %}
+
+{% block content %}
+<div>
 
   <div class="mb-8">
-    <h1 class="text-3xl font-bold text-jungle">
-      {{ animal_type|capitalize }} — {{ status.replace('_',' ')|capitalize }}
-    </h1>
-    <p class="text-gray-600 mt-1">
-      Showing {{ pagination.items|length }} of {{ pagination.total }} {{ animal_type }} records currently in
-      <b>{{ status.replace('_',' ') }}</b> status.
-    </p>
+    <div class="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
+      <div>
+        <h1 class="text-3xl font-bold text-jungle">
+          {{ animal_type|capitalize }} — {{ status.replace('_',' ')|title }}
+        </h1>
+        <p class="text-gray-600 mt-1">
+          Showing {{ pagination.items|length }} of {{ pagination.total }} {{ animal_type }} records currently in
+          <b>{{ status.replace('_',' ') }}</b> status.
+        </p>
+      </div>
+
+      <div class="flex flex-wrap gap-2">
+        <a href="{{ url_for('main.dashboard') }}"
+           class="inline-flex items-center justify-center px-4 py-2 rounded-lg border border-gray-300 text-sm font-semibold text-gray-700 hover:bg-gray-100 transition">
+          Back to Dashboard
+        </a>
+        <a href="{{ url_for('main.animal_pipeline_view', animal_type=animal_type, status='on_farm') }}"
+           class="inline-flex items-center justify-center px-4 py-2 rounded-lg bg-white border border-gray-200 text-sm font-semibold text-jungle hover:bg-gray-50 transition">
+          {{ animal_type|capitalize }} Animals
+        </a>
+      </div>
+    </div>
+
+    <div class="mt-4 flex flex-wrap gap-2">
+      {% for pipeline_status in ['on_farm', 'aggregated', 'processing', 'processed', 'sold'] %}
+        <a href="{{ url_for('main.animal_pipeline_view', animal_type=animal_type, status=pipeline_status) }}"
+           class="px-3 py-2 rounded-lg border text-sm font-semibold transition {% if status == pipeline_status %}bg-jungle text-white border-jungle{% else %}bg-white text-gray-700 border-gray-200 hover:bg-gray-50{% endif %}">
+          {{ pipeline_status.replace('_',' ')|title }}
+        </a>
+      {% endfor %}
+    </div>
+
   </div>
 
   {% with messages = get_flashed_messages(with_categories=true) %}
@@ -49,7 +84,7 @@
         </p>
       </div>
 
-      <div class="flex flex-wrap items-center gap-3">
+      <div class="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-3">
         <form method="get" class="flex items-center gap-2">
           <label class="text-sm text-gray-600">Show</label>
           <select
@@ -64,39 +99,39 @@
         </form>
 
         {% if animal_type == 'goat' and status == 'on_farm' %}
-          <a href="{{ url_for('main.add_goat_aggregation') }}"
-             class="px-5 py-2 rounded-lg bg-jungle text-white font-semibold hover:bg-jungleLight transition">
+          <a href="{{ url_for('aggregation.add_goat_aggregation') }}"
+             class="inline-flex items-center justify-center px-5 py-2 rounded-lg bg-jungle text-white font-semibold hover:bg-jungleLight transition">
             + Create Goat Aggregation Batch
           </a>
         {% elif animal_type == 'sheep' and status == 'on_farm' %}
-          <a href="{{ url_for('main.add_sheep_aggregation') }}"
-             class="px-5 py-2 rounded-lg bg-jungle text-white font-semibold hover:bg-jungleLight transition">
+          <a href="{{ url_for('aggregation.add_sheep_aggregation') }}"
+             class="inline-flex items-center justify-center px-5 py-2 rounded-lg bg-jungle text-white font-semibold hover:bg-jungleLight transition">
             + Create Sheep Aggregation Batch
           </a>
         {% elif animal_type == 'cattle' and status == 'on_farm' %}
-          <a href="{{ url_for('main.add_cattle_aggregation') }}"
-             class="px-5 py-2 rounded-lg bg-jungle text-white font-semibold hover:bg-jungleLight transition">
+          <a href="{{ url_for('aggregation.add_cattle_aggregation') }}"
+             class="inline-flex items-center justify-center px-5 py-2 rounded-lg bg-jungle text-white font-semibold hover:bg-jungleLight transition">
             + Create Cattle Aggregation Batch
           </a>
         {% elif animal_type == 'goat' and status == 'aggregated' %}
-          <a href="{{ url_for('main.add_goat_processing') }}"
-             class="px-5 py-2 rounded-lg bg-jungle text-white font-semibold hover:bg-jungleLight transition">
+          <a href="{{ url_for('processing.add_goat_processing') }}"
+             class="inline-flex items-center justify-center px-5 py-2 rounded-lg bg-jungle text-white font-semibold hover:bg-jungleLight transition">
             + Create Goat Processing Batch
           </a>
         {% elif animal_type == 'sheep' and status == 'aggregated' %}
-          <a href="{{ url_for('main.add_sheep_processing') }}"
-             class="px-5 py-2 rounded-lg bg-jungle text-white font-semibold hover:bg-jungleLight transition">
+          <a href="{{ url_for('processing.add_sheep_processing') }}"
+             class="inline-flex items-center justify-center px-5 py-2 rounded-lg bg-jungle text-white font-semibold hover:bg-jungleLight transition">
             + Create Sheep Processing Batch
           </a>
         {% elif animal_type == 'cattle' and status == 'aggregated' %}
-          <a href="{{ url_for('main.add_cattle_processing') }}"
-             class="px-5 py-2 rounded-lg bg-jungle text-white font-semibold hover:bg-jungleLight transition">
+          <a href="{{ url_for('processing.add_cattle_processing') }}"
+             class="inline-flex items-center justify-center px-5 py-2 rounded-lg bg-jungle text-white font-semibold hover:bg-jungleLight transition">
             + Create Cattle Processing Batch
           </a>
         {% endif %}
 
         <a href="{{ url_for('main.dashboard') }}"
-           class="px-5 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-100 transition">
+           class="inline-flex items-center justify-center px-5 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-100 transition">
           Done
         </a>
       </div>
@@ -112,7 +147,7 @@
       </div>
     {% else %}
       <div class="overflow-x-auto">
-        <table class="w-full text-sm">
+        <table class="min-w-[720px] w-full text-sm">
           <thead class="bg-gray-50">
             <tr class="text-left">
               <th class="p-4">Rizara ID</th>

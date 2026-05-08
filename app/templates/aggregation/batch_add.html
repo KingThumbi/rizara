@@ -1,35 +1,15 @@
 {# app/templates/aggregation/batch_add.html #}
-{% extends "layouts/base.html" %}
+{% extends "layouts/base_admin.html" %}
 
-{% block title %}Create {{ animal_label }} Aggregation Batch | Rizara{% endblock %}
+{% block page_title %}Create {{ animal_label }} Aggregation Batch | Rizara{% endblock %}
 
-{% block head %}
-<script src="https://cdn.tailwindcss.com"></script>
-<script>
-  tailwind.config = {
-    theme: {
-      extend: {
-        colors: {
-          jungle: "#1f6f54",
-          jungleLight: "#2f8f6b",
-          gold: "#d4af37"
-        }
-      }
-    }
-  }
-</script>
+{% block breadcrumbs %}
+  <a href="{{ url_for('main.dashboard') }}" class="font-semibold text-jungle hover:text-jungleLight transition">Dashboard</a>
+  <span>/</span>
+  <span class="font-medium text-gray-700">Aggregation</span>
 {% endblock %}
 
-{% block body %}
-<nav class="bg-jungle text-white px-6 py-4 flex justify-between">
-  <div class="font-bold">Rizara Meats</div>
-  <div class="flex gap-3">
-    <a href="{{ url_for('main.dashboard') }}" class="bg-gold text-jungle px-4 py-2 rounded">Dashboard</a>
-    <a href="{{ url_for('auth.logout') }}" class="bg-white/10 px-4 py-2 rounded">Logout</a>
-  </div>
-</nav>
-
-<main class="max-w-6xl mx-auto px-6 py-10">
+{% block content %}
   <h1 class="text-3xl font-bold text-jungle mb-2">
     Create {{ animal_label }} Aggregation Batch
   </h1>
@@ -125,5 +105,4 @@
     </div>
 
   </form>
-</main>
 {% endblock %}

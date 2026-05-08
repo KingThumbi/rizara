@@ -1,6 +1,14 @@
 {% extends "layouts/base_admin.html" %}
 {% block page_title %}New Document · Rizara Admin{% endblock %}
 
+{% block breadcrumbs %}
+  <a href="{{ url_for('main.dashboard') }}" class="font-semibold text-jungle hover:text-jungleLight transition">Dashboard</a>
+  <span>/</span>
+  <a href="{{ url_for('admin.documents_list') }}" class="font-semibold text-jungle hover:text-jungleLight transition">Documents</a>
+  <span>/</span>
+  <span class="font-medium text-gray-700">New</span>
+{% endblock %}
+
 {% block content %}
   <div class="max-w-4xl mx-auto">
     <div class="flex items-start justify-between gap-4 mb-6">

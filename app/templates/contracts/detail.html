@@ -1,8 +1,16 @@
-{% extends "layouts/base.html" %}
+{% extends "layouts/base_admin.html" %}
 
-{% block title %}{{ contract.contract_number }} - Contract Detail{% endblock %}
+{% block page_title %}{{ contract.contract_number }} - Contract Detail{% endblock %}
 
-{% block body %}
+{% block breadcrumbs %}
+  <a href="{{ url_for('main.dashboard') }}" class="font-semibold text-jungle hover:text-jungleLight transition">Dashboard</a>
+  <span>/</span>
+  <a href="{{ url_for('contracts.list_contracts') }}" class="font-semibold text-jungle hover:text-jungleLight transition">Contracts</a>
+  <span>/</span>
+  <span class="font-medium text-gray-700">{{ contract.contract_number }}</span>
+{% endblock %}
+
+{% block content %}
 {% set contract_doc_types = [
   ("draft_contract", "Draft Contract"),
   ("signed_contract", "Signed Contract"),
@@ -15,7 +23,7 @@
   ("other_contract_support", "Other Contract Support")
 ] %}
 
-<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+<div>
 
   <div class="mb-6">
     <div class="flex items-center gap-2 text-sm text-gray-500 mb-3">

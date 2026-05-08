@@ -2,6 +2,14 @@
 {% extends "layouts/base_admin.html" %}
 {% block page_title %}{{ document.title or "Document" }} · Rizara Admin{% endblock %}
 
+{% block breadcrumbs %}
+  <a href="{{ url_for('main.dashboard') }}" class="font-semibold text-jungle hover:text-jungleLight transition">Dashboard</a>
+  <span>/</span>
+  <a href="{{ url_for('admin.documents_list') }}" class="font-semibold text-jungle hover:text-jungleLight transition">Documents</a>
+  <span>/</span>
+  <span class="font-medium text-gray-700">Document</span>
+{% endblock %}
+
 {% block content %}
   {% set creatable_doc_types = creatable_doc_types | default({}) %}
   {% set upload_only_doc_types = upload_only_doc_types | default({}) %}
