@@ -1,14 +1,17 @@
 from __future__ import annotations
 
+import csv
+from io import StringIO
 from datetime import date
 from decimal import Decimal, InvalidOperation
 
 import sqlalchemy as sa
-from flask import Blueprint, flash, redirect, render_template, request, url_for
+from flask import Blueprint, Response, flash, redirect, render_template, request, url_for
 from flask_login import current_user
 
 from app.extensions import db
 from app.models import (
+    EvidenceRecord,
     FieldObservation,
     GrantApplication,
     GrantDocument,
@@ -31,6 +34,7 @@ from app.services.impact_metrics import (
     create_current_impact_snapshot,
     group_metrics,
 )
+from app.services.reporting import assemble_grant_reporting_package, grant_reporting_export_rows
 
 
 institutional_bp = Blueprint("institutional", __name__, url_prefix="/admin")
@@ -63,6 +67,18 @@ GRANT_REPORT_STATUSES = ["draft", "submitted", "accepted", "revision_requested"]
 GRANT_DOCUMENT_TYPES = ["concept_note", "proposal", "budget", "deck", "contract", "report", "attachment", "other"]
 GRANT_IMPACT_METRIC_TYPES = ["output", "outcome", "impact", "financial", "compliance", "other"]
 GRANT_IMPACT_METRIC_STATUSES = ["planned", "in_progress", "achieved", "at_risk", "missed"]
+EVIDENCE_TYPES = [
+    "field_photo",
+    "attendance",
+    "beneficiary_record",
+    "invoice",
+    "export_document",
+    "aggregation_record",
+    "training_record",
+    "milestone_proof",
+    "other",
+]
+EVIDENCE_LINK_TYPES = ["GrantReport", "GrantMilestone", "GrantImpactMetric", "StrategicProject", "ResearchProject"]
 PROJECT_CATEGORIES = [
     "grant",
     "operations",
@@ -123,11 +139,71 @@ def _grant_opportunity_query():
     return GrantOpportunity.query.filter(GrantOpportunity.is_archived.is_(False))
 
 
+def _snapshot_filters():
+    return {
+        "start_date": _clean(request.args.get("start_date")),
+        "end_date": _clean(request.args.get("end_date")),
+        "metric_category": _clean(request.args.get("metric_category")),
+        "county": _clean(request.args.get("county")),
+        "animal_type": _clean(request.args.get("animal_type")),
+        "metric_code": _clean(request.args.get("metric_code")),
+    }
+
+
+def _filtered_snapshot_query(filters: dict[str, str | None]):
+    query = ImpactSnapshot.query
+    if filters.get("start_date"):
+        query = query.filter(ImpactSnapshot.snapshot_date >= date.fromisoformat(filters["start_date"]))
+    if filters.get("end_date"):
+        query = query.filter(ImpactSnapshot.snapshot_date <= date.fromisoformat(filters["end_date"]))
+    if filters.get("metric_category"):
+        query = query.filter(ImpactSnapshot.metric_category == filters["metric_category"])
+    if filters.get("county"):
+        query = query.filter(ImpactSnapshot.county == filters["county"])
+    if filters.get("animal_type"):
+        query = query.filter(ImpactSnapshot.animal_type == filters["animal_type"])
+    if filters.get("metric_code"):
+        query = query.filter(ImpactSnapshot.metric_code == filters["metric_code"])
+    return query
+
+
+def _csv_response(filename: str, rows: list[dict], fieldnames: list[str]) -> Response:
+    output = StringIO()
+    writer = csv.DictWriter(output, fieldnames=fieldnames)
+    writer.writeheader()
+    for row in rows:
+        writer.writerow(row)
+    return Response(
+        output.getvalue(),
+        mimetype="text/csv",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
+
+
 @institutional_bp.route("/impact", methods=["GET"])
 @admin_required
 def impact_dashboard():
     metrics = calculate_impact_metrics()
-    recent_snapshots = ImpactSnapshot.query.order_by(ImpactSnapshot.created_at.desc()).limit(30).all()
+    filters = _snapshot_filters()
+    page = max(int(request.args.get("page", 1) or 1), 1)
+    per_page = 25
+    snapshot_query = _filtered_snapshot_query(filters).order_by(
+        ImpactSnapshot.snapshot_date.desc(),
+        ImpactSnapshot.created_at.desc(),
+    )
+    recent_snapshots = snapshot_query.limit(30).all()
+    snapshot_page = snapshot_query.paginate(page=page, per_page=per_page, error_out=False)
+    latest_snapshot = ImpactSnapshot.query.order_by(
+        ImpactSnapshot.snapshot_date.desc(),
+        ImpactSnapshot.created_at.desc(),
+    ).first()
+    top_categories = (
+        db.session.query(ImpactSnapshot.metric_category, sa.func.count(ImpactSnapshot.id))
+        .group_by(ImpactSnapshot.metric_category)
+        .order_by(sa.func.count(ImpactSnapshot.id).desc())
+        .limit(5)
+        .all()
+    )
     grant_summary = {
         "active": GrantApplication.query.filter(
             GrantApplication.is_archived.is_(False),
@@ -141,6 +217,11 @@ def impact_dashboard():
             GrantReport.due_date.isnot(None),
             GrantReport.due_date < date.today(),
             GrantReport.status.notin_(["submitted", "accepted"]),
+        ).count(),
+        "active_reporting_periods": GrantReport.query.filter(
+            GrantReport.status.in_(["draft", "revision_requested"]),
+            GrantReport.reporting_period_start.isnot(None),
+            GrantReport.reporting_period_end.isnot(None),
         ).count(),
     }
     project_summary = {
@@ -162,6 +243,13 @@ def impact_dashboard():
         metrics=metrics,
         grouped_metrics=group_metrics(metrics),
         recent_snapshots=recent_snapshots,
+        snapshot_page=snapshot_page,
+        filters=filters,
+        metric_categories=sorted({definition.category for definition in IMPACT_METRICS.values()}),
+        metric_codes=sorted(IMPACT_METRICS),
+        latest_snapshot=latest_snapshot,
+        top_categories=top_categories,
+        evidence_count=EvidenceRecord.query.count(),
         grant_summary=grant_summary,
         project_summary=project_summary,
     )
@@ -174,6 +262,47 @@ def impact_snapshot_generate():
     if _commit_or_rollback("Impact snapshot"):
         flash(f"Generated {len(snapshots)} impact snapshot metrics.", "success")
     return redirect(url_for("institutional.impact_dashboard"))
+
+
+@institutional_bp.route("/impact/export.csv", methods=["GET"])
+@admin_required
+def impact_export_csv():
+    filters = _snapshot_filters()
+    snapshots = _filtered_snapshot_query(filters).order_by(
+        ImpactSnapshot.snapshot_date.desc(),
+        ImpactSnapshot.created_at.desc(),
+    ).all()
+    rows = [
+        {
+            "snapshot_date": snapshot.snapshot_date,
+            "metric_code": snapshot.metric_code,
+            "metric_name": snapshot.metric_name,
+            "category": snapshot.metric_category,
+            "metric_value": snapshot.metric_value,
+            "metric_unit": snapshot.metric_unit,
+            "source_module": snapshot.source_module,
+            "county": snapshot.county,
+            "animal_type": snapshot.animal_type,
+            "created_at": snapshot.created_at,
+        }
+        for snapshot in snapshots
+    ]
+    return _csv_response(
+        "impact_snapshots.csv",
+        rows,
+        [
+            "snapshot_date",
+            "metric_code",
+            "metric_name",
+            "category",
+            "metric_value",
+            "metric_unit",
+            "source_module",
+            "county",
+            "animal_type",
+            "created_at",
+        ],
+    )
 
 
 @institutional_bp.route("/research", methods=["GET"])
@@ -403,6 +532,7 @@ def grant_applications_new():
 @admin_required
 def grant_applications_detail(application_id: int):
     application = GrantApplication.query.get_or_404(application_id)
+    reporting_package = assemble_grant_reporting_package(application.id)
     milestones = GrantMilestone.query.filter_by(grant_application_id=application.id).order_by(
         sa.nullslast(GrantMilestone.due_date.asc()),
         GrantMilestone.created_at.desc(),
@@ -424,6 +554,29 @@ def grant_applications_detail(application_id: int):
         reports=reports,
         impact_metrics=impact_metrics,
         documents=documents,
+        reporting_package=reporting_package,
+    )
+
+
+@institutional_bp.route("/grants/applications/<int:application_id>/report-export.csv", methods=["GET"])
+@admin_required
+def grant_application_report_export_csv(application_id: int):
+    rows = grant_reporting_export_rows(application_id)
+    return _csv_response(
+        f"grant_application_{application_id}_reporting_package.csv",
+        rows,
+        [
+            "record_type",
+            "title",
+            "status",
+            "due_date",
+            "submitted_or_completed_date",
+            "metric_code",
+            "value",
+            "unit",
+            "evidence_count",
+            "application",
+        ],
     )
 
 
@@ -677,6 +830,47 @@ def _populate_grant_document(document: GrantDocument) -> None:
     document.file_path = _clean(request.form.get("file_path"))
     document.external_url = _clean(request.form.get("external_url"))
     document.notes = _clean(request.form.get("notes"))
+
+
+@institutional_bp.route("/evidence/new", methods=["GET", "POST"])
+@admin_required
+def evidence_new():
+    evidence = EvidenceRecord()
+    evidence.linked_model_type = _clean(request.args.get("linked_model_type")) or ""
+    linked_model_id = _clean(request.args.get("linked_model_id"))
+    evidence.linked_model_id = int(linked_model_id) if linked_model_id else None
+    next_url = _clean(request.args.get("next")) or url_for("institutional.impact_dashboard")
+
+    if request.method == "POST":
+        _populate_evidence_record(evidence)
+        db.session.add(evidence)
+        if _commit_or_rollback("Evidence record"):
+            return redirect(request.form.get("next") or next_url)
+
+    return render_template(
+        "admin/institutional/evidence_form.html",
+        evidence=evidence,
+        evidence_types=EVIDENCE_TYPES,
+        link_types=EVIDENCE_LINK_TYPES,
+        next_url=next_url,
+        action="Register",
+    )
+
+
+def _populate_evidence_record(evidence: EvidenceRecord) -> None:
+    evidence.linked_model_type = _clean(request.form.get("linked_model_type")) or "GrantReport"
+    if evidence.linked_model_type not in EVIDENCE_LINK_TYPES:
+        evidence.linked_model_type = "GrantReport"
+    evidence.linked_model_id = int(request.form.get("linked_model_id"))
+    evidence.title = _clean(request.form.get("title")) or "Untitled evidence"
+    evidence.description = _clean(request.form.get("description"))
+    evidence.evidence_type = (
+        request.form.get("evidence_type") if request.form.get("evidence_type") in EVIDENCE_TYPES else "other"
+    )
+    evidence.file_path = _clean(request.form.get("file_path"))
+    evidence.external_url = _clean(request.form.get("external_url"))
+    evidence.county = _clean(request.form.get("county"))
+    evidence.captured_on = _parse_date(request.form.get("captured_on"))
 
 
 @institutional_bp.route("/projects", methods=["GET"])

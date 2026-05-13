@@ -36,10 +36,12 @@ from app.models import (
     TraceabilityRecord,
     User,
     AggregationBatch,
+    EvidenceRecord,
 )
 from app.routes import institutional as institutional_routes
 from app.routes.institutional import institutional_bp
 from app.services.impact_metrics import calculate_impact_metrics, create_current_impact_snapshot
+from app.services.reporting import assemble_grant_reporting_package
 
 
 INSTITUTIONAL_TABLES = [
@@ -50,6 +52,7 @@ INSTITUTIONAL_TABLES = [
     ProcurementSource.__table__,
     ProcurementRecord.__table__,
     TraceabilityRecord.__table__,
+    EvidenceRecord.__table__,
     ResearchProject.__table__,
     FieldObservation.__table__,
     MarketInsight.__table__,
@@ -514,6 +517,131 @@ def test_impact_dashboard_snapshot_action(monkeypatch, tmp_path):
         assert ImpactSnapshot.query.count() == len(IMPACT_METRICS)
 
 
+def test_snapshot_filtering_and_impact_csv_export(monkeypatch, tmp_path):
+    app = make_institutional_app(monkeypatch, tmp_path)
+    client = app.test_client()
+    login_admin(client)
+
+    with app.app_context():
+        db.session.add_all(
+            [
+                ImpactSnapshot(
+                    snapshot_date=date(2026, 5, 1),
+                    metric_code="animals_procured",
+                    metric_name="Animals Procured",
+                    metric_category="livestock_supply",
+                    metric_value=12,
+                    metric_unit="head",
+                    county="Kajiado",
+                    animal_type="goat",
+                    source_module="procurement",
+                ),
+                ImpactSnapshot(
+                    snapshot_date=date(2026, 5, 2),
+                    metric_code="active_grants",
+                    metric_name="Active Grants",
+                    metric_category="institutional_grants",
+                    metric_value=2,
+                    metric_unit="applications",
+                    source_module="grants",
+                ),
+            ]
+        )
+        db.session.commit()
+
+    dashboard = client.get("/admin/impact?metric_category=livestock_supply").get_data(as_text=True)
+    assert "Animals Procured" in dashboard
+
+    export = client.get("/admin/impact/export.csv?metric_code=animals_procured")
+    body = export.get_data(as_text=True)
+    assert export.status_code == 200
+    assert "metric_code,metric_name" in body
+    assert "animals_procured" in body
+    assert "active_grants" not in body
+
+
+def test_evidence_creation_and_reporting_package(monkeypatch, tmp_path):
+    app = make_institutional_app(monkeypatch, tmp_path)
+    client = app.test_client()
+    login_admin(client)
+
+    with app.app_context():
+        opportunity = GrantOpportunity(title="Reporting Grant")
+        application = GrantApplication(title="Reporting Application", grant_opportunity=opportunity)
+        milestone = GrantMilestone(title="Training complete", grant_application=application)
+        metric = GrantImpactMetric(
+            name="Pastoralists onboarded",
+            metric_code="pastoralists_onboarded",
+            grant_application=application,
+        )
+        db.session.add_all([application, milestone, metric])
+        db.session.flush()
+        application_id = application.id
+        milestone_id = milestone.id
+        db.session.add(
+            ImpactSnapshot(
+                snapshot_date=date(2026, 5, 13),
+                metric_code="pastoralists_onboarded",
+                metric_name="Pastoralists Onboarded",
+                metric_category="livestock_supply",
+                metric_value=30,
+                metric_unit="people",
+                source_module="farmers",
+            )
+        )
+        db.session.commit()
+
+    response = client.post(
+        f"/admin/evidence/new?next=/admin/grants/applications/{application_id}",
+        data={
+            "linked_model_type": "GrantMilestone",
+            "linked_model_id": str(milestone_id),
+            "title": "Attendance sheet",
+            "evidence_type": "attendance",
+            "external_url": "https://example.com/attendance",
+        },
+        follow_redirects=False,
+    )
+    assert response.status_code == 302
+
+    with app.app_context():
+        evidence = EvidenceRecord.query.filter_by(title="Attendance sheet").one()
+        assert evidence.linked_model_type == "GrantMilestone"
+        package = assemble_grant_reporting_package(application_id)
+        assert package["summary"]["title"] == "Reporting Application"
+        assert len(package["milestones"][0]["evidence"]) == 1
+        linked_metric = package["impact_metrics"][0]["linked_operational_metric"]
+        assert linked_metric["latest_value"] == 30
+
+
+def test_grant_reporting_csv_export(monkeypatch, tmp_path):
+    app = make_institutional_app(monkeypatch, tmp_path)
+    client = app.test_client()
+    login_admin(client)
+
+    with app.app_context():
+        opportunity = GrantOpportunity(title="CSV Grant")
+        application = GrantApplication(title="CSV Application", grant_opportunity=opportunity)
+        db.session.add_all(
+            [
+                application,
+                GrantMilestone(title="Submit baseline", grant_application=application),
+                GrantReport(report_type="impact", grant_application=application, status="draft"),
+                GrantImpactMetric(name="Animals procured", metric_code="animals_procured", grant_application=application),
+            ]
+        )
+        db.session.commit()
+        application_id = application.id
+
+    response = client.get(f"/admin/grants/applications/{application_id}/report-export.csv")
+    body = response.get_data(as_text=True)
+
+    assert response.status_code == 200
+    assert "record_type,title,status" in body
+    assert "Submit baseline" in body
+    assert "impact_metric,Animals procured" in body
+
+
 def test_institutional_migration_imports():
     migration = __import__(
         "migrations.versions.f4a9c2d7e8b1_add_institutional_foundation_tables",
@@ -527,6 +655,10 @@ def test_institutional_migration_imports():
         "migrations.versions.9d1e5f7a2c44_add_impact_snapshots",
         fromlist=["revision", "down_revision"],
     )
+    evidence_migration = __import__(
+        "migrations.versions.1a2b3c4d5e6f_add_evidence_records",
+        fromlist=["revision", "down_revision"],
+    )
 
     assert migration.revision == "f4a9c2d7e8b1"
     assert migration.down_revision == "d8f3b2a7c901"
@@ -534,6 +666,8 @@ def test_institutional_migration_imports():
     assert impact_migration.down_revision == "f4a9c2d7e8b1"
     assert snapshot_migration.revision == "9d1e5f7a2c44"
     assert snapshot_migration.down_revision == "0b8c6d4e2f31"
+    assert evidence_migration.revision == "1a2b3c4d5e6f"
+    assert evidence_migration.down_revision == "9d1e5f7a2c44"
 
     source = Path(migration.__file__).read_text()
     assert "export_compliance" in source

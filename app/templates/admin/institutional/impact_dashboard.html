@@ -16,7 +16,10 @@
       <p class="text-sm text-gray-600 mt-1">Read-only institutional metrics derived from Rizara operations, grants, and strategic execution.</p>
     </div>
     <form method="POST" action="{{ url_for('institutional.impact_snapshot_generate') }}">
-      <button class="rounded-lg bg-jungle px-4 py-2 text-white font-semibold hover:bg-jungleLight transition" type="submit">Generate Snapshot</button>
+      <div class="flex items-center gap-2">
+        <a href="{{ url_for('institutional.impact_export_csv', **filters) }}" class="rounded-lg border border-gray-300 px-4 py-2 font-semibold text-gray-700 hover:bg-gray-50 transition">Export CSV</a>
+        <button class="rounded-lg bg-jungle px-4 py-2 text-white font-semibold hover:bg-jungleLight transition" type="submit">Generate Snapshot</button>
+      </div>
     </form>
   </div>
 
@@ -37,6 +40,7 @@
         <div><dt>Active</dt><dd>{{ grant_summary.active }}</dd></div>
         <div><dt>Awarded</dt><dd>{{ grant_summary.awarded }}</dd></div>
         <div><dt>Overdue Reports</dt><dd>{{ grant_summary.overdue_reports }}</dd></div>
+        <div><dt>Active Reporting Periods</dt><dd>{{ grant_summary.active_reporting_periods }}</dd></div>
       </dl>
     </div>
     <div class="summary-panel">
@@ -50,10 +54,28 @@
     <div class="summary-panel">
       <h2>Snapshot Ledger</h2>
       <dl>
-        <div><dt>Recent Rows</dt><dd>{{ recent_snapshots|length }}</dd></div>
-        <div><dt>Latest Date</dt><dd>{{ recent_snapshots[0].snapshot_date if recent_snapshots else '-' }}</dd></div>
+        <div><dt>Filtered Rows</dt><dd>{{ snapshot_page.total }}</dd></div>
+        <div><dt>Latest Date</dt><dd>{{ latest_snapshot.snapshot_date if latest_snapshot else '-' }}</dd></div>
+        <div><dt>Evidence Records</dt><dd>{{ evidence_count }}</dd></div>
+        <div><dt>Top Categories</dt><dd>{{ top_categories|length }}</dd></div>
       </dl>
     </div>
+  </section>
+
+  <section class="bg-white rounded-xl shadow-sm border border-gray-200 p-5 mb-6">
+    <h2 class="text-lg font-bold text-gray-900 mb-4">Snapshot Filters</h2>
+    <form method="GET" action="{{ url_for('institutional.impact_dashboard') }}" class="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-3">
+      <label class="block"><span class="filter-label">Start</span><input name="start_date" type="date" value="{{ filters.start_date or '' }}" class="filter-input"></label>
+      <label class="block"><span class="filter-label">End</span><input name="end_date" type="date" value="{{ filters.end_date or '' }}" class="filter-input"></label>
+      <label class="block"><span class="filter-label">Category</span><select name="metric_category" class="filter-input"><option value="">All</option>{% for category in metric_categories %}<option value="{{ category }}" {% if filters.metric_category == category %}selected{% endif %}>{{ category|replace('_', ' ')|title }}</option>{% endfor %}</select></label>
+      <label class="block"><span class="filter-label">Metric</span><select name="metric_code" class="filter-input"><option value="">All</option>{% for code in metric_codes %}<option value="{{ code }}" {% if filters.metric_code == code %}selected{% endif %}>{{ code }}</option>{% endfor %}</select></label>
+      <label class="block"><span class="filter-label">County</span><input name="county" value="{{ filters.county or '' }}" class="filter-input"></label>
+      <label class="block"><span class="filter-label">Animal Type</span><input name="animal_type" value="{{ filters.animal_type or '' }}" class="filter-input"></label>
+      <div class="md:col-span-3 lg:col-span-6 flex items-center gap-2">
+        <button type="submit" class="rounded-lg bg-gray-900 px-4 py-2 text-white font-semibold hover:bg-black transition">Apply Filters</button>
+        <a href="{{ url_for('institutional.impact_dashboard') }}" class="rounded-lg border border-gray-300 px-4 py-2 font-semibold text-gray-700 hover:bg-gray-50 transition">Reset</a>
+      </div>
+    </form>
   </section>
 
   <section class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
@@ -80,7 +102,7 @@
 
   <section class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
     <div class="p-5 border-b border-gray-200">
-      <h2 class="text-lg font-bold text-gray-900">Recent Snapshots</h2>
+      <h2 class="text-lg font-bold text-gray-900">Snapshot History</h2>
       <p class="text-sm text-gray-600 mt-1">Materialized metrics generated manually by an admin.</p>
     </div>
     <table class="min-w-full">
@@ -88,7 +110,7 @@
         <tr><th class="px-4 py-3">Date</th><th class="px-4 py-3">Metric</th><th class="px-4 py-3">Category</th><th class="px-4 py-3">Value</th><th class="px-4 py-3">Source</th></tr>
       </thead>
       <tbody class="divide-y divide-gray-100">
-        {% for snapshot in recent_snapshots %}
+        {% for snapshot in snapshot_page.items %}
           <tr>
             <td class="px-4 py-3 text-sm text-gray-700">{{ snapshot.snapshot_date }}</td>
             <td class="px-4 py-3"><div class="font-semibold text-gray-900">{{ snapshot.metric_name }}</div><div class="text-xs text-gray-500">{{ snapshot.metric_code }}</div></td>
@@ -101,6 +123,17 @@
         {% endfor %}
       </tbody>
     </table>
+    <div class="p-4 border-t border-gray-200 flex items-center justify-between text-sm text-gray-600">
+      <span>Page {{ snapshot_page.page }} of {{ snapshot_page.pages or 1 }}</span>
+      <div class="flex items-center gap-2">
+        {% if snapshot_page.has_prev %}
+          <a class="font-semibold text-jungle hover:underline" href="{{ url_for('institutional.impact_dashboard', page=snapshot_page.prev_num, **filters) }}">Previous</a>
+        {% endif %}
+        {% if snapshot_page.has_next %}
+          <a class="font-semibold text-jungle hover:underline" href="{{ url_for('institutional.impact_dashboard', page=snapshot_page.next_num, **filters) }}">Next</a>
+        {% endif %}
+      </div>
+    </div>
   </section>
 
   <style>
@@ -114,5 +147,7 @@
     .summary-panel div { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
     .summary-panel dt { font-size: .875rem; color: #6b7280; }
     .summary-panel dd { font-weight: 800; color: #111827; }
+    .filter-label { display: block; font-size: .75rem; font-weight: 700; color: #4b5563; margin-bottom: .25rem; }
+    .filter-input { width: 100%; border: 1px solid #d1d5db; border-radius: .5rem; padding: .5rem .75rem; }
   </style>
 {% endblock %}

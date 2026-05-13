@@ -3138,6 +3138,23 @@ class ImpactSnapshot(db.Model):
     created_at = db.Column(db.DateTime, default=utcnow_naive, nullable=False, index=True)
 
 
+class EvidenceRecord(db.Model):
+    __tablename__ = "evidence_record"
+
+    id = db.Column(db.Integer, primary_key=True)
+    uuid = db.Column(UUID(as_uuid=True), default=uuid.uuid4, nullable=False, unique=True, index=True)
+    linked_model_type = db.Column(db.String(80), nullable=False, index=True)
+    linked_model_id = db.Column(db.Integer, nullable=False, index=True)
+    title = db.Column(db.String(180), nullable=False)
+    description = db.Column(db.Text, nullable=True)
+    evidence_type = db.Column(db.String(40), nullable=False, index=True)
+    file_path = db.Column(db.String(255), nullable=True)
+    external_url = db.Column(db.String(500), nullable=True)
+    county = db.Column(db.String(100), nullable=True, index=True)
+    captured_on = db.Column(db.Date, nullable=True, index=True)
+    created_at = db.Column(db.DateTime, default=utcnow_naive, nullable=False, index=True)
+
+
 class StrategicProject(db.Model):
     __tablename__ = "strategic_project"
 
