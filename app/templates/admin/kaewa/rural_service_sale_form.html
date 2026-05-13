@@ -1,0 +1,65 @@
+{% extends "layouts/base_admin.html" %}
+{% from "admin/institutional/_shared.html" import text_input, textarea, flash_messages %}
+
+{% block page_title %}{{ action }} Rural Sale{% endblock %}
+
+{% block breadcrumbs %}
+  <a href="{{ url_for('admin.dashboard') }}" class="font-semibold text-jungle hover:text-jungleLight transition">Dashboard</a>
+  <span>/</span><a href="{{ url_for('kaewa.dashboard') }}" class="font-semibold text-jungle hover:text-jungleLight transition">Kaewa</a>
+  <span>/</span><a href="{{ url_for('kaewa.rural_service_sales_index') }}" class="font-semibold text-jungle hover:text-jungleLight transition">Rural Sales</a>
+  <span>/</span><span>{{ action }}</span>
+{% endblock %}
+
+{% block content %}
+  {{ flash_messages() }}
+  <div class="mb-6">
+    <h1 class="text-2xl font-bold text-gray-900">{{ action }} Rural Services Sale</h1>
+    <p class="text-sm text-gray-600 mt-1">Draft sale only. Stock moves when the sale is completed.</p>
+  </div>
+  <form method="POST" class="space-y-5 rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <label class="block">
+        <span class="block text-xs font-semibold text-gray-600 mb-1">Stakeholder</span>
+        <select name="stakeholder_id" class="w-full rounded-lg border border-gray-300 px-3 py-2 bg-white">
+          <option value="">Walk-in buyer</option>
+          {% for stakeholder in stakeholders %}
+            <option value="{{ stakeholder.id }}">{{ stakeholder.name }} · {{ stakeholder.phone }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      {{ text_input('sale_date', 'Sale Date', sale.sale_date, 'date') }}
+      {{ text_input('buyer_name', 'Buyer Name', sale.buyer_name) }}
+      {{ text_input('buyer_phone', 'Buyer Phone', sale.buyer_phone) }}
+      <label class="block">
+        <span class="block text-xs font-semibold text-gray-600 mb-1">Payment Method</span>
+        <select name="payment_method" class="w-full rounded-lg border border-gray-300 px-3 py-2 bg-white">
+          {% for method in payment_methods %}
+            <option value="{{ method }}">{{ method|replace('_', ' ')|title }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      {{ text_input('payment_reference', 'Payment Reference', sale.payment_reference) }}
+    </div>
+    <div class="rounded-lg border border-gray-200 bg-gray-50 p-4">
+      <h2 class="font-bold text-gray-900 mb-3">Line Item</h2>
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+        <label class="block">
+          <span class="block text-xs font-semibold text-gray-600 mb-1">Product</span>
+          <select name="product_id" required class="w-full rounded-lg border border-gray-300 px-3 py-2 bg-white">
+            {% for product in products %}
+              <option value="{{ product.id }}">{{ product.name }} · {{ product.unit }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        {{ text_input('quantity', 'Quantity', '', 'number', required=true) }}
+        {{ text_input('unit_price', 'Unit Price', '', 'number', required=true) }}
+      </div>
+      {{ textarea('item_notes', 'Item Notes', '', 2) }}
+    </div>
+    {{ textarea('notes', 'Sale Notes', sale.notes, 3) }}
+    <div class="flex items-center gap-3 pt-2">
+      <button class="rounded-lg bg-jungle px-4 py-2 text-white font-semibold hover:bg-jungleLight transition" type="submit">{{ action }} Draft Sale</button>
+      <a href="{{ url_for('kaewa.rural_service_sales_index') }}" class="rounded-lg border border-gray-300 px-4 py-2 font-semibold text-gray-700 hover:bg-gray-50 transition">Cancel</a>
+    </div>
+  </form>
+{% endblock %}

@@ -17,6 +17,8 @@ from app.models import (
     HoldingPenActivity,
     HoldingPenAssignment,
     RuralServiceProduct,
+    RuralServiceSale,
+    RuralServiceSaleItem,
     RuralServiceStockMovement,
     Stakeholder,
     StakeholderActivity,
@@ -57,8 +59,8 @@ RURAL_PRODUCT_CATEGORIES = [
     "other",
 ]
 RURAL_PRODUCT_UNITS = ["bag", "kg", "litre", "piece", "packet", "bale", "other"]
-RURAL_STOCK_IN_TYPES = {"opening_stock", "purchase", "adjustment_in"}
-RURAL_STOCK_OUT_TYPES = {"adjustment_out", "damaged", "expired", "issued_internal"}
+RURAL_STOCK_IN_TYPES = {"opening_stock", "purchase", "adjustment_in", "sale_reversal"}
+RURAL_STOCK_OUT_TYPES = {"adjustment_out", "damaged", "expired", "issued_internal", "sale"}
 RURAL_STOCK_MOVEMENT_TYPES = [
     "opening_stock",
     "purchase",
@@ -67,7 +69,11 @@ RURAL_STOCK_MOVEMENT_TYPES = [
     "damaged",
     "expired",
     "issued_internal",
+    "sale",
+    "sale_reversal",
 ]
+RURAL_SALE_PAYMENT_METHODS = ["cash", "mpesa", "bank", "credit", "internal"]
+RURAL_SALE_STATUSES = ["draft", "completed", "cancelled"]
 
 
 def _clean(value: str | None) -> str | None:
@@ -204,6 +210,14 @@ def _product_summary(product: RuralServiceProduct) -> dict:
     return {"product": product, "stock": stock, "low_stock": low_stock}
 
 
+def _next_rural_sale_number() -> str:
+    return f"KRS-{utcnow_naive().strftime('%Y%m%d%H%M%S%f')}"
+
+
+def _sale_total(sale: RuralServiceSale) -> Decimal:
+    return sum((Decimal(item.line_total or 0) for item in sale.items), Decimal("0"))
+
+
 @kaewa_bp.route("", methods=["GET"])
 @admin_required
 def dashboard():
@@ -267,6 +281,114 @@ def rural_services_index():
         "admin/kaewa/rural_services_index.html",
         product_summaries=[_product_summary(product) for product in products],
     )
+
+
+@kaewa_bp.route("/rural-services/sales", methods=["GET"])
+@admin_required
+def rural_service_sales_index():
+    sales = RuralServiceSale.query.order_by(RuralServiceSale.created_at.desc()).limit(200).all()
+    return render_template("admin/kaewa/rural_service_sales_index.html", sales=sales)
+
+
+@kaewa_bp.route("/rural-services/sales/new", methods=["GET", "POST"])
+@admin_required
+def rural_service_sales_new():
+    sale = RuralServiceSale(sale_number=_next_rural_sale_number(), sale_date=date.today(), created_by_user_id=_current_admin_id())
+    products = RuralServiceProduct.query.filter_by(active=True).order_by(RuralServiceProduct.name.asc()).all()
+    stakeholders = Stakeholder.query.order_by(Stakeholder.name.asc()).limit(300).all()
+    if request.method == "POST":
+        _populate_rural_service_sale(sale)
+        item = _build_rural_service_sale_item(sale)
+        if item is None:
+            flash("Add at least one valid sale item.", "warning")
+        else:
+            sale.items.append(item)
+            db.session.add(sale)
+            if _commit_or_rollback("Rural services sale"):
+                return redirect(url_for("kaewa.rural_service_sales_detail", sale_id=sale.id))
+    return render_template(
+        "admin/kaewa/rural_service_sale_form.html",
+        sale=sale,
+        products=products,
+        stakeholders=stakeholders,
+        payment_methods=RURAL_SALE_PAYMENT_METHODS,
+        action="Create",
+    )
+
+
+@kaewa_bp.route("/rural-services/sales/<int:sale_id>", methods=["GET"])
+@admin_required
+def rural_service_sales_detail(sale_id: int):
+    sale = RuralServiceSale.query.get_or_404(sale_id)
+    return render_template(
+        "admin/kaewa/rural_service_sale_detail.html",
+        sale=sale,
+        total=_sale_total(sale),
+    )
+
+
+@kaewa_bp.route("/rural-services/sales/<int:sale_id>/complete", methods=["POST"])
+@admin_required
+def rural_service_sales_complete(sale_id: int):
+    sale = RuralServiceSale.query.get_or_404(sale_id)
+    if sale.status != "draft":
+        flash("Only draft sales can be completed.", "warning")
+        return redirect(url_for("kaewa.rural_service_sales_detail", sale_id=sale.id))
+    if not sale.items:
+        flash("Sale must have at least one item before completion.", "warning")
+        return redirect(url_for("kaewa.rural_service_sales_detail", sale_id=sale.id))
+
+    for item in sale.items:
+        if not item.product.active:
+            flash("Inactive products cannot be sold.", "warning")
+            return redirect(url_for("kaewa.rural_service_sales_detail", sale_id=sale.id))
+        if item.quantity <= 0 or item.unit_price < 0:
+            flash("Sale items must have positive quantity and non-negative price.", "warning")
+            return redirect(url_for("kaewa.rural_service_sales_detail", sale_id=sale.id))
+        if _product_stock_balance(item.product) < item.quantity:
+            flash("Insufficient stock to complete this sale.", "warning")
+            return redirect(url_for("kaewa.rural_service_sales_detail", sale_id=sale.id))
+
+    for item in sale.items:
+        db.session.add(
+            RuralServiceStockMovement(
+                product_id=item.product_id,
+                movement_type="sale",
+                quantity=item.quantity,
+                unit_cost=item.unit_price,
+                reference=sale.sale_number,
+                notes=f"Rural services sale {sale.sale_number}",
+                created_by_user_id=_current_admin_id(),
+            )
+        )
+    sale.status = "completed"
+    _commit_or_rollback("Rural services sale")
+    return redirect(url_for("kaewa.rural_service_sales_detail", sale_id=sale.id))
+
+
+@kaewa_bp.route("/rural-services/sales/<int:sale_id>/cancel", methods=["POST"])
+@admin_required
+def rural_service_sales_cancel(sale_id: int):
+    sale = RuralServiceSale.query.get_or_404(sale_id)
+    if sale.status == "cancelled":
+        flash("Sale is already cancelled.", "warning")
+        return redirect(url_for("kaewa.rural_service_sales_detail", sale_id=sale.id))
+    if sale.status == "completed":
+        for item in sale.items:
+            db.session.add(
+                RuralServiceStockMovement(
+                    product_id=item.product_id,
+                    movement_type="sale_reversal",
+                    quantity=item.quantity,
+                    unit_cost=item.unit_price,
+                    reference=sale.sale_number,
+                    notes=f"Cancelled rural services sale {sale.sale_number}",
+                    created_by_user_id=_current_admin_id(),
+                )
+            )
+    sale.status = "cancelled"
+    _commit_or_rollback("Rural services sale")
+    return redirect(url_for("kaewa.rural_service_sales_detail", sale_id=sale.id))
 
 
 @kaewa_bp.route("/rural-services/products/new", methods=["GET", "POST"])
@@ -355,6 +477,41 @@ def _populate_rural_service_product(product: RuralServiceProduct) -> None:
     product.description = _clean(request.form.get("description"))
     product.reorder_level = _parse_decimal(request.form.get("reorder_level"))
     product.active = request.form.get("active") == "1"
+
+
+def _populate_rural_service_sale(sale: RuralServiceSale) -> None:
+    stakeholder_id = _parse_int(request.form.get("stakeholder_id"), 0)
+    sale.stakeholder_id = stakeholder_id or None
+    sale.buyer_name = _clean(request.form.get("buyer_name"))
+    sale.buyer_phone = _clean(request.form.get("buyer_phone"))
+    sale.sale_date = _parse_date(request.form.get("sale_date")) or date.today()
+    sale.payment_method = (
+        request.form.get("payment_method") if request.form.get("payment_method") in RURAL_SALE_PAYMENT_METHODS else "cash"
+    )
+    sale.payment_reference = _clean(request.form.get("payment_reference"))
+    sale.notes = _clean(request.form.get("notes"))
+    sale.created_by_user_id = sale.created_by_user_id or _current_admin_id()
+
+
+def _build_rural_service_sale_item(sale: RuralServiceSale) -> RuralServiceSaleItem | None:
+    product_id = _parse_int(request.form.get("product_id"), 0)
+    product = db.session.get(RuralServiceProduct, product_id) if product_id else None
+    quantity = _parse_decimal(request.form.get("quantity"))
+    unit_price = _parse_decimal(request.form.get("unit_price"))
+    if not product or not product.active:
+        return None
+    if quantity is None or quantity <= 0:
+        return None
+    if unit_price is None or unit_price < 0:
+        return None
+    return RuralServiceSaleItem(
+        sale=sale,
+        product_id=product.id,
+        quantity=quantity,
+        unit_price=unit_price,
+        line_total=quantity * unit_price,
+        notes=_clean(request.form.get("item_notes")),
+    )
 
 
 def _populate_rural_service_stock_movement(

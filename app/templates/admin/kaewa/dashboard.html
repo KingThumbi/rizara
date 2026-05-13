@@ -20,6 +20,7 @@
       <a href="{{ url_for('kaewa.intakes_new') }}" class="rounded-lg border border-gray-300 px-4 py-2 font-semibold text-gray-700 hover:bg-gray-50 transition">+ Intake Record</a>
       <a href="{{ url_for('kaewa.holding_pens_new') }}" class="rounded-lg border border-gray-300 px-4 py-2 font-semibold text-gray-700 hover:bg-gray-50 transition">+ Holding Pen</a>
       <a href="{{ url_for('kaewa.rural_service_products_new') }}" class="rounded-lg border border-gray-300 px-4 py-2 font-semibold text-gray-700 hover:bg-gray-50 transition">+ Rural Product</a>
+      <a href="{{ url_for('kaewa.rural_service_sales_new') }}" class="rounded-lg border border-gray-300 px-4 py-2 font-semibold text-gray-700 hover:bg-gray-50 transition">+ Rural Sale</a>
     </div>
   </div>
 
@@ -46,7 +47,10 @@
   <section class="rounded-xl border border-gray-200 bg-white p-5 shadow-sm mb-6">
     <div class="flex items-center justify-between mb-4">
       <h2 class="text-lg font-bold text-gray-900">Rural Services Inventory</h2>
-      <a href="{{ url_for('kaewa.rural_services_index') }}" class="text-sm font-semibold text-jungle hover:underline">Manage inventory</a>
+      <div class="flex gap-3">
+        <a href="{{ url_for('kaewa.rural_service_sales_index') }}" class="text-sm font-semibold text-jungle hover:underline">Sales register</a>
+        <a href="{{ url_for('kaewa.rural_services_index') }}" class="text-sm font-semibold text-jungle hover:underline">Manage inventory</a>
+      </div>
     </div>
     <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
       {% for summary in rural_product_summaries %}

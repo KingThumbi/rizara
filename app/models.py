@@ -1326,6 +1326,7 @@ class RuralServiceProduct(db.Model):
         lazy="select",
         order_by="desc(RuralServiceStockMovement.created_at)",
     )
+    sale_items = db.relationship("RuralServiceSaleItem", back_populates="product", lazy="select")
 
     def __repr__(self) -> str:
         return f"<RuralServiceProduct {self.id} {self.name}>"
@@ -1348,6 +1349,53 @@ class RuralServiceStockMovement(db.Model):
 
     product = db.relationship("RuralServiceProduct", back_populates="stock_movements", lazy="joined")
     created_by = db.relationship("User", foreign_keys=[created_by_user_id], lazy="joined")
+
+
+class RuralServiceSale(db.Model):
+    __tablename__ = "rural_service_sale"
+
+    id = db.Column(db.Integer, primary_key=True)
+    uuid = db.Column(UUID(as_uuid=True), default=uuid.uuid4, nullable=False, unique=True, index=True)
+    sale_number = db.Column(db.String(60), nullable=False, unique=True, index=True)
+    stakeholder_id = db.Column(db.Integer, db.ForeignKey("stakeholder.id"), nullable=True, index=True)
+    buyer_name = db.Column(db.String(180), nullable=True)
+    buyer_phone = db.Column(db.String(30), nullable=True)
+    sale_date = db.Column(db.Date, nullable=False, default=date.today, index=True)
+    payment_method = db.Column(db.String(20), nullable=False, default="cash", index=True)
+    payment_reference = db.Column(db.String(120), nullable=True, index=True)
+    status = db.Column(db.String(20), nullable=False, default="draft", index=True)
+    notes = db.Column(db.Text, nullable=True)
+    created_by_user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=True, index=True)
+    created_at = db.Column(db.DateTime, default=utcnow_naive, nullable=False, index=True)
+    updated_at = db.Column(db.DateTime, default=utcnow_naive, onupdate=utcnow_naive, nullable=False)
+
+    stakeholder = db.relationship("Stakeholder", lazy="joined")
+    created_by = db.relationship("User", foreign_keys=[created_by_user_id], lazy="joined")
+    items = db.relationship(
+        "RuralServiceSaleItem",
+        back_populates="sale",
+        cascade="all, delete-orphan",
+        lazy="select",
+    )
+
+    @property
+    def total_amount(self):
+        return sum((item.line_total or 0) for item in self.items)
+
+
+class RuralServiceSaleItem(db.Model):
+    __tablename__ = "rural_service_sale_item"
+
+    id = db.Column(db.Integer, primary_key=True)
+    sale_id = db.Column(db.Integer, db.ForeignKey("rural_service_sale.id"), nullable=False, index=True)
+    product_id = db.Column(db.Integer, db.ForeignKey("rural_service_product.id"), nullable=False, index=True)
+    quantity = db.Column(db.Numeric(14, 2), nullable=False)
+    unit_price = db.Column(db.Numeric(14, 2), nullable=False)
+    line_total = db.Column(db.Numeric(14, 2), nullable=False)
+    notes = db.Column(db.Text, nullable=True)
+
+    sale = db.relationship("RuralServiceSale", back_populates="items", lazy="joined")
+    product = db.relationship("RuralServiceProduct", back_populates="sale_items", lazy="joined")
 
 
 # =========================================================

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import date
 from pathlib import Path
 
 import sqlalchemy as sa
@@ -21,6 +22,8 @@ from app.models import (
     ProcurementRecord,
     ProcurementSource,
     RuralServiceProduct,
+    RuralServiceSale,
+    RuralServiceSaleItem,
     RuralServiceStockMovement,
     Sheep,
     Stakeholder,
@@ -47,6 +50,8 @@ KAEWA_TABLES = [
     HoldingPenAssignment.__table__,
     HoldingPenActivity.__table__,
     RuralServiceProduct.__table__,
+    RuralServiceSale.__table__,
+    RuralServiceSaleItem.__table__,
     RuralServiceStockMovement.__table__,
 ]
 
@@ -88,6 +93,7 @@ def make_kaewa_app(monkeypatch, tmp_path: Path):
             "active_assignments",
             "released_assignments",
             "movements",
+            "sales",
         ):
             for item in context.get(key, []):
                 for attr in (
@@ -100,6 +106,7 @@ def make_kaewa_app(monkeypatch, tmp_path: Path):
                     "status",
                     "movement_type",
                     "reference",
+                    "sale_number",
                 ):
                     value = getattr(item, attr, None)
                     if value:
@@ -108,6 +115,8 @@ def make_kaewa_app(monkeypatch, tmp_path: Path):
                     labels.append(str(item.count))
                 if getattr(item, "quantity", None) is not None:
                     labels.append(str(item.quantity))
+                if getattr(item, "total_amount", None) is not None:
+                    labels.append(str(item.total_amount))
         for key in ("pen_summaries", "holding_pen_summaries"):
             for summary in context.get(key, []):
                 pen = summary["pen"]
@@ -128,6 +137,13 @@ def make_kaewa_app(monkeypatch, tmp_path: Path):
             labels.extend(batch.site_name for batch in context["aggregation_batches"])
         if "handoff_events" in context:
             labels.extend(event.event_type for event in context["handoff_events"])
+        if "sale" in context:
+            sale = context["sale"]
+            labels.extend([str(sale.sale_number), str(sale.status or "")])
+            for item in sale.items:
+                labels.extend([item.product.name, str(item.quantity), str(item.line_total)])
+        if "total" in context:
+            labels.append(str(context["total"]))
         for key in ("stakeholder", "intake", "pen", "product"):
             item = context.get(key)
             if item is not None:
@@ -183,6 +199,18 @@ def assert_animal_tables_not_created(engine):
     assert not inspector.has_table(Cattle.__tablename__)
 
 
+def rural_stock(product_id):
+    stock_in = db.session.query(sa.func.coalesce(sa.func.sum(RuralServiceStockMovement.quantity), 0)).filter(
+        RuralServiceStockMovement.product_id == product_id,
+        RuralServiceStockMovement.movement_type.in_(["opening_stock", "purchase", "adjustment_in", "sale_reversal"]),
+    ).scalar()
+    stock_out = db.session.query(sa.func.coalesce(sa.func.sum(RuralServiceStockMovement.quantity), 0)).filter(
+        RuralServiceStockMovement.product_id == product_id,
+        RuralServiceStockMovement.movement_type.in_(["adjustment_out", "damaged", "expired", "issued_internal", "sale"]),
+    ).scalar()
+    return stock_in - stock_out
+
+
 def test_kaewa_routes_require_login(monkeypatch, tmp_path):
     app = make_kaewa_app(monkeypatch, tmp_path)
     client = app.test_client()
@@ -193,6 +221,7 @@ def test_kaewa_routes_require_login(monkeypatch, tmp_path):
         "/admin/kaewa/intakes",
         "/admin/kaewa/holding-pens",
         "/admin/kaewa/rural-services",
+        "/admin/kaewa/rural-services/sales",
     ):
         response = client.get(path)
         assert response.status_code in (302, 401)
@@ -203,6 +232,8 @@ def test_kaewa_routes_require_login(monkeypatch, tmp_path):
         "/admin/kaewa/holding-pens/1/assign",
         "/admin/kaewa/holding-assignments/1/release",
         "/admin/kaewa/rural-services/products/1/stock-movements/new",
+        "/admin/kaewa/rural-services/sales/1/complete",
+        "/admin/kaewa/rural-services/sales/1/cancel",
     ):
         response = client.post(path)
         assert response.status_code in (302, 401)
@@ -760,3 +791,160 @@ def test_rural_services_does_not_add_payment_or_sale_routes(monkeypatch, tmp_pat
     routes = {rule.rule for rule in app.url_map.iter_rules()}
     assert "/admin/kaewa/rural-services/checkout" not in routes
     assert "/admin/kaewa/rural-services/payments" not in routes
+
+
+def test_create_draft_rural_service_sale_does_not_reduce_stock(monkeypatch, tmp_path):
+    app = make_kaewa_app(monkeypatch, tmp_path)
+    client = app.test_client()
+    login_admin(client)
+
+    with app.app_context():
+        product = RuralServiceProduct(name="Feed Bag", category="animal_feed", unit="bag")
+        db.session.add(product)
+        db.session.flush()
+        db.session.add(RuralServiceStockMovement(product_id=product.id, movement_type="opening_stock", quantity=10))
+        db.session.commit()
+        product_id = product.id
+
+    response = client.post(
+        "/admin/kaewa/rural-services/sales/new",
+        data={
+            "buyer_name": "Walk-in Buyer",
+            "sale_date": "2026-05-13",
+            "payment_method": "cash",
+            "product_id": str(product_id),
+            "quantity": "3",
+            "unit_price": "500",
+        },
+        follow_redirects=True,
+    )
+
+    assert response.status_code == 200
+    assert "Feed Bag" in response.get_data(as_text=True)
+    with app.app_context():
+        sale = RuralServiceSale.query.one()
+        assert sale.status == "draft"
+        assert len(sale.items) == 1
+        assert rural_stock(product_id) == 10
+        assert RuralServiceStockMovement.query.filter_by(product_id=product_id, movement_type="sale").count() == 0
+
+
+def test_complete_rural_service_sale_reduces_stock(monkeypatch, tmp_path):
+    app = make_kaewa_app(monkeypatch, tmp_path)
+    client = app.test_client()
+    login_admin(client)
+
+    with app.app_context():
+        product = RuralServiceProduct(name="Mineral Pack", category="mineral_supplement", unit="packet")
+        db.session.add(product)
+        db.session.flush()
+        db.session.add(RuralServiceStockMovement(product_id=product.id, movement_type="opening_stock", quantity=10))
+        sale = RuralServiceSale(sale_number="KRS-TEST-001", payment_method="cash", sale_date=date(2026, 5, 13))
+        sale.items.append(RuralServiceSaleItem(product=product, quantity=4, unit_price=100, line_total=400))
+        db.session.add(sale)
+        db.session.commit()
+        sale_id = sale.id
+        product_id = product.id
+
+    response = client.post(f"/admin/kaewa/rural-services/sales/{sale_id}/complete", follow_redirects=True)
+
+    assert response.status_code == 200
+    assert "completed" in response.get_data(as_text=True)
+    with app.app_context():
+        sale = db.session.get(RuralServiceSale, sale_id)
+        assert sale.status == "completed"
+        assert rural_stock(product_id) == 6
+        assert RuralServiceStockMovement.query.filter_by(product_id=product_id, movement_type="sale").count() == 1
+
+
+def test_insufficient_stock_blocks_rural_service_sale_completion(monkeypatch, tmp_path):
+    app = make_kaewa_app(monkeypatch, tmp_path)
+    client = app.test_client()
+    login_admin(client)
+
+    with app.app_context():
+        product = RuralServiceProduct(name="Tool", category="farm_tool", unit="piece")
+        db.session.add(product)
+        db.session.flush()
+        db.session.add(RuralServiceStockMovement(product_id=product.id, movement_type="opening_stock", quantity=1))
+        sale = RuralServiceSale(sale_number="KRS-TEST-002", payment_method="cash", sale_date=date(2026, 5, 13))
+        sale.items.append(RuralServiceSaleItem(product=product, quantity=2, unit_price=100, line_total=200))
+        db.session.add(sale)
+        db.session.commit()
+        sale_id = sale.id
+        product_id = product.id
+
+    response = client.post(f"/admin/kaewa/rural-services/sales/{sale_id}/complete", follow_redirects=True)
+
+    assert response.status_code == 200
+    with app.app_context():
+        sale = db.session.get(RuralServiceSale, sale_id)
+        assert sale.status == "draft"
+        assert rural_stock(product_id) == 1
+        assert RuralServiceStockMovement.query.filter_by(product_id=product_id, movement_type="sale").count() == 0
+
+
+def test_cancel_completed_rural_service_sale_restores_stock(monkeypatch, tmp_path):
+    app = make_kaewa_app(monkeypatch, tmp_path)
+    client = app.test_client()
+    login_admin(client)
+
+    with app.app_context():
+        product = RuralServiceProduct(name="Merch Cap", category="rizara_merchandise", unit="piece")
+        db.session.add(product)
+        db.session.flush()
+        db.session.add_all([
+            RuralServiceStockMovement(product_id=product.id, movement_type="opening_stock", quantity=5),
+            RuralServiceStockMovement(product_id=product.id, movement_type="sale", quantity=2),
+        ])
+        sale = RuralServiceSale(sale_number="KRS-TEST-003", payment_method="cash", sale_date=date(2026, 5, 13), status="completed")
+        sale.items.append(RuralServiceSaleItem(product=product, quantity=2, unit_price=50, line_total=100))
+        db.session.add(sale)
+        db.session.commit()
+        sale_id = sale.id
+        product_id = product.id
+
+    response = client.post(f"/admin/kaewa/rural-services/sales/{sale_id}/cancel", follow_redirects=True)
+
+    assert response.status_code == 200
+    with app.app_context():
+        sale = db.session.get(RuralServiceSale, sale_id)
+        assert sale.status == "cancelled"
+        assert rural_stock(product_id) == 5
+        assert RuralServiceStockMovement.query.filter_by(product_id=product_id, movement_type="sale_reversal").count() == 1
+
+
+def test_inactive_product_cannot_be_sold(monkeypatch, tmp_path):
+    app = make_kaewa_app(monkeypatch, tmp_path)
+    client = app.test_client()
+    login_admin(client)
+
+    with app.app_context():
+        product = RuralServiceProduct(name="Inactive Tool", category="farm_tool", unit="piece", active=False)
+        db.session.add(product)
+        db.session.commit()
+        product_id = product.id
+
+    response = client.post(
+        "/admin/kaewa/rural-services/sales/new",
+        data={
+            "buyer_name": "Walk-in Buyer",
+            "sale_date": "2026-05-13",
+            "payment_method": "cash",
+            "product_id": str(product_id),
+            "quantity": "1",
+            "unit_price": "10",
+        },
+        follow_redirects=True,
+    )
+
+    assert response.status_code == 200
+    with app.app_context():
+        assert RuralServiceSale.query.count() == 0
+
+
+def test_rural_sales_no_mpesa_integration_routes(monkeypatch, tmp_path):
+    app = make_kaewa_app(monkeypatch, tmp_path)
+    routes = {rule.rule for rule in app.url_map.iter_rules()}
+    assert "/admin/kaewa/rural-services/sales/mpesa" not in routes
+    assert "/admin/kaewa/rural-services/sales/<int:sale_id>/mpesa" not in routes
