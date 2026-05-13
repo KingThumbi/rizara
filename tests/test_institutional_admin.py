@@ -1,15 +1,18 @@
 from __future__ import annotations
 
 import uuid
+from datetime import date
 from pathlib import Path
 
 from flask import Flask
 from flask_login import LoginManager
 from werkzeug.security import generate_password_hash
 
+from app.constants.impact_metrics import IMPACT_METRICS
 from app.extensions import db
 from app.models import (
     DonorOrganization,
+    Farmer,
     FieldObservation,
     GrantApplication,
     GrantDocument,
@@ -17,8 +20,12 @@ from app.models import (
     GrantMilestone,
     GrantOpportunity,
     GrantReport,
+    Goat,
+    ImpactSnapshot,
     InnovationProposal,
     MarketInsight,
+    ProcurementRecord,
+    ProcurementSource,
     ProjectDocument,
     ProjectMilestone,
     ProjectTask,
@@ -26,14 +33,23 @@ from app.models import (
     ResearchDocument,
     ResearchProject,
     StrategicProject,
+    TraceabilityRecord,
     User,
+    AggregationBatch,
 )
 from app.routes import institutional as institutional_routes
 from app.routes.institutional import institutional_bp
+from app.services.impact_metrics import calculate_impact_metrics, create_current_impact_snapshot
 
 
 INSTITUTIONAL_TABLES = [
     User.__table__,
+    Farmer.__table__,
+    AggregationBatch.__table__,
+    Goat.__table__,
+    ProcurementSource.__table__,
+    ProcurementRecord.__table__,
+    TraceabilityRecord.__table__,
     ResearchProject.__table__,
     FieldObservation.__table__,
     MarketInsight.__table__,
@@ -46,6 +62,7 @@ INSTITUTIONAL_TABLES = [
     GrantReport.__table__,
     GrantImpactMetric.__table__,
     GrantDocument.__table__,
+    ImpactSnapshot.__table__,
     StrategicProject.__table__,
     ProjectWorkstream.__table__,
     ProjectMilestone.__table__,
@@ -91,6 +108,10 @@ def make_institutional_app(monkeypatch, tmp_path: Path):
             labels.extend(item.report_type for item in context["reports"])
         if "impact_metrics" in context:
             labels.extend(item.name for item in context["impact_metrics"])
+        if "metrics" in context:
+            labels.extend(item.definition.name for item in context["metrics"])
+        if "recent_snapshots" in context:
+            labels.extend(item.metric_name for item in context["recent_snapshots"])
         for key in ("project", "opportunity"):
             if key in context and getattr(context[key], "title", None):
                 labels.append(context[key].title)
@@ -125,7 +146,7 @@ def test_institutional_routes_require_login(monkeypatch, tmp_path):
     app = make_institutional_app(monkeypatch, tmp_path)
     client = app.test_client()
 
-    for path in ("/admin/research", "/admin/grants", "/admin/projects"):
+    for path in ("/admin/research", "/admin/grants", "/admin/projects", "/admin/impact"):
         response = client.get(path)
         assert response.status_code in (302, 401)
 
@@ -138,6 +159,7 @@ def test_admin_pages_render_for_admin(monkeypatch, tmp_path):
     assert client.get("/admin/research").status_code == 200
     assert client.get("/admin/grants").status_code == 200
     assert client.get("/admin/projects").status_code == 200
+    assert client.get("/admin/impact").status_code == 200
 
 
 def test_research_create_list_flow(monkeypatch, tmp_path):
@@ -327,7 +349,15 @@ def test_grant_application_execution_flow(monkeypatch, tmp_path):
         ),
         (
             f"/admin/grants/applications/{application_id}/impact-metrics/new",
-            {"name": "Herders reached", "metric_type": "output", "status": "in_progress", "target_value": "500", "current_value": "120", "unit": "people"},
+            {
+                "name": "Herders reached",
+                "metric_code": "pastoralists_onboarded",
+                "metric_type": "output",
+                "status": "in_progress",
+                "target_value": "500",
+                "current_value": "120",
+                "unit": "people",
+            },
             "Herders reached",
         ),
         (
@@ -344,6 +374,10 @@ def test_grant_application_execution_flow(monkeypatch, tmp_path):
         assert GrantMilestone.query.filter_by(grant_application_id=application_id).count() == 1
         assert GrantReport.query.filter_by(grant_application_id=application_id).count() == 1
         assert GrantImpactMetric.query.filter_by(grant_application_id=application_id).count() == 1
+        assert (
+            GrantImpactMetric.query.filter_by(grant_application_id=application_id).one().metric_code
+            == "pastoralists_onboarded"
+        )
         assert GrantDocument.query.filter_by(grant_application_id=application_id).count() == 1
 
 
@@ -376,6 +410,110 @@ def test_grant_opportunity_document_registration(monkeypatch, tmp_path):
         assert document.grant_application_id is None
 
 
+def test_impact_metric_registry_consistency():
+    expected_codes = {
+        "pastoralists_onboarded",
+        "animals_procured",
+        "animals_aggregated",
+        "animals_processed",
+        "animals_traced",
+        "traceability_coverage_percent",
+        "active_grants",
+        "awarded_grants",
+        "overdue_reports",
+        "active_projects",
+        "invoices_generated",
+        "total_sales_value",
+        "goat_carcass_kg",
+        "sheep_carcass_kg",
+        "cattle_carcass_kg",
+    }
+
+    assert set(IMPACT_METRICS) == expected_codes
+    for code, definition in IMPACT_METRICS.items():
+        assert definition.code == code
+        assert definition.name
+        assert definition.category
+        assert definition.source_module
+
+
+def test_impact_metric_calculations_and_snapshot_creation(monkeypatch, tmp_path):
+    app = make_institutional_app(monkeypatch, tmp_path)
+
+    with app.app_context():
+        farmer = Farmer(
+            name="Pastoralist One",
+            phone="0700000001",
+            county="Kajiado",
+            ward="Central",
+        )
+        source = ProcurementSource(source_type="farmer", name="Pastoralist One", county="Kajiado")
+        opportunity = GrantOpportunity(title="Impact Grant")
+        application = GrantApplication(
+            title="Awarded Application",
+            grant_opportunity=opportunity,
+            application_status="awarded",
+        )
+        overdue_report = GrantReport(
+            grant_application=application,
+            report_type="impact",
+            due_date=date(2026, 1, 1),
+            status="draft",
+        )
+        project = StrategicProject(title="Active Impact Project", status="active")
+        db.session.add_all([farmer, source, application, overdue_report, project])
+        db.session.flush()
+
+        goat = Goat(rizara_id="RZ-GOAT-IMPACT-001", farmer_id=farmer.id)
+        procurement = ProcurementRecord(
+            source_id=source.id,
+            animal_type="goat",
+            quantity=3,
+            unit_price=100,
+            total_cost=300,
+            status="confirmed",
+        )
+        db.session.add_all([goat, procurement])
+        db.session.flush()
+        db.session.add(
+            TraceabilityRecord(
+                animal_type="goat",
+                animal_id=goat.id,
+                qr_code_data="trace-data",
+                public_url="https://example.com/trace",
+            )
+        )
+        db.session.commit()
+
+        metrics = {metric.definition.code: metric.value for metric in calculate_impact_metrics()}
+        assert metrics["pastoralists_onboarded"] == 1
+        assert metrics["animals_procured"] == 3
+        assert metrics["animals_traced"] == 1
+        assert metrics["traceability_coverage_percent"] == 100
+        assert metrics["active_grants"] == 1
+        assert metrics["awarded_grants"] == 1
+        assert metrics["overdue_reports"] == 1
+        assert metrics["active_projects"] == 1
+
+        snapshots = create_current_impact_snapshot(snapshot_date=date(2026, 5, 13))
+        db.session.commit()
+        assert len(snapshots) == len(IMPACT_METRICS)
+        assert ImpactSnapshot.query.filter_by(metric_code="pastoralists_onboarded").one().metric_value == 1
+
+
+def test_impact_dashboard_snapshot_action(monkeypatch, tmp_path):
+    app = make_institutional_app(monkeypatch, tmp_path)
+    client = app.test_client()
+    login_admin(client)
+
+    response = client.post("/admin/impact/snapshots/generate", follow_redirects=True)
+
+    assert response.status_code == 200
+    assert "Pastoralists Onboarded" in response.get_data(as_text=True)
+    with app.app_context():
+        assert ImpactSnapshot.query.count() == len(IMPACT_METRICS)
+
+
 def test_institutional_migration_imports():
     migration = __import__(
         "migrations.versions.f4a9c2d7e8b1_add_institutional_foundation_tables",
@@ -385,11 +523,17 @@ def test_institutional_migration_imports():
         "migrations.versions.0b8c6d4e2f31_add_grant_impact_metrics",
         fromlist=["revision", "down_revision"],
     )
+    snapshot_migration = __import__(
+        "migrations.versions.9d1e5f7a2c44_add_impact_snapshots",
+        fromlist=["revision", "down_revision"],
+    )
 
     assert migration.revision == "f4a9c2d7e8b1"
     assert migration.down_revision == "d8f3b2a7c901"
     assert impact_migration.revision == "0b8c6d4e2f31"
     assert impact_migration.down_revision == "f4a9c2d7e8b1"
+    assert snapshot_migration.revision == "9d1e5f7a2c44"
+    assert snapshot_migration.down_revision == "0b8c6d4e2f31"
 
     source = Path(migration.__file__).read_text()
     assert "export_compliance" in source

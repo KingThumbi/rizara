@@ -16,6 +16,7 @@ from app.models import (
     GrantMilestone,
     GrantOpportunity,
     GrantReport,
+    ImpactSnapshot,
     InnovationProposal,
     MarketInsight,
     ProjectMilestone,
@@ -24,6 +25,12 @@ from app.models import (
     StrategicProject,
 )
 from app.utils.guards import admin_required
+from app.constants.impact_metrics import IMPACT_METRICS
+from app.services.impact_metrics import (
+    calculate_impact_metrics,
+    create_current_impact_snapshot,
+    group_metrics,
+)
 
 
 institutional_bp = Blueprint("institutional", __name__, url_prefix="/admin")
@@ -114,6 +121,59 @@ def _grant_application_query():
 
 def _grant_opportunity_query():
     return GrantOpportunity.query.filter(GrantOpportunity.is_archived.is_(False))
+
+
+@institutional_bp.route("/impact", methods=["GET"])
+@admin_required
+def impact_dashboard():
+    metrics = calculate_impact_metrics()
+    recent_snapshots = ImpactSnapshot.query.order_by(ImpactSnapshot.created_at.desc()).limit(30).all()
+    grant_summary = {
+        "active": GrantApplication.query.filter(
+            GrantApplication.is_archived.is_(False),
+            GrantApplication.application_status.in_(["drafting", "submitted", "under_review", "shortlisted", "awarded"]),
+        ).count(),
+        "awarded": GrantApplication.query.filter(
+            GrantApplication.is_archived.is_(False),
+            GrantApplication.application_status == "awarded",
+        ).count(),
+        "overdue_reports": GrantReport.query.filter(
+            GrantReport.due_date.isnot(None),
+            GrantReport.due_date < date.today(),
+            GrantReport.status.notin_(["submitted", "accepted"]),
+        ).count(),
+    }
+    project_summary = {
+        "active": StrategicProject.query.filter(
+            StrategicProject.is_archived.is_(False),
+            StrategicProject.status == "active",
+        ).count(),
+        "planned": StrategicProject.query.filter(
+            StrategicProject.is_archived.is_(False),
+            StrategicProject.status == "planned",
+        ).count(),
+        "completed": StrategicProject.query.filter(
+            StrategicProject.is_archived.is_(False),
+            StrategicProject.status == "completed",
+        ).count(),
+    }
+    return render_template(
+        "admin/institutional/impact_dashboard.html",
+        metrics=metrics,
+        grouped_metrics=group_metrics(metrics),
+        recent_snapshots=recent_snapshots,
+        grant_summary=grant_summary,
+        project_summary=project_summary,
+    )
+
+
+@institutional_bp.route("/impact/snapshots/generate", methods=["POST"])
+@admin_required
+def impact_snapshot_generate():
+    snapshots = create_current_impact_snapshot()
+    if _commit_or_rollback("Impact snapshot"):
+        flash(f"Generated {len(snapshots)} impact snapshot metrics.", "success")
+    return redirect(url_for("institutional.impact_dashboard"))
 
 
 @institutional_bp.route("/research", methods=["GET"])
@@ -514,6 +574,7 @@ def grant_impact_metrics_new(application_id: int):
         metric=metric,
         metric_types=GRANT_IMPACT_METRIC_TYPES,
         statuses=GRANT_IMPACT_METRIC_STATUSES,
+        metric_definitions=IMPACT_METRICS,
         action="Create",
     )
 
@@ -533,12 +594,16 @@ def grant_impact_metrics_edit(application_id: int, metric_id: int):
         metric=metric,
         metric_types=GRANT_IMPACT_METRIC_TYPES,
         statuses=GRANT_IMPACT_METRIC_STATUSES,
+        metric_definitions=IMPACT_METRICS,
         action="Update",
     )
 
 
 def _populate_grant_impact_metric(metric: GrantImpactMetric) -> None:
     metric.name = _clean(request.form.get("name")) or "Untitled impact metric"
+    metric.metric_code = _clean(request.form.get("metric_code"))
+    if metric.metric_code not in IMPACT_METRICS:
+        metric.metric_code = None
     metric.metric_type = (
         request.form.get("metric_type")
         if request.form.get("metric_type") in GRANT_IMPACT_METRIC_TYPES

@@ -16,6 +16,15 @@
       {{ text_input('name', 'Metric Name', metric.name, required=true) }}
       {{ select_input('metric_type', 'Metric Type', metric_types, metric.metric_type or 'impact') }}
       {{ select_input('status', 'Status', statuses, metric.status or 'planned') }}
+      <label class="block">
+        <span class="block text-xs font-semibold text-gray-600 mb-1">Operational Metric Link</span>
+        <select name="metric_code" class="w-full rounded-lg border border-gray-300 px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-jungle/40">
+          <option value="">No operational link</option>
+          {% for code, definition in metric_definitions.items() %}
+            <option value="{{ code }}" {% if code == metric.metric_code %}selected{% endif %}>{{ definition.name }}</option>
+          {% endfor %}
+        </select>
+      </label>
       {{ text_input('unit', 'Unit', metric.unit) }}
       {{ text_input('baseline_value', 'Baseline Value', metric.baseline_value, 'number') }}
       {{ text_input('target_value', 'Target Value', metric.target_value, 'number') }}

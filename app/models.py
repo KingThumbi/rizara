@@ -3085,6 +3085,7 @@ class GrantImpactMetric(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     uuid = db.Column(UUID(as_uuid=True), default=uuid.uuid4, nullable=False, unique=True, index=True)
     grant_application_id = db.Column(db.Integer, db.ForeignKey("grant_application.id"), nullable=False, index=True)
+    metric_code = db.Column(db.String(80), nullable=True, index=True)
     name = db.Column(db.String(180), nullable=False)
     metric_type = db.Column(db.String(30), nullable=False, default="impact", index=True)
     unit = db.Column(db.String(60), nullable=True)
@@ -3117,6 +3118,24 @@ class GrantDocument(db.Model):
 
     grant_application = db.relationship("GrantApplication", back_populates="documents", lazy="joined")
     grant_opportunity = db.relationship("GrantOpportunity", back_populates="documents", lazy="joined")
+
+
+class ImpactSnapshot(db.Model):
+    __tablename__ = "impact_snapshot"
+
+    id = db.Column(db.Integer, primary_key=True)
+    uuid = db.Column(UUID(as_uuid=True), default=uuid.uuid4, nullable=False, unique=True, index=True)
+    snapshot_date = db.Column(db.Date, nullable=False, index=True)
+    metric_code = db.Column(db.String(80), nullable=False, index=True)
+    metric_name = db.Column(db.String(180), nullable=False)
+    metric_category = db.Column(db.String(60), nullable=False, index=True)
+    metric_value = db.Column(db.Numeric(18, 2), nullable=False, default=0)
+    metric_unit = db.Column(db.String(60), nullable=True)
+    county = db.Column(db.String(100), nullable=True, index=True)
+    animal_type = db.Column(db.String(20), nullable=True, index=True)
+    source_module = db.Column(db.String(80), nullable=False, index=True)
+    notes = db.Column(db.Text, nullable=True)
+    created_at = db.Column(db.DateTime, default=utcnow_naive, nullable=False, index=True)
 
 
 class StrategicProject(db.Model):
