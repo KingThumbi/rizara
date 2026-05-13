@@ -3038,6 +3038,7 @@ class GrantApplication(db.Model):
     internal_owner = db.relationship("User", foreign_keys=[internal_owner_user_id], lazy="joined")
     milestones = db.relationship("GrantMilestone", back_populates="grant_application", lazy="select")
     reports = db.relationship("GrantReport", back_populates="grant_application", lazy="select")
+    impact_metrics = db.relationship("GrantImpactMetric", back_populates="grant_application", lazy="select")
     documents = db.relationship("GrantDocument", back_populates="grant_application", lazy="select")
 
 
@@ -3076,6 +3077,28 @@ class GrantReport(db.Model):
     updated_at = db.Column(db.DateTime, default=utcnow_naive, onupdate=utcnow_naive, nullable=False)
 
     grant_application = db.relationship("GrantApplication", back_populates="reports", lazy="joined")
+
+
+class GrantImpactMetric(db.Model):
+    __tablename__ = "grant_impact_metric"
+
+    id = db.Column(db.Integer, primary_key=True)
+    uuid = db.Column(UUID(as_uuid=True), default=uuid.uuid4, nullable=False, unique=True, index=True)
+    grant_application_id = db.Column(db.Integer, db.ForeignKey("grant_application.id"), nullable=False, index=True)
+    name = db.Column(db.String(180), nullable=False)
+    metric_type = db.Column(db.String(30), nullable=False, default="impact", index=True)
+    unit = db.Column(db.String(60), nullable=True)
+    baseline_value = db.Column(db.Numeric(14, 2), nullable=True)
+    target_value = db.Column(db.Numeric(14, 2), nullable=True)
+    current_value = db.Column(db.Numeric(14, 2), nullable=True)
+    reporting_period_start = db.Column(db.Date, nullable=True)
+    reporting_period_end = db.Column(db.Date, nullable=True)
+    status = db.Column(db.String(30), nullable=False, default="planned", index=True)
+    notes = db.Column(db.Text, nullable=True)
+    created_at = db.Column(db.DateTime, default=utcnow_naive, nullable=False, index=True)
+    updated_at = db.Column(db.DateTime, default=utcnow_naive, onupdate=utcnow_naive, nullable=False)
+
+    grant_application = db.relationship("GrantApplication", back_populates="impact_metrics", lazy="joined")
 
 
 class GrantDocument(db.Model):

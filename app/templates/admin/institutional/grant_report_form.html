@@ -1,0 +1,30 @@
+{% extends "layouts/base_admin.html" %}
+{% from "admin/institutional/_shared.html" import text_input, textarea, select_input, flash_messages %}
+
+{% block page_title %}{{ action }} Grant Report{% endblock %}
+
+{% block breadcrumbs %}
+  <a href="{{ url_for('institutional.grant_applications_detail', application_id=application.id) }}" class="font-semibold text-jungle hover:text-jungleLight transition">{{ application.title }}</a>
+  <span>/</span><span>{{ action }} Report</span>
+{% endblock %}
+
+{% block content %}
+  {{ flash_messages() }}
+  <div class="mb-6"><h1 class="text-2xl font-bold text-gray-900">{{ action }} Report</h1></div>
+  <form method="POST" class="bg-white rounded-xl shadow-sm border border-gray-200 p-5 space-y-5">
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      {{ select_input('report_type', 'Report Type', report_types, report.report_type or 'narrative') }}
+      {{ select_input('status', 'Status', statuses, report.status or 'draft') }}
+      {{ text_input('reporting_period_start', 'Reporting Period Start', report.reporting_period_start, 'date') }}
+      {{ text_input('reporting_period_end', 'Reporting Period End', report.reporting_period_end, 'date') }}
+      {{ text_input('due_date', 'Due Date', report.due_date, 'date') }}
+      {{ text_input('submitted_date', 'Submitted Date', report.submitted_date, 'date') }}
+    </div>
+    {{ textarea('summary', 'Summary', report.summary, 4) }}
+    {{ textarea('notes', 'Notes', report.notes, 4) }}
+    <div class="flex items-center gap-3">
+      <button class="rounded-lg bg-jungle px-4 py-2 text-white font-semibold hover:bg-jungleLight transition" type="submit">{{ action }} Report</button>
+      <a href="{{ url_for('institutional.grant_applications_detail', application_id=application.id) }}" class="rounded-lg border border-gray-300 px-4 py-2 font-semibold text-gray-700 hover:bg-gray-50 transition">Cancel</a>
+    </div>
+  </form>
+{% endblock %}

@@ -1,0 +1,45 @@
+{% extends "layouts/base_admin.html" %}
+{% from "admin/institutional/_shared.html" import text_input, textarea, select_input, flash_messages %}
+
+{% block page_title %}{{ action }} Grant Application{% endblock %}
+
+{% block breadcrumbs %}
+  <a href="{{ url_for('admin.dashboard') }}" class="font-semibold text-jungle hover:text-jungleLight transition">Dashboard</a>
+  <span>/</span><a href="{{ url_for('institutional.grants_index') }}" class="font-semibold text-jungle hover:text-jungleLight transition">Grants</a>
+  <span>/</span><a href="{{ url_for('institutional.grant_applications_index') }}" class="font-semibold text-jungle hover:text-jungleLight transition">Applications</a>
+  <span>/</span><span>{{ action }}</span>
+{% endblock %}
+
+{% block content %}
+  {{ flash_messages() }}
+  <div class="mb-6">
+    <h1 class="text-2xl font-bold text-gray-900">{{ action }} Grant Application</h1>
+    <p class="text-sm text-gray-600 mt-1">Capture the proposal record Rizara will execute and report against.</p>
+  </div>
+
+  <form method="POST" class="bg-white rounded-xl shadow-sm border border-gray-200 p-5 space-y-5">
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <label class="block">
+        <span class="block text-xs font-semibold text-gray-600 mb-1">Grant Opportunity</span>
+        <select name="grant_opportunity_id" required class="w-full rounded-lg border border-gray-300 px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-jungle/40">
+          {% for opportunity in opportunities %}
+            <option value="{{ opportunity.id }}" {% if opportunity.id == application.grant_opportunity_id %}selected{% endif %}>{{ opportunity.title }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      {{ text_input('title', 'Application Title', application.title, required=true) }}
+      {{ select_input('application_status', 'Status', statuses, application.application_status or 'drafting') }}
+      {{ text_input('submission_date', 'Submission Date', application.submission_date, 'date') }}
+      {{ text_input('requested_amount', 'Requested Amount', application.requested_amount, 'number') }}
+      {{ text_input('awarded_amount', 'Awarded Amount', application.awarded_amount, 'number') }}
+      {{ text_input('currency', 'Currency', application.currency or 'USD') }}
+      {{ text_input('project_title', 'Project Title', application.project_title) }}
+    </div>
+    {{ textarea('summary', 'Summary', application.summary, 4) }}
+    {{ textarea('notes', 'Notes', application.notes, 4) }}
+    <div class="flex items-center gap-3 pt-2">
+      <button class="rounded-lg bg-jungle px-4 py-2 text-white font-semibold hover:bg-jungleLight transition" type="submit">{{ action }} Application</button>
+      <a href="{{ url_for('institutional.grant_applications_index') }}" class="rounded-lg border border-gray-300 px-4 py-2 font-semibold text-gray-700 hover:bg-gray-50 transition">Cancel</a>
+    </div>
+  </form>
+{% endblock %}

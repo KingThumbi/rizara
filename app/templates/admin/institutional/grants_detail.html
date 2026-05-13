@@ -15,7 +15,11 @@
       <h1 class="text-2xl font-bold text-gray-900">{{ opportunity.title }}</h1>
       <p class="text-sm text-gray-600 mt-1">{{ opportunity.focus_area or 'No focus area' }}</p>
     </div>
-    <a href="{{ url_for('institutional.grants_edit', opportunity_id=opportunity.id) }}" class="rounded-lg bg-jungle px-4 py-2 text-white font-semibold hover:bg-jungleLight transition">Edit</a>
+    <div class="flex items-center gap-2">
+      <a href="{{ url_for('institutional.grant_applications_new', opportunity_id=opportunity.id) }}" class="rounded-lg border border-gray-300 px-4 py-2 font-semibold text-gray-700 hover:bg-gray-50 transition">New Application</a>
+      <a href="{{ url_for('institutional.grant_opportunity_documents_new', opportunity_id=opportunity.id) }}" class="rounded-lg border border-gray-300 px-4 py-2 font-semibold text-gray-700 hover:bg-gray-50 transition">Register Document</a>
+      <a href="{{ url_for('institutional.grants_edit', opportunity_id=opportunity.id) }}" class="rounded-lg bg-jungle px-4 py-2 text-white font-semibold hover:bg-jungleLight transition">Edit</a>
+    </div>
   </div>
 
   <section class="bg-white rounded-xl shadow-sm border border-gray-200 p-5 space-y-4">
@@ -27,5 +31,45 @@
     </dl>
     <div><h2 class="font-bold text-gray-900">Eligibility</h2><p class="text-sm text-gray-700 mt-1 whitespace-pre-line">{{ opportunity.eligibility_notes or '-' }}</p></div>
     <div><h2 class="font-bold text-gray-900">Strategic Fit</h2><p class="text-sm text-gray-700 mt-1 whitespace-pre-line">{{ opportunity.strategic_fit_notes or '-' }}</p></div>
+  </section>
+
+  <section class="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
+      <h2 class="text-lg font-bold text-gray-900 mb-4">Applications</h2>
+      <div class="space-y-3">
+        {% for application in opportunity.applications %}
+          {% if not application.is_archived %}
+            <a class="block rounded-lg border border-gray-200 p-4 hover:bg-gray-50 transition" href="{{ url_for('institutional.grant_applications_detail', application_id=application.id) }}">
+              <div class="flex items-center justify-between gap-3">
+                <div>
+                  <p class="font-semibold text-gray-900">{{ application.title }}</p>
+                  <p class="text-sm text-gray-600">{{ application.project_title or '-' }}</p>
+                </div>
+                {{ status_badge(application.application_status) }}
+              </div>
+            </a>
+          {% endif %}
+        {% else %}
+          <p class="text-sm text-gray-500">No applications registered.</p>
+        {% endfor %}
+      </div>
+    </div>
+
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
+      <h2 class="text-lg font-bold text-gray-900 mb-4">Opportunity Documents</h2>
+      <div class="space-y-3">
+        {% for document in opportunity.documents %}
+          {% if not document.grant_application_id %}
+            <div class="rounded-lg border border-gray-200 p-4">
+              <p class="font-semibold text-gray-900">{{ document.title }}</p>
+              <p class="text-sm text-gray-600">{{ document.document_type|replace('_', ' ')|title }}</p>
+              {% if document.external_url %}<a class="text-sm font-semibold text-jungle hover:underline" href="{{ document.external_url }}">Open link</a>{% endif %}
+            </div>
+          {% endif %}
+        {% else %}
+          <p class="text-sm text-gray-500">No documents registered.</p>
+        {% endfor %}
+      </div>
+    </div>
   </section>
 {% endblock %}

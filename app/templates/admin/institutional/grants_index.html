@@ -15,12 +15,15 @@
       <h1 class="text-2xl font-bold text-gray-900">Grants & Funding Management</h1>
       <p class="text-sm text-gray-600 mt-1">Track funding opportunities, application readiness, donor reporting, and compliance obligations.</p>
     </div>
-    <a href="{{ url_for('institutional.grants_new') }}" class="rounded-lg bg-jungle px-4 py-2 text-white font-semibold hover:bg-jungleLight transition">+ New Opportunity</a>
+    <div class="flex items-center gap-2">
+      <a href="{{ url_for('institutional.grant_applications_index') }}" class="rounded-lg border border-gray-300 px-4 py-2 font-semibold text-gray-700 hover:bg-gray-50 transition">Applications</a>
+      <a href="{{ url_for('institutional.grants_new') }}" class="rounded-lg bg-jungle px-4 py-2 text-white font-semibold hover:bg-jungleLight transition">+ New Opportunity</a>
+    </div>
   </div>
 
   <section class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
     <div class="metric-card"><p>Active Opportunities</p><strong>{{ stats.active_opportunities }}</strong></div>
-    <div class="metric-card"><p>Upcoming Deadlines</p><strong>{{ stats.upcoming_deadlines }}</strong></div>
+    <div class="metric-card"><p>Active Applications</p><strong>{{ stats.active_applications }}</strong></div>
     <div class="metric-card"><p>Pending Milestones</p><strong>{{ stats.pending_milestones }}</strong></div>
     <div class="metric-card"><p>Pending Reports</p><strong>{{ stats.pending_reports }}</strong></div>
   </section>
@@ -45,6 +48,31 @@
       </tbody>
     </table>
   </div>
+
+  <section class="mt-6 bg-white rounded-xl shadow-sm border border-gray-200 p-5">
+    <div class="flex items-center justify-between gap-4 mb-4">
+      <div>
+        <h2 class="text-lg font-bold text-gray-900">Recent Applications</h2>
+        <p class="text-sm text-gray-600 mt-1">Funding submissions and award execution records.</p>
+      </div>
+      <a class="text-sm font-semibold text-jungle hover:underline" href="{{ url_for('institutional.grant_applications_new') }}">New application</a>
+    </div>
+    <div class="space-y-3">
+      {% for application in recent_applications %}
+        <a href="{{ url_for('institutional.grant_applications_detail', application_id=application.id) }}" class="block rounded-lg border border-gray-200 p-4 hover:bg-gray-50 transition">
+          <div class="flex items-center justify-between gap-3">
+            <div>
+              <p class="font-semibold text-gray-900">{{ application.title }}</p>
+              <p class="text-sm text-gray-600">{{ application.project_title or application.grant_opportunity.title }}</p>
+            </div>
+            {{ status_badge(application.application_status) }}
+          </div>
+        </a>
+      {% else %}
+        <p class="text-sm text-gray-500">No grant applications yet.</p>
+      {% endfor %}
+    </div>
+  </section>
 
   <style>
     .metric-card { border: 1px solid #e5e7eb; border-radius: .75rem; background: white; padding: 1rem; }

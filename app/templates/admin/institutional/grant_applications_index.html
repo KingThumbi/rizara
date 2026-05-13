@@ -1,0 +1,42 @@
+{% extends "layouts/base_admin.html" %}
+{% from "admin/institutional/_shared.html" import status_badge, flash_messages %}
+
+{% block page_title %}Grant Applications{% endblock %}
+
+{% block breadcrumbs %}
+  <a href="{{ url_for('admin.dashboard') }}" class="font-semibold text-jungle hover:text-jungleLight transition">Dashboard</a>
+  <span>/</span><a href="{{ url_for('institutional.grants_index') }}" class="font-semibold text-jungle hover:text-jungleLight transition">Grants</a>
+  <span>/</span><span>Applications</span>
+{% endblock %}
+
+{% block content %}
+  {{ flash_messages() }}
+  <div class="flex items-start justify-between gap-4 mb-6">
+    <div>
+      <h1 class="text-2xl font-bold text-gray-900">Grant Applications</h1>
+      <p class="text-sm text-gray-600 mt-1">Track concept notes, submissions, review status, awards, and withdrawals.</p>
+    </div>
+    <a href="{{ url_for('institutional.grant_applications_new') }}" class="rounded-lg bg-jungle px-4 py-2 text-white font-semibold hover:bg-jungleLight transition">+ New Application</a>
+  </div>
+
+  <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+    <table class="min-w-full">
+      <thead class="bg-gray-50 border-b border-gray-200 text-left text-xs font-semibold text-gray-600 uppercase">
+        <tr><th class="px-4 py-3">Application</th><th class="px-4 py-3">Opportunity</th><th class="px-4 py-3">Requested</th><th class="px-4 py-3">Status</th><th class="px-4 py-3"></th></tr>
+      </thead>
+      <tbody class="divide-y divide-gray-100">
+        {% for application in applications %}
+          <tr class="hover:bg-gray-50">
+            <td class="px-4 py-3"><div class="font-semibold text-gray-900">{{ application.title }}</div><div class="text-xs text-gray-500">{{ application.project_title or 'No project title' }}</div></td>
+            <td class="px-4 py-3 text-sm text-gray-700">{{ application.grant_opportunity.title }}</td>
+            <td class="px-4 py-3 text-sm text-gray-700">{{ application.currency }} {{ application.requested_amount or '-' }}</td>
+            <td class="px-4 py-3">{{ status_badge(application.application_status) }}</td>
+            <td class="px-4 py-3 text-right"><a class="text-sm font-semibold text-jungle hover:underline" href="{{ url_for('institutional.grant_applications_detail', application_id=application.id) }}">Open</a></td>
+          </tr>
+        {% else %}
+          <tr><td colspan="5" class="px-4 py-10 text-center text-gray-600">No grant applications yet.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% endblock %}

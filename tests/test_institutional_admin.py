@@ -13,6 +13,7 @@ from app.models import (
     FieldObservation,
     GrantApplication,
     GrantDocument,
+    GrantImpactMetric,
     GrantMilestone,
     GrantOpportunity,
     GrantReport,
@@ -43,6 +44,7 @@ INSTITUTIONAL_TABLES = [
     GrantApplication.__table__,
     GrantMilestone.__table__,
     GrantReport.__table__,
+    GrantImpactMetric.__table__,
     GrantDocument.__table__,
     StrategicProject.__table__,
     ProjectWorkstream.__table__,
@@ -80,9 +82,20 @@ def make_institutional_app(monkeypatch, tmp_path: Path):
         for key in ("projects", "opportunities"):
             if key in context:
                 labels.extend(item.title for item in context[key])
+        if "applications" in context:
+            labels.extend(item.title for item in context["applications"])
+        for key in ("milestones", "documents"):
+            if key in context:
+                labels.extend(item.title for item in context[key])
+        if "reports" in context:
+            labels.extend(item.report_type for item in context["reports"])
+        if "impact_metrics" in context:
+            labels.extend(item.name for item in context["impact_metrics"])
         for key in ("project", "opportunity"):
             if key in context and getattr(context[key], "title", None):
                 labels.append(context[key].title)
+        if "application" in context and getattr(context["application"], "title", None):
+            labels.append(context["application"].title)
         return "\n".join(labels)
 
     monkeypatch.setattr(institutional_routes, "render_template", fake_render_template)
@@ -206,6 +219,7 @@ def test_institutional_primary_records_get_uuids(monkeypatch, tmp_path):
         application = GrantApplication(title="Rizara Application", grant_opportunity=opportunity)
         milestone = GrantMilestone(title="Baseline due", grant_application=application)
         report = GrantReport(report_type="impact", grant_application=application)
+        impact_metric = GrantImpactMetric(name="Pastoralist income lift", grant_application=application)
         grant_document = GrantDocument(title="Concept note", grant_application=application)
         project = StrategicProject(title="Traceability expansion")
         workstream = ProjectWorkstream(title="Technology", strategic_project=project)
@@ -224,6 +238,7 @@ def test_institutional_primary_records_get_uuids(monkeypatch, tmp_path):
             application,
             milestone,
             report,
+            impact_metric,
             grant_document,
             project,
             workstream,
@@ -268,14 +283,113 @@ def test_archived_primary_records_are_hidden_from_default_lists(monkeypatch, tmp
     assert "Archived Project" not in projects
 
 
+def test_grant_application_execution_flow(monkeypatch, tmp_path):
+    app = make_institutional_app(monkeypatch, tmp_path)
+    client = app.test_client()
+    login_admin(client)
+
+    with app.app_context():
+        opportunity = GrantOpportunity(title="Donor Livestock Resilience Fund")
+        db.session.add(opportunity)
+        db.session.commit()
+        opportunity_id = opportunity.id
+
+    response = client.post(
+        "/admin/grants/applications/new",
+        data={
+            "grant_opportunity_id": str(opportunity_id),
+            "title": "Rizara Livestock Intelligence Grant",
+            "application_status": "submitted",
+            "requested_amount": "250000",
+            "currency": "USD",
+            "project_title": "Livestock Intelligence and Export Readiness",
+        },
+        follow_redirects=True,
+    )
+    assert response.status_code == 200
+    assert "Rizara Livestock Intelligence Grant" in response.get_data(as_text=True)
+
+    with app.app_context():
+        application = GrantApplication.query.filter_by(title="Rizara Livestock Intelligence Grant").one()
+        application_id = application.id
+        assert application.uuid is not None
+
+    for path, data, expected in (
+        (
+            f"/admin/grants/applications/{application_id}/milestones/new",
+            {"title": "Baseline survey complete", "status": "pending", "due_date": "2026-06-30"},
+            "Baseline survey complete",
+        ),
+        (
+            f"/admin/grants/applications/{application_id}/reports/new",
+            {"report_type": "impact", "status": "draft", "due_date": "2026-07-15", "summary": "Initial impact report"},
+            "impact",
+        ),
+        (
+            f"/admin/grants/applications/{application_id}/impact-metrics/new",
+            {"name": "Herders reached", "metric_type": "output", "status": "in_progress", "target_value": "500", "current_value": "120", "unit": "people"},
+            "Herders reached",
+        ),
+        (
+            f"/admin/grants/applications/{application_id}/documents/new",
+            {"title": "Submitted proposal", "document_type": "proposal", "external_url": "https://example.com/proposal"},
+            "Submitted proposal",
+        ),
+    ):
+        response = client.post(path, data=data, follow_redirects=True)
+        assert response.status_code == 200
+        assert expected in response.get_data(as_text=True)
+
+    with app.app_context():
+        assert GrantMilestone.query.filter_by(grant_application_id=application_id).count() == 1
+        assert GrantReport.query.filter_by(grant_application_id=application_id).count() == 1
+        assert GrantImpactMetric.query.filter_by(grant_application_id=application_id).count() == 1
+        assert GrantDocument.query.filter_by(grant_application_id=application_id).count() == 1
+
+
+def test_grant_opportunity_document_registration(monkeypatch, tmp_path):
+    app = make_institutional_app(monkeypatch, tmp_path)
+    client = app.test_client()
+    login_admin(client)
+
+    with app.app_context():
+        opportunity = GrantOpportunity(title="Challenge Fund")
+        db.session.add(opportunity)
+        db.session.commit()
+        opportunity_id = opportunity.id
+
+    response = client.post(
+        f"/admin/grants/{opportunity_id}/documents/new",
+        data={
+            "title": "Eligibility checklist",
+            "document_type": "attachment",
+            "external_url": "https://example.com/checklist",
+        },
+        follow_redirects=True,
+    )
+
+    assert response.status_code == 200
+    assert "Challenge Fund" in response.get_data(as_text=True)
+    with app.app_context():
+        document = GrantDocument.query.filter_by(grant_opportunity_id=opportunity_id).one()
+        assert document.title == "Eligibility checklist"
+        assert document.grant_application_id is None
+
+
 def test_institutional_migration_imports():
     migration = __import__(
         "migrations.versions.f4a9c2d7e8b1_add_institutional_foundation_tables",
         fromlist=["revision", "down_revision"],
     )
+    impact_migration = __import__(
+        "migrations.versions.0b8c6d4e2f31_add_grant_impact_metrics",
+        fromlist=["revision", "down_revision"],
+    )
 
     assert migration.revision == "f4a9c2d7e8b1"
     assert migration.down_revision == "d8f3b2a7c901"
+    assert impact_migration.revision == "0b8c6d4e2f31"
+    assert impact_migration.down_revision == "f4a9c2d7e8b1"
 
     source = Path(migration.__file__).read_text()
     assert "export_compliance" in source

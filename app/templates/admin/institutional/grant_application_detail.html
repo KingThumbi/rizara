@@ -1,0 +1,78 @@
+{% extends "layouts/base_admin.html" %}
+{% from "admin/institutional/_shared.html" import status_badge, flash_messages %}
+
+{% block page_title %}{{ application.title }}{% endblock %}
+
+{% block breadcrumbs %}
+  <a href="{{ url_for('admin.dashboard') }}" class="font-semibold text-jungle hover:text-jungleLight transition">Dashboard</a>
+  <span>/</span><a href="{{ url_for('institutional.grants_index') }}" class="font-semibold text-jungle hover:text-jungleLight transition">Grants</a>
+  <span>/</span><a href="{{ url_for('institutional.grant_applications_index') }}" class="font-semibold text-jungle hover:text-jungleLight transition">Applications</a>
+  <span>/</span><span>{{ application.title }}</span>
+{% endblock %}
+
+{% block content %}
+  {{ flash_messages() }}
+  <div class="flex items-start justify-between gap-4 mb-6">
+    <div>
+      <h1 class="text-2xl font-bold text-gray-900">{{ application.title }}</h1>
+      <p class="text-sm text-gray-600 mt-1">{{ application.grant_opportunity.title }} · {{ application.project_title or 'No project title' }}</p>
+    </div>
+    <div class="flex flex-wrap items-center gap-2">
+      <a href="{{ url_for('institutional.grant_application_documents_new', application_id=application.id) }}" class="rounded-lg border border-gray-300 px-4 py-2 font-semibold text-gray-700 hover:bg-gray-50 transition">Register Document</a>
+      <a href="{{ url_for('institutional.grant_applications_edit', application_id=application.id) }}" class="rounded-lg bg-jungle px-4 py-2 text-white font-semibold hover:bg-jungleLight transition">Edit</a>
+    </div>
+  </div>
+
+  <section class="bg-white rounded-xl shadow-sm border border-gray-200 p-5 space-y-4 mb-6">
+    <div>{{ status_badge(application.application_status) }}</div>
+    <dl class="grid grid-cols-1 md:grid-cols-4 gap-4 text-sm">
+      <div><dt class="font-semibold text-gray-500">Submitted</dt><dd class="text-gray-900 mt-1">{{ application.submission_date or '-' }}</dd></div>
+      <div><dt class="font-semibold text-gray-500">Requested</dt><dd class="text-gray-900 mt-1">{{ application.currency }} {{ application.requested_amount or '-' }}</dd></div>
+      <div><dt class="font-semibold text-gray-500">Awarded</dt><dd class="text-gray-900 mt-1">{{ application.currency }} {{ application.awarded_amount or '-' }}</dd></div>
+      <div><dt class="font-semibold text-gray-500">Opportunity</dt><dd class="text-gray-900 mt-1"><a class="text-jungle hover:underline" href="{{ url_for('institutional.grants_detail', opportunity_id=application.grant_opportunity_id) }}">Open</a></dd></div>
+    </dl>
+    <div><h2 class="font-bold text-gray-900">Summary</h2><p class="text-sm text-gray-700 mt-1 whitespace-pre-line">{{ application.summary or '-' }}</p></div>
+    <div><h2 class="font-bold text-gray-900">Notes</h2><p class="text-sm text-gray-700 mt-1 whitespace-pre-line">{{ application.notes or '-' }}</p></div>
+  </section>
+
+  <section class="grid grid-cols-1 xl:grid-cols-2 gap-6">
+    <div class="grant-panel">
+      <div class="panel-head"><h2>Milestones</h2><a href="{{ url_for('institutional.grant_milestones_new', application_id=application.id) }}">New milestone</a></div>
+      {% for milestone in milestones %}
+        <a class="record-row" href="{{ url_for('institutional.grant_milestones_edit', application_id=application.id, milestone_id=milestone.id) }}"><span><strong>{{ milestone.title }}</strong><small>Due {{ milestone.due_date or '-' }}</small></span>{{ status_badge(milestone.status) }}</a>
+      {% else %}<p class="empty">No milestones yet.</p>{% endfor %}
+    </div>
+
+    <div class="grant-panel">
+      <div class="panel-head"><h2>Reports</h2><a href="{{ url_for('institutional.grant_reports_new', application_id=application.id) }}">New report</a></div>
+      {% for report in reports %}
+        <a class="record-row" href="{{ url_for('institutional.grant_reports_edit', application_id=application.id, report_id=report.id) }}"><span><strong>{{ report.report_type|replace('_', ' ')|title }}</strong><small>Due {{ report.due_date or '-' }}</small></span>{{ status_badge(report.status) }}</a>
+      {% else %}<p class="empty">No reports yet.</p>{% endfor %}
+    </div>
+
+    <div class="grant-panel">
+      <div class="panel-head"><h2>Impact Metrics</h2><a href="{{ url_for('institutional.grant_impact_metrics_new', application_id=application.id) }}">New metric</a></div>
+      {% for metric in impact_metrics %}
+        <a class="record-row" href="{{ url_for('institutional.grant_impact_metrics_edit', application_id=application.id, metric_id=metric.id) }}"><span><strong>{{ metric.name }}</strong><small>{{ metric.current_value or '-' }} / {{ metric.target_value or '-' }} {{ metric.unit or '' }}</small></span>{{ status_badge(metric.status) }}</a>
+      {% else %}<p class="empty">No impact metrics yet.</p>{% endfor %}
+    </div>
+
+    <div class="grant-panel">
+      <div class="panel-head"><h2>Documents</h2><a href="{{ url_for('institutional.grant_application_documents_new', application_id=application.id) }}">Register document</a></div>
+      {% for document in documents %}
+        <div class="record-row"><span><strong>{{ document.title }}</strong><small>{{ document.document_type|replace('_', ' ')|title }}</small></span>{% if document.external_url %}<a href="{{ document.external_url }}">Open</a>{% endif %}</div>
+      {% else %}<p class="empty">No documents registered.</p>{% endfor %}
+    </div>
+  </section>
+
+  <style>
+    .grant-panel { background: white; border: 1px solid #e5e7eb; border-radius: .75rem; padding: 1.25rem; box-shadow: 0 1px 2px rgba(0,0,0,.04); }
+    .panel-head { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: 1rem; }
+    .panel-head h2 { font-size: 1.05rem; font-weight: 800; color: #111827; }
+    .panel-head a, .record-row > a { font-size: .875rem; font-weight: 700; color: #1f6f54; }
+    .record-row { display: flex; align-items: center; justify-content: space-between; gap: 1rem; border: 1px solid #e5e7eb; border-radius: .5rem; padding: .85rem; margin-bottom: .75rem; }
+    .record-row strong { display: block; color: #111827; }
+    .record-row small { display: block; color: #6b7280; margin-top: .2rem; }
+    .empty { font-size: .875rem; color: #6b7280; }
+  </style>
+{% endblock %}
