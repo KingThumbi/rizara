@@ -1176,14 +1176,46 @@ class FieldLivestockIntake(db.Model):
     intake_status = db.Column(db.String(40), nullable=False, default="draft", index=True)
     notes = db.Column(db.Text, nullable=True)
     created_by_user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=True, index=True)
+    reviewed_by_user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=True, index=True)
+    reviewed_at = db.Column(db.DateTime, nullable=True, index=True)
+    handoff_status = db.Column(db.String(40), nullable=False, default="none", index=True)
+    handoff_notes = db.Column(db.Text, nullable=True)
+    linked_aggregation_batch_id = db.Column(db.Integer, db.ForeignKey("aggregation_batch.id"), nullable=True, index=True)
+    linked_procurement_record_id = db.Column(db.Integer, db.ForeignKey("procurement_records.id"), nullable=True, index=True)
     created_at = db.Column(db.DateTime, default=utcnow_naive, nullable=False, index=True)
     updated_at = db.Column(db.DateTime, default=utcnow_naive, onupdate=utcnow_naive, nullable=False)
 
     stakeholder = db.relationship("Stakeholder", back_populates="livestock_intakes", lazy="joined")
     created_by = db.relationship("User", foreign_keys=[created_by_user_id], lazy="joined")
+    reviewed_by = db.relationship("User", foreign_keys=[reviewed_by_user_id], lazy="joined")
+    linked_aggregation_batch = db.relationship("AggregationBatch", foreign_keys=[linked_aggregation_batch_id], lazy="joined")
+    linked_procurement_record = db.relationship("ProcurementRecord", foreign_keys=[linked_procurement_record_id], lazy="joined")
+    activities = db.relationship(
+        "FieldLivestockIntakeActivity",
+        back_populates="intake",
+        lazy="select",
+        order_by="desc(FieldLivestockIntakeActivity.created_at)",
+    )
 
     def __repr__(self) -> str:
         return f"<FieldLivestockIntake {self.id} {self.animal_type} {self.count}>"
+
+
+class FieldLivestockIntakeActivity(db.Model):
+    __tablename__ = "field_livestock_intake_activity"
+
+    id = db.Column(db.Integer, primary_key=True)
+    uuid = db.Column(UUID(as_uuid=True), default=uuid.uuid4, nullable=False, unique=True, index=True)
+    intake_id = db.Column(db.Integer, db.ForeignKey("field_livestock_intake.id"), nullable=False, index=True)
+    event_type = db.Column(db.String(50), nullable=False, index=True)
+    from_status = db.Column(db.String(40), nullable=True)
+    to_status = db.Column(db.String(40), nullable=True)
+    notes = db.Column(db.Text, nullable=True)
+    created_by_user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=True, index=True)
+    created_at = db.Column(db.DateTime, default=utcnow_naive, nullable=False, index=True)
+
+    intake = db.relationship("FieldLivestockIntake", back_populates="activities", lazy="joined")
+    created_by = db.relationship("User", foreign_keys=[created_by_user_id], lazy="joined")
 
 
 # =========================================================
