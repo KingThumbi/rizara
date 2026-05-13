@@ -18,7 +18,7 @@
       <p class="text-sm text-gray-600 mt-1">{{ sale.stakeholder.name if sale.stakeholder else sale.buyer_name or 'Walk-in buyer' }}</p>
     </div>
     <div class="flex flex-wrap gap-2">
-      <button class="rounded-lg border border-gray-300 px-4 py-2 font-semibold text-gray-700 bg-gray-50" disabled>Printable Receipt Pending</button>
+      <a href="{{ url_for('kaewa.rural_service_sales_receipt', sale_id=sale.id) }}" class="rounded-lg border border-gray-300 px-4 py-2 font-semibold text-gray-700 hover:bg-gray-50 transition">Printable Receipt</a>
       {% if sale.status == 'draft' %}
         <form method="POST" action="{{ url_for('kaewa.rural_service_sales_complete', sale_id=sale.id) }}"><button class="rounded-lg bg-jungle px-4 py-2 text-white font-semibold hover:bg-jungleLight transition">Complete Sale</button></form>
       {% endif %}

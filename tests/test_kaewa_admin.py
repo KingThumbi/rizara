@@ -140,6 +140,12 @@ def make_kaewa_app(monkeypatch, tmp_path: Path):
         if "sale" in context:
             sale = context["sale"]
             labels.extend([str(sale.sale_number), str(sale.status or "")])
+            if template.endswith("rural_service_sale_receipt.html"):
+                labels.extend(["Rizara Meats Ltd", "Kaewa Aggregation & Liaison Office"])
+                if sale.status == "draft":
+                    labels.append("Receipt available after sale completion.")
+                if sale.status == "cancelled":
+                    labels.append("Cancelled sale. This is not a valid paid receipt.")
             for item in sale.items:
                 labels.extend([item.product.name, str(item.quantity), str(item.line_total)])
         if "total" in context:
@@ -237,6 +243,9 @@ def test_kaewa_routes_require_login(monkeypatch, tmp_path):
     ):
         response = client.post(path)
         assert response.status_code in (302, 401)
+
+    response = client.get("/admin/kaewa/rural-services/sales/1/receipt")
+    assert response.status_code in (302, 401)
 
 
 def test_kaewa_dashboard_loads_for_admin(monkeypatch, tmp_path):
@@ -948,3 +957,149 @@ def test_rural_sales_no_mpesa_integration_routes(monkeypatch, tmp_path):
     routes = {rule.rule for rule in app.url_map.iter_rules()}
     assert "/admin/kaewa/rural-services/sales/mpesa" not in routes
     assert "/admin/kaewa/rural-services/sales/<int:sale_id>/mpesa" not in routes
+
+
+def test_completed_rural_service_sale_receipt_loads(monkeypatch, tmp_path):
+    app = make_kaewa_app(monkeypatch, tmp_path)
+    client = app.test_client()
+    login_admin(client)
+
+    with app.app_context():
+        product = RuralServiceProduct(name="Receipt Feed", category="animal_feed", unit="bag")
+        sale = RuralServiceSale(
+            sale_number="KRS-RECEIPT-001",
+            buyer_name="Receipt Buyer",
+            buyer_phone="0700000000",
+            payment_method="cash",
+            payment_reference="CASH-001",
+            sale_date=date(2026, 5, 13),
+            status="completed",
+            created_by_user_id=1,
+        )
+        sale.items.append(RuralServiceSaleItem(product=product, quantity=2, unit_price=300, line_total=600))
+        db.session.add(sale)
+        db.session.commit()
+        sale_id = sale.id
+
+    response = client.get(f"/admin/kaewa/rural-services/sales/{sale_id}/receipt")
+    body = response.get_data(as_text=True)
+
+    assert response.status_code == 200
+    assert "Rizara Meats Ltd" in body
+    assert "Kaewa Aggregation & Liaison Office" in body
+    assert "KRS-RECEIPT-001" in body
+    assert "Receipt Feed" in body
+    assert "600" in body
+
+
+def test_draft_rural_service_sale_receipt_safe_message(monkeypatch, tmp_path):
+    app = make_kaewa_app(monkeypatch, tmp_path)
+    client = app.test_client()
+    login_admin(client)
+
+    with app.app_context():
+        sale = RuralServiceSale(
+            sale_number="KRS-DRAFT-001",
+            payment_method="cash",
+            sale_date=date(2026, 5, 13),
+            status="draft",
+        )
+        db.session.add(sale)
+        db.session.commit()
+        sale_id = sale.id
+
+    response = client.get(f"/admin/kaewa/rural-services/sales/{sale_id}/receipt")
+    body = response.get_data(as_text=True)
+
+    assert response.status_code == 200
+    assert "Receipt available after sale completion." in body
+    assert "draft" in body
+
+
+def test_cancelled_rural_service_sale_receipt_marked_cancelled(monkeypatch, tmp_path):
+    app = make_kaewa_app(monkeypatch, tmp_path)
+    client = app.test_client()
+    login_admin(client)
+
+    with app.app_context():
+        sale = RuralServiceSale(
+            sale_number="KRS-CANCELLED-001",
+            payment_method="cash",
+            sale_date=date(2026, 5, 13),
+            status="cancelled",
+        )
+        db.session.add(sale)
+        db.session.commit()
+        sale_id = sale.id
+
+    response = client.get(f"/admin/kaewa/rural-services/sales/{sale_id}/receipt")
+    body = response.get_data(as_text=True)
+
+    assert response.status_code == 200
+    assert "Cancelled sale. This is not a valid paid receipt." in body
+    assert "cancelled" in body
+
+
+def test_rural_service_receipt_does_not_mutate_stock(monkeypatch, tmp_path):
+    app = make_kaewa_app(monkeypatch, tmp_path)
+    client = app.test_client()
+    login_admin(client)
+
+    with app.app_context():
+        product = RuralServiceProduct(name="Receipt Tool", category="farm_tool", unit="piece")
+        db.session.add(product)
+        db.session.flush()
+        db.session.add_all(
+            [
+                RuralServiceStockMovement(product_id=product.id, movement_type="opening_stock", quantity=5),
+                RuralServiceStockMovement(product_id=product.id, movement_type="sale", quantity=2),
+            ]
+        )
+        sale = RuralServiceSale(
+            sale_number="KRS-READONLY-001",
+            payment_method="cash",
+            sale_date=date(2026, 5, 13),
+            status="completed",
+        )
+        sale.items.append(RuralServiceSaleItem(product=product, quantity=2, unit_price=50, line_total=100))
+        db.session.add(sale)
+        db.session.commit()
+        sale_id = sale.id
+        product_id = product.id
+        stock_before = rural_stock(product_id)
+        movement_count_before = RuralServiceStockMovement.query.count()
+
+    response = client.get(f"/admin/kaewa/rural-services/sales/{sale_id}/receipt")
+
+    assert response.status_code == 200
+    with app.app_context():
+        assert rural_stock(product_id) == stock_before
+        assert RuralServiceStockMovement.query.count() == movement_count_before
+
+
+def test_rural_service_receipt_does_not_create_payment_records(monkeypatch, tmp_path):
+    app = make_kaewa_app(monkeypatch, tmp_path)
+    client = app.test_client()
+    login_admin(client)
+
+    with app.app_context():
+        sale = RuralServiceSale(
+            sale_number="KRS-NOPAY-001",
+            payment_method="cash",
+            sale_date=date(2026, 5, 13),
+            status="completed",
+        )
+        db.session.add(sale)
+        db.session.commit()
+        sale_id = sale.id
+        inspector = sa.inspect(db.engine)
+        assert not inspector.has_table("invoice_payments")
+        assert not inspector.has_table("sale_payments")
+
+    response = client.get(f"/admin/kaewa/rural-services/sales/{sale_id}/receipt")
+
+    assert response.status_code == 200
+    with app.app_context():
+        inspector = sa.inspect(db.engine)
+        assert not inspector.has_table("invoice_payments")
+        assert not inspector.has_table("sale_payments")

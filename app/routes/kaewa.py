@@ -327,6 +327,18 @@ def rural_service_sales_detail(sale_id: int):
     )
 
 
+@kaewa_bp.route("/rural-services/sales/<int:sale_id>/receipt", methods=["GET"])
+@admin_required
+def rural_service_sales_receipt(sale_id: int):
+    sale = RuralServiceSale.query.get_or_404(sale_id)
+    return render_template(
+        "admin/kaewa/rural_service_sale_receipt.html",
+        sale=sale,
+        total=_sale_total(sale),
+        generated_at=utcnow_naive(),
+    )
+
+
 @kaewa_bp.route("/rural-services/sales/<int:sale_id>/complete", methods=["POST"])
 @admin_required
 def rural_service_sales_complete(sale_id: int):
