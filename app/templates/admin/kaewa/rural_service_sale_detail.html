@@ -6,7 +6,7 @@
 {% block breadcrumbs %}
   <a href="{{ url_for('admin.dashboard') }}" class="font-semibold text-jungle hover:text-jungleLight transition">Dashboard</a>
   <span>/</span><a href="{{ url_for('kaewa.dashboard') }}" class="font-semibold text-jungle hover:text-jungleLight transition">Kaewa</a>
-  <span>/</span><a href="{{ url_for('kaewa.rural_service_sales_index') }}" class="font-semibold text-jungle hover:text-jungleLight transition">Rural Sales</a>
+  <span>/</span><a href="{{ url_for('kaewa.rural_service_sales_index') }}" class="font-semibold text-jungle hover:text-jungleLight transition">Rural Services Sales</a>
   <span>/</span><span>{{ sale.sale_number }}</span>
 {% endblock %}
 
@@ -45,6 +45,8 @@
           <span><strong>{{ item.product.name }}</strong><small class="block text-gray-500">{{ item.quantity }} {{ item.product.unit }} × {{ item.unit_price }}</small></span>
           <span class="font-bold text-gray-900">{{ item.line_total }}</span>
         </div>
+      {% else %}
+        <p class="text-sm text-gray-500">No sale items recorded yet.</p>
       {% endfor %}
     </div>
   </section>

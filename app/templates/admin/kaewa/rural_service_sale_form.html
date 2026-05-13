@@ -1,12 +1,12 @@
 {% extends "layouts/base_admin.html" %}
 {% from "admin/institutional/_shared.html" import text_input, textarea, flash_messages %}
 
-{% block page_title %}{{ action }} Rural Sale{% endblock %}
+{% block page_title %}{{ action }} Rural Services Sale{% endblock %}
 
 {% block breadcrumbs %}
   <a href="{{ url_for('admin.dashboard') }}" class="font-semibold text-jungle hover:text-jungleLight transition">Dashboard</a>
   <span>/</span><a href="{{ url_for('kaewa.dashboard') }}" class="font-semibold text-jungle hover:text-jungleLight transition">Kaewa</a>
-  <span>/</span><a href="{{ url_for('kaewa.rural_service_sales_index') }}" class="font-semibold text-jungle hover:text-jungleLight transition">Rural Sales</a>
+  <span>/</span><a href="{{ url_for('kaewa.rural_service_sales_index') }}" class="font-semibold text-jungle hover:text-jungleLight transition">Rural Services Sales</a>
   <span>/</span><span>{{ action }}</span>
 {% endblock %}
 

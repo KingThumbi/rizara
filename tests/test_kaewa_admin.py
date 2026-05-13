@@ -4,7 +4,7 @@ from datetime import date, datetime
 from pathlib import Path
 
 import sqlalchemy as sa
-from flask import Flask
+from flask import Flask, url_for
 from flask_login import LoginManager
 from werkzeug.security import generate_password_hash
 
@@ -292,6 +292,88 @@ def test_kaewa_routes_require_login(monkeypatch, tmp_path):
 
     response = client.get("/admin/kaewa/rural-services/sales/1/receipt")
     assert response.status_code in (302, 401)
+
+
+def test_all_kaewa_routes_require_login(monkeypatch, tmp_path):
+    app = make_kaewa_app(monkeypatch, tmp_path)
+    client = app.test_client()
+
+    with app.test_request_context():
+        route_checks = []
+        for rule in app.url_map.iter_rules():
+            if not rule.endpoint.startswith("kaewa."):
+                continue
+            values = {argument: 1 for argument in rule.arguments}
+            path = url_for(rule.endpoint, **values)
+            for method in sorted(rule.methods - {"HEAD", "OPTIONS"}):
+                route_checks.append((method, path))
+
+    assert route_checks
+    for method, path in route_checks:
+        response = client.open(path, method=method)
+        assert response.status_code in (302, 401), f"{method} {path} was not guarded"
+
+
+def test_all_kaewa_routes_reject_non_admin_users(monkeypatch, tmp_path):
+    app = make_kaewa_app(monkeypatch, tmp_path)
+    client = app.test_client()
+
+    with app.app_context():
+        staff = User(
+            name="Staff User",
+            email="staff@example.com",
+            password_hash=generate_password_hash("CorrectPass123!"),
+            role="staff",
+            is_admin=False,
+        )
+        db.session.add(staff)
+        db.session.commit()
+        staff_id = staff.id
+
+    with client.session_transaction() as session:
+        session["_user_id"] = str(staff_id)
+        session["_fresh"] = True
+
+    with app.test_request_context():
+        route_checks = []
+        for rule in app.url_map.iter_rules():
+            if not rule.endpoint.startswith("kaewa."):
+                continue
+            values = {argument: 1 for argument in rule.arguments}
+            path = url_for(rule.endpoint, **values)
+            for method in sorted(rule.methods - {"HEAD", "OPTIONS"}):
+                route_checks.append((method, path))
+
+    assert route_checks
+    for method, path in route_checks:
+        response = client.open(path, method=method)
+        assert response.status_code == 403, f"{method} {path} did not reject staff access"
+
+
+def test_kaewa_mutating_action_routes_are_post_only(monkeypatch, tmp_path):
+    app = make_kaewa_app(monkeypatch, tmp_path)
+    action_endpoints = {
+        "kaewa.stakeholder_activities_new",
+        "kaewa.intakes_status_update",
+        "kaewa.intakes_mark_ready_for_aggregation",
+        "kaewa.intakes_link_aggregation_batch",
+        "kaewa.holding_pens_assign",
+        "kaewa.holding_assignments_release",
+        "kaewa.holding_pen_activities_new",
+        "kaewa.rural_service_sales_complete",
+        "kaewa.rural_service_sales_cancel",
+        "kaewa.reconciliations_submit",
+        "kaewa.reconciliations_review",
+    }
+
+    found = set()
+    for rule in app.url_map.iter_rules():
+        if rule.endpoint in action_endpoints:
+            found.add(rule.endpoint)
+            methods = rule.methods - {"HEAD", "OPTIONS"}
+            assert methods == {"POST"}, f"{rule.endpoint} allows {methods}"
+
+    assert found == action_endpoints
 
 
 def test_kaewa_dashboard_loads_for_admin(monkeypatch, tmp_path):

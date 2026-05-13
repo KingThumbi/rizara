@@ -5,7 +5,7 @@
 {% block breadcrumbs %}
   <a href="{{ url_for('admin.dashboard') }}" class="font-semibold text-jungle hover:text-jungleLight transition">Dashboard</a>
   <span>/</span><a href="{{ url_for('kaewa.dashboard') }}" class="font-semibold text-jungle hover:text-jungleLight transition">Kaewa</a>
-  <span>/</span><a href="{{ url_for('kaewa.rural_service_sales_index') }}" class="font-semibold text-jungle hover:text-jungleLight transition">Rural Sales</a>
+  <span>/</span><a href="{{ url_for('kaewa.rural_service_sales_index') }}" class="font-semibold text-jungle hover:text-jungleLight transition">Rural Services Sales</a>
   <span>/</span><a href="{{ url_for('kaewa.rural_service_sales_detail', sale_id=sale.id) }}" class="font-semibold text-jungle hover:text-jungleLight transition">{{ sale.sale_number }}</a>
   <span>/</span><span>Receipt</span>
 {% endblock %}
