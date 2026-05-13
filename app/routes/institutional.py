@@ -558,6 +558,34 @@ def grant_applications_detail(application_id: int):
     )
 
 
+@institutional_bp.route("/grants/applications/<int:application_id>/report-preview", methods=["GET"])
+@admin_required
+def grant_application_report_preview(application_id: int):
+    package = assemble_grant_reporting_package(application_id)
+    readiness_notes = []
+    if not package["milestones"]:
+        readiness_notes.append("Add milestones to show implementation progress.")
+    if not package["reports"]:
+        readiness_notes.append("Add reporting records to clarify donor obligations.")
+    if not package["impact_metrics"]:
+        readiness_notes.append("Add impact metrics or link operational metrics for donor-ready results.")
+
+    evidence_count = sum(len(item["evidence"]) for item in package["milestones"])
+    evidence_count += sum(len(item["evidence"]) for item in package["reports"])
+    evidence_count += sum(len(item["evidence"]) for item in package["impact_metrics"])
+    if not evidence_count:
+        readiness_notes.append("Attach evidence records for stronger verification.")
+
+    return render_template(
+        "admin/institutional/grant_report_preview.html",
+        package=package,
+        application=package["application"],
+        opportunity=package["opportunity"],
+        readiness_notes=readiness_notes,
+        evidence_count=evidence_count,
+    )
+
+
 @institutional_bp.route("/grants/applications/<int:application_id>/report-export.csv", methods=["GET"])
 @admin_required
 def grant_application_report_export_csv(application_id: int):

@@ -120,6 +120,23 @@ def make_institutional_app(monkeypatch, tmp_path: Path):
                 labels.append(context[key].title)
         if "application" in context and getattr(context["application"], "title", None):
             labels.append(context["application"].title)
+        if "opportunity" in context and getattr(context["opportunity"], "title", None):
+            labels.append(context["opportunity"].title)
+        if "package" in context:
+            package = context["package"]
+            labels.append(package["summary"]["title"])
+            for item in package["milestones"]:
+                labels.append(item["record"].title)
+            for item in package["reports"]:
+                labels.append(item["record"].report_type)
+            for item in package["impact_metrics"]:
+                labels.append(item["record"].name)
+                linked = item.get("linked_operational_metric")
+                if linked:
+                    labels.append(linked["metric_name"])
+                    if linked.get("latest_value") is not None:
+                        labels.append(str(linked["latest_value"]))
+            labels.extend(context.get("readiness_notes", []))
         return "\n".join(labels)
 
     monkeypatch.setattr(institutional_routes, "render_template", fake_render_template)
@@ -640,6 +657,99 @@ def test_grant_reporting_csv_export(monkeypatch, tmp_path):
     assert "record_type,title,status" in body
     assert "Submit baseline" in body
     assert "impact_metric,Animals procured" in body
+
+
+def test_grant_report_preview_requires_login(monkeypatch, tmp_path):
+    app = make_institutional_app(monkeypatch, tmp_path)
+    client = app.test_client()
+
+    response = client.get("/admin/grants/applications/1/report-preview")
+
+    assert response.status_code in (302, 401)
+
+
+def test_grant_report_preview_loads_with_package_data(monkeypatch, tmp_path):
+    app = make_institutional_app(monkeypatch, tmp_path)
+    client = app.test_client()
+    login_admin(client)
+
+    with app.app_context():
+        opportunity = GrantOpportunity(title="Donor Preview Fund", focus_area="Livestock resilience")
+        application = GrantApplication(
+            title="Donor Preview Application",
+            grant_opportunity=opportunity,
+            requested_amount=100000,
+            awarded_amount=75000,
+            currency="USD",
+            project_title="Livestock Intelligence Pilot",
+            summary="Executive summary content.",
+        )
+        milestone = GrantMilestone(title="Baseline completed", status="completed", grant_application=application)
+        report = GrantReport(report_type="impact", status="draft", grant_application=application)
+        metric = GrantImpactMetric(
+            name="Pastoralists onboarded",
+            metric_code="pastoralists_onboarded",
+            current_value=25,
+            target_value=100,
+            unit="people",
+            grant_application=application,
+        )
+        db.session.add_all([application, milestone, report, metric])
+        db.session.flush()
+        db.session.add_all(
+            [
+                ImpactSnapshot(
+                    snapshot_date=date(2026, 5, 13),
+                    metric_code="pastoralists_onboarded",
+                    metric_name="Pastoralists Onboarded",
+                    metric_category="livestock_supply",
+                    metric_value=30,
+                    metric_unit="people",
+                    source_module="farmers",
+                ),
+                EvidenceRecord(
+                    linked_model_type="GrantMilestone",
+                    linked_model_id=milestone.id,
+                    title="Baseline evidence",
+                    evidence_type="milestone_proof",
+                ),
+            ]
+        )
+        db.session.commit()
+        application_id = application.id
+
+    response = client.get(f"/admin/grants/applications/{application_id}/report-preview")
+    body = response.get_data(as_text=True)
+
+    assert response.status_code == 200
+    assert "Donor Preview Application" in body
+    assert "Donor Preview Fund" in body
+    assert "Baseline completed" in body
+    assert "impact" in body
+    assert "Pastoralists onboarded" in body
+    assert "Pastoralists Onboarded" in body
+    assert "30" in body
+
+
+def test_grant_report_preview_handles_empty_package(monkeypatch, tmp_path):
+    app = make_institutional_app(monkeypatch, tmp_path)
+    client = app.test_client()
+    login_admin(client)
+
+    with app.app_context():
+        opportunity = GrantOpportunity(title="Empty Preview Fund")
+        application = GrantApplication(title="Empty Preview Application", grant_opportunity=opportunity)
+        db.session.add(application)
+        db.session.commit()
+        application_id = application.id
+
+    response = client.get(f"/admin/grants/applications/{application_id}/report-preview")
+    body = response.get_data(as_text=True)
+
+    assert response.status_code == 200
+    assert "Empty Preview Application" in body
+    assert "Add milestones to show implementation progress." in body
+    assert "Add impact metrics or link operational metrics for donor-ready results." in body
 
 
 def test_institutional_migration_imports():

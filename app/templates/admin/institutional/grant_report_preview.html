@@ -1,0 +1,178 @@
+{% extends "layouts/base_admin.html" %}
+{% from "admin/institutional/_shared.html" import status_badge %}
+
+{% block page_title %}Donor Report Preview{% endblock %}
+
+{% block breadcrumbs %}
+  <a href="{{ url_for('admin.dashboard') }}" class="font-semibold text-jungle hover:text-jungleLight transition">Dashboard</a>
+  <span>/</span><a href="{{ url_for('institutional.grants_index') }}" class="font-semibold text-jungle hover:text-jungleLight transition">Grants</a>
+  <span>/</span><a href="{{ url_for('institutional.grant_applications_detail', application_id=application.id) }}" class="font-semibold text-jungle hover:text-jungleLight transition">{{ application.title }}</a>
+  <span>/</span><span>Report Preview</span>
+{% endblock %}
+
+{% block content %}
+  <div class="print-actions flex items-start justify-between gap-4 mb-6">
+    <div>
+      <h1 class="text-2xl font-bold text-gray-900">Donor Report Preview</h1>
+      <p class="text-sm text-gray-600 mt-1">{{ application.title }} · {{ opportunity.title }}</p>
+    </div>
+    <div class="flex items-center gap-2">
+      <button onclick="window.print()" class="rounded-lg border border-gray-300 px-4 py-2 font-semibold text-gray-700 hover:bg-gray-50 transition">Print</button>
+      <a href="{{ url_for('institutional.grant_application_report_export_csv', application_id=application.id) }}" class="rounded-lg border border-gray-300 px-4 py-2 font-semibold text-gray-700 hover:bg-gray-50 transition">Export CSV</a>
+    </div>
+  </div>
+
+  <article class="report-page bg-white border border-gray-200 rounded-xl shadow-sm p-8">
+    <header class="report-header">
+      <p class="text-sm font-semibold text-jungle uppercase tracking-wide">Rizara Meats Ltd</p>
+      <h2>{{ application.project_title or application.title }}</h2>
+      <p>{{ opportunity.focus_area or 'Institutional grant reporting package' }}</p>
+    </header>
+
+    <section class="report-section">
+      <h3>Grant / Application Summary</h3>
+      <dl class="report-grid">
+        <div><dt>Application</dt><dd>{{ application.title }}</dd></div>
+        <div><dt>Status</dt><dd>{{ application.application_status|replace('_', ' ')|title }}</dd></div>
+        <div><dt>Opportunity</dt><dd>{{ opportunity.title }}</dd></div>
+        <div><dt>Donor</dt><dd>{{ opportunity.donor_organization.name if opportunity.donor_organization else '-' }}</dd></div>
+        <div><dt>Requested</dt><dd>{{ application.currency }} {{ application.requested_amount or '-' }}</dd></div>
+        <div><dt>Awarded</dt><dd>{{ application.currency }} {{ application.awarded_amount or '-' }}</dd></div>
+        <div><dt>Submitted</dt><dd>{{ application.submission_date or '-' }}</dd></div>
+        <div><dt>Deadline</dt><dd>{{ opportunity.deadline or '-' }}</dd></div>
+      </dl>
+    </section>
+
+    <section class="report-section narrative">
+      <h3>Executive Summary</h3>
+      <p>{{ application.summary or 'Narrative placeholder: summarize the purpose of the grant, the implementation period, and the institutional value of Rizara livestock intelligence work.' }}</p>
+    </section>
+
+    <section class="report-section narrative">
+      <h3>Implementation Progress</h3>
+      <p>Narrative placeholder: describe field execution, partner coordination, delivery progress, and changes since the last donor update.</p>
+    </section>
+
+    <section class="report-section">
+      <h3>Key Impact Metrics</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Metric</th><th>Status</th><th>Current</th><th>Target</th><th>Operational Snapshot</th><th>Evidence</th></tr></thead>
+          <tbody>
+            {% for item in package.impact_metrics %}
+              {% set metric = item.record %}
+              {% set linked = item.linked_operational_metric %}
+              <tr>
+                <td>{{ metric.name }}{% if metric.metric_code %}<br><small>{{ metric.metric_code }}</small>{% endif %}</td>
+                <td>{{ metric.status|replace('_', ' ')|title }}</td>
+                <td>{{ metric.current_value or '-' }} {{ metric.unit or '' }}</td>
+                <td>{{ metric.target_value or '-' }} {{ metric.unit or '' }}</td>
+                <td>{% if linked %}{{ linked.latest_value or '-' }} {{ linked.unit or '' }}{% if linked.latest_date %}<br><small>{{ linked.latest_date }}</small>{% endif %}{% else %}-{% endif %}</td>
+                <td>{{ item.evidence|length }}</td>
+              </tr>
+            {% else %}
+              <tr><td colspan="6">No impact metrics registered yet.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="report-section">
+      <h3>Milestones Achieved</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Milestone</th><th>Due Date</th><th>Status</th><th>Evidence</th></tr></thead>
+          <tbody>
+            {% for item in package.milestones %}
+              {% set milestone = item.record %}
+              <tr><td>{{ milestone.title }}</td><td>{{ milestone.due_date or '-' }}</td><td>{{ milestone.status|replace('_', ' ')|title }}</td><td>{{ item.evidence|length }}</td></tr>
+            {% else %}
+              <tr><td colspan="4">No milestones registered yet.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="report-section">
+      <h3>Reporting Records</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Type</th><th>Period</th><th>Due</th><th>Submitted</th><th>Status</th><th>Evidence</th></tr></thead>
+          <tbody>
+            {% for item in package.reports %}
+              {% set report = item.record %}
+              <tr>
+                <td>{{ report.report_type|replace('_', ' ')|title }}</td>
+                <td>{{ report.reporting_period_start or '-' }} to {{ report.reporting_period_end or '-' }}</td>
+                <td>{{ report.due_date or '-' }}</td>
+                <td>{{ report.submitted_date or '-' }}</td>
+                <td>{{ report.status|replace('_', ' ')|title }}</td>
+                <td>{{ item.evidence|length }}</td>
+              </tr>
+            {% else %}
+              <tr><td colspan="6">No reporting records registered yet.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="report-section narrative">
+      <h3>Evidence Summary</h3>
+      <p>{{ evidence_count }} evidence record{{ '' if evidence_count == 1 else 's' }} linked to this reporting package.</p>
+    </section>
+
+    <section class="report-section narrative">
+      <h3>Challenges / Risks</h3>
+      <p>Narrative placeholder: summarize implementation risks, donor dependencies, field constraints, and mitigation steps.</p>
+    </section>
+
+    <section class="report-section narrative">
+      <h3>Next Steps</h3>
+      <p>Narrative placeholder: outline immediate actions, next reporting milestones, and planned evidence collection.</p>
+    </section>
+
+    <section class="report-section narrative">
+      <h3>Reporting Readiness Notes</h3>
+      {% if readiness_notes %}
+        <ul>
+          {% for note in readiness_notes %}
+            <li>{{ note }}</li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <p>This application has core milestones, reports, impact metrics, and evidence attached for donor review.</p>
+      {% endif %}
+    </section>
+  </article>
+
+  <style>
+    .report-page { color: #111827; }
+    .report-header { border-bottom: 2px solid #e5e7eb; padding-bottom: 1.25rem; margin-bottom: 1.5rem; }
+    .report-header h2 { font-size: 1.75rem; font-weight: 800; margin-top: .35rem; }
+    .report-header p { color: #4b5563; }
+    .report-section { break-inside: avoid; margin-top: 1.5rem; }
+    .report-section h3 { font-size: 1rem; font-weight: 800; color: #111827; margin-bottom: .75rem; text-transform: uppercase; letter-spacing: .02em; }
+    .report-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .75rem; }
+    .report-grid div { border: 1px solid #e5e7eb; border-radius: .5rem; padding: .75rem; }
+    .report-grid dt { font-size: .75rem; font-weight: 700; color: #6b7280; text-transform: uppercase; }
+    .report-grid dd { margin-top: .25rem; font-weight: 700; }
+    .narrative p, .narrative li { color: #374151; line-height: 1.65; }
+    .narrative ul { list-style: disc; padding-left: 1.25rem; }
+    .table-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: .875rem; }
+    th, td { border: 1px solid #e5e7eb; padding: .65rem; text-align: left; vertical-align: top; }
+    th { background: #f9fafb; font-size: .75rem; text-transform: uppercase; color: #4b5563; }
+    small { color: #6b7280; }
+    @media print {
+      body { background: white !important; }
+      nav, footer, .print-actions, [aria-label="Breadcrumb"] { display: none !important; }
+      main { padding: 0 !important; }
+      .report-page { border: 0 !important; box-shadow: none !important; padding: 0 !important; }
+      .report-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      a { color: inherit !important; text-decoration: none !important; }
+    }
+  </style>
+{% endblock %}
