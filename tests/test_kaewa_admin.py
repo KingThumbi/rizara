@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 
 import sqlalchemy as sa
@@ -19,6 +19,8 @@ from app.models import (
     HoldingPen,
     HoldingPenActivity,
     HoldingPenAssignment,
+    KaewaDailyReconciliation,
+    KaewaDailyReconciliationLine,
     ProcurementRecord,
     ProcurementSource,
     RuralServiceProduct,
@@ -53,6 +55,8 @@ KAEWA_TABLES = [
     RuralServiceSale.__table__,
     RuralServiceSaleItem.__table__,
     RuralServiceStockMovement.__table__,
+    KaewaDailyReconciliation.__table__,
+    KaewaDailyReconciliationLine.__table__,
 ]
 
 
@@ -93,7 +97,10 @@ def make_kaewa_app(monkeypatch, tmp_path: Path):
             "active_assignments",
             "released_assignments",
             "movements",
+            "stock_movements",
             "sales",
+            "reconciliations",
+            "lines",
         ):
             for item in context.get(key, []):
                 for attr in (
@@ -107,6 +114,7 @@ def make_kaewa_app(monkeypatch, tmp_path: Path):
                     "movement_type",
                     "reference",
                     "sale_number",
+                    "reconciliation_date",
                 ):
                     value = getattr(item, attr, None)
                     if value:
@@ -125,6 +133,8 @@ def make_kaewa_app(monkeypatch, tmp_path: Path):
             for summary in context["product_summaries"]:
                 product = summary["product"]
                 labels.extend([product.name, str(summary["stock"])])
+                if "movement_count" in summary:
+                    labels.append(str(summary["movement_count"]))
                 if summary["low_stock"]:
                     labels.append("Low Stock")
         if "rural_product_summaries" in context:
@@ -150,6 +160,32 @@ def make_kaewa_app(monkeypatch, tmp_path: Path):
                 labels.extend([item.product.name, str(item.quantity), str(item.line_total)])
         if "total" in context:
             labels.append(str(context["total"]))
+        for key in ("sales_totals", "totals", "animal_counts"):
+            if key in context:
+                labels.extend(str(value) for value in context[key].values())
+        for key in ("grand_total", "stakeholder_count", "report_date"):
+            if key in context:
+                labels.append(str(context[key]))
+        if "reconciliation" in context:
+            reconciliation = context["reconciliation"]
+            labels.extend(
+                [
+                    str(reconciliation.reconciliation_date or ""),
+                    str(reconciliation.status or ""),
+                    str(reconciliation.expected_cash_total or ""),
+                    str(reconciliation.counted_cash or ""),
+                    str(reconciliation.cash_variance if reconciliation.cash_variance is not None else ""),
+                ]
+            )
+            for line in reconciliation.lines:
+                labels.extend(
+                    [
+                        line.product.name,
+                        str(line.system_stock_qty),
+                        str(line.counted_stock_qty if line.counted_stock_qty is not None else ""),
+                        str(line.variance_qty if line.variance_qty is not None else ""),
+                    ]
+                )
         for key in ("stakeholder", "intake", "pen", "product"):
             item = context.get(key)
             if item is not None:
@@ -228,6 +264,14 @@ def test_kaewa_routes_require_login(monkeypatch, tmp_path):
         "/admin/kaewa/holding-pens",
         "/admin/kaewa/rural-services",
         "/admin/kaewa/rural-services/sales",
+        "/admin/kaewa/reports",
+        "/admin/kaewa/reports/daily",
+        "/admin/kaewa/reports/stock",
+        "/admin/kaewa/reports/sales",
+        "/admin/kaewa/reports/intakes",
+        "/admin/kaewa/reports/stakeholders",
+        "/admin/kaewa/reconciliations",
+        "/admin/kaewa/reconciliations/new",
     ):
         response = client.get(path)
         assert response.status_code in (302, 401)
@@ -240,6 +284,8 @@ def test_kaewa_routes_require_login(monkeypatch, tmp_path):
         "/admin/kaewa/rural-services/products/1/stock-movements/new",
         "/admin/kaewa/rural-services/sales/1/complete",
         "/admin/kaewa/rural-services/sales/1/cancel",
+        "/admin/kaewa/reconciliations/1/submit",
+        "/admin/kaewa/reconciliations/1/review",
     ):
         response = client.post(path)
         assert response.status_code in (302, 401)
@@ -1103,3 +1149,291 @@ def test_rural_service_receipt_does_not_create_payment_records(monkeypatch, tmp_
         inspector = sa.inspect(db.engine)
         assert not inspector.has_table("invoice_payments")
         assert not inspector.has_table("sale_payments")
+
+
+def test_kaewa_reports_load(monkeypatch, tmp_path):
+    app = make_kaewa_app(monkeypatch, tmp_path)
+    client = app.test_client()
+    login_admin(client)
+
+    for path in (
+        "/admin/kaewa/reports",
+        "/admin/kaewa/reports/daily",
+        "/admin/kaewa/reports/stock",
+        "/admin/kaewa/reports/sales",
+        "/admin/kaewa/reports/intakes",
+        "/admin/kaewa/reports/stakeholders",
+    ):
+        response = client.get(path)
+        assert response.status_code == 200
+        assert "admin/kaewa/" in response.get_data(as_text=True)
+
+
+def test_sales_report_totals_completed_sales_only(monkeypatch, tmp_path):
+    app = make_kaewa_app(monkeypatch, tmp_path)
+    client = app.test_client()
+    login_admin(client)
+
+    with app.app_context():
+        product = RuralServiceProduct(name="Report Feed", category="animal_feed", unit="bag")
+        completed_cash = RuralServiceSale(
+            sale_number="KRS-REPORT-001",
+            payment_method="cash",
+            sale_date=date(2026, 5, 14),
+            status="completed",
+        )
+        completed_cash.items.append(RuralServiceSaleItem(product=product, quantity=2, unit_price=100, line_total=200))
+        completed_mpesa = RuralServiceSale(
+            sale_number="KRS-REPORT-002",
+            payment_method="mpesa",
+            sale_date=date(2026, 5, 14),
+            status="completed",
+        )
+        completed_mpesa.items.append(RuralServiceSaleItem(product=product, quantity=1, unit_price=50, line_total=50))
+        draft_sale = RuralServiceSale(
+            sale_number="KRS-DRAFT-REPORT",
+            payment_method="cash",
+            sale_date=date(2026, 5, 14),
+            status="draft",
+        )
+        draft_sale.items.append(RuralServiceSaleItem(product=product, quantity=1, unit_price=999, line_total=999))
+        db.session.add_all([completed_cash, completed_mpesa, draft_sale])
+        db.session.commit()
+
+    response = client.get("/admin/kaewa/reports/sales?start_date=2026-05-14&end_date=2026-05-14")
+    body = response.get_data(as_text=True)
+
+    assert response.status_code == 200
+    assert "KRS-REPORT-001" in body
+    assert "KRS-REPORT-002" in body
+    assert "KRS-DRAFT-REPORT" not in body
+    assert "999" not in body
+
+
+def test_stock_report_shows_low_stock_product(monkeypatch, tmp_path):
+    app = make_kaewa_app(monkeypatch, tmp_path)
+    client = app.test_client()
+    login_admin(client)
+
+    with app.app_context():
+        product = RuralServiceProduct(name="Report Salt", category="mineral_supplement", unit="piece", reorder_level=10)
+        db.session.add(product)
+        db.session.flush()
+        db.session.add(
+            RuralServiceStockMovement(
+                product_id=product.id,
+                movement_type="opening_stock",
+                quantity=5,
+                created_at=datetime(2026, 5, 14, 9, 0, 0),
+            )
+        )
+        db.session.commit()
+
+    response = client.get("/admin/kaewa/reports/stock")
+    body = response.get_data(as_text=True)
+
+    assert response.status_code == 200
+    assert "Report Salt" in body
+    assert "Low Stock" in body
+
+
+def test_create_reconciliation_snapshots_stock_and_sales(monkeypatch, tmp_path):
+    app = make_kaewa_app(monkeypatch, tmp_path)
+    client = app.test_client()
+    login_admin(client)
+
+    with app.app_context():
+        product = RuralServiceProduct(name="Recon Feed", category="animal_feed", unit="bag")
+        db.session.add(product)
+        db.session.flush()
+        db.session.add_all(
+            [
+                RuralServiceStockMovement(
+                    product_id=product.id,
+                    movement_type="opening_stock",
+                    quantity=7,
+                    created_at=datetime(2026, 5, 14, 9, 0, 0),
+                ),
+                RuralServiceStockMovement(
+                    product_id=product.id,
+                    movement_type="sale",
+                    quantity=2,
+                    created_at=datetime(2026, 5, 14, 12, 0, 0),
+                ),
+            ]
+        )
+        completed_sale = RuralServiceSale(
+            sale_number="KRS-RECON-001",
+            payment_method="cash",
+            sale_date=date(2026, 5, 14),
+            status="completed",
+        )
+        completed_sale.items.append(RuralServiceSaleItem(product=product, quantity=2, unit_price=150, line_total=300))
+        draft_sale = RuralServiceSale(
+            sale_number="KRS-RECON-DRAFT",
+            payment_method="cash",
+            sale_date=date(2026, 5, 14),
+            status="draft",
+        )
+        draft_sale.items.append(RuralServiceSaleItem(product=product, quantity=1, unit_price=999, line_total=999))
+        db.session.add_all([completed_sale, draft_sale])
+        db.session.commit()
+        product_id = product.id
+
+    response = client.post(
+        "/admin/kaewa/reconciliations/new",
+        data={
+            "reconciliation_date": "2026-05-14",
+            "office_location": "Kaewa",
+            "opening_cash": "100",
+        },
+        follow_redirects=True,
+    )
+    body = response.get_data(as_text=True)
+
+    assert response.status_code == 200
+    assert "Recon Feed" in body
+    with app.app_context():
+        reconciliation = KaewaDailyReconciliation.query.one()
+        assert reconciliation.uuid is not None
+        assert reconciliation.cash_sales_total == 300
+        assert reconciliation.expected_cash_total == 400
+        line = KaewaDailyReconciliationLine.query.filter_by(product_id=product_id).one()
+        assert line.system_stock_qty == 5
+        assert rural_stock(product_id) == 5
+
+
+def test_duplicate_reconciliation_date_blocked(monkeypatch, tmp_path):
+    app = make_kaewa_app(monkeypatch, tmp_path)
+    client = app.test_client()
+    login_admin(client)
+
+    with app.app_context():
+        db.session.add(KaewaDailyReconciliation(reconciliation_date=date(2026, 5, 14), status="draft"))
+        db.session.commit()
+
+    response = client.post(
+        "/admin/kaewa/reconciliations/new",
+        data={"reconciliation_date": "2026-05-14", "opening_cash": "0"},
+        follow_redirects=True,
+    )
+
+    assert response.status_code == 200
+    with app.app_context():
+        assert KaewaDailyReconciliation.query.count() == 1
+
+
+def test_edit_draft_reconciliation_calculates_variances(monkeypatch, tmp_path):
+    app = make_kaewa_app(monkeypatch, tmp_path)
+    client = app.test_client()
+    login_admin(client)
+
+    with app.app_context():
+        product = RuralServiceProduct(name="Counted Feed", category="animal_feed", unit="bag")
+        reconciliation = KaewaDailyReconciliation(
+            reconciliation_date=date(2026, 5, 14),
+            opening_cash=100,
+            cash_sales_total=300,
+            expected_cash_total=400,
+            status="draft",
+        )
+        reconciliation.lines.append(KaewaDailyReconciliationLine(product=product, system_stock_qty=5))
+        db.session.add(reconciliation)
+        db.session.commit()
+        reconciliation_id = reconciliation.id
+        line_id = reconciliation.lines[0].id
+
+    response = client.post(
+        f"/admin/kaewa/reconciliations/{reconciliation_id}/edit",
+        data={
+            "counted_cash": "350",
+            f"counted_stock_qty_{line_id}": "4",
+            f"line_notes_{line_id}": "One bag missing.",
+        },
+        follow_redirects=True,
+    )
+
+    assert response.status_code == 200
+    with app.app_context():
+        reconciliation = db.session.get(KaewaDailyReconciliation, reconciliation_id)
+        line = db.session.get(KaewaDailyReconciliationLine, line_id)
+        assert reconciliation.cash_variance == -50
+        assert line.variance_qty == -1
+        assert line.notes == "One bag missing."
+
+
+def test_submit_locks_reconciliation_editing_and_review_sets_metadata(monkeypatch, tmp_path):
+    app = make_kaewa_app(monkeypatch, tmp_path)
+    client = app.test_client()
+    login_admin(client)
+
+    with app.app_context():
+        product = RuralServiceProduct(name="Locked Feed", category="animal_feed", unit="bag")
+        reconciliation = KaewaDailyReconciliation(
+            reconciliation_date=date(2026, 5, 14),
+            expected_cash_total=100,
+            status="draft",
+        )
+        reconciliation.lines.append(KaewaDailyReconciliationLine(product=product, system_stock_qty=5))
+        db.session.add(reconciliation)
+        db.session.commit()
+        reconciliation_id = reconciliation.id
+        line_id = reconciliation.lines[0].id
+
+    submit = client.post(f"/admin/kaewa/reconciliations/{reconciliation_id}/submit", follow_redirects=True)
+    edit = client.post(
+        f"/admin/kaewa/reconciliations/{reconciliation_id}/edit",
+        data={"counted_cash": "999", f"counted_stock_qty_{line_id}": "999"},
+        follow_redirects=True,
+    )
+    review = client.post(f"/admin/kaewa/reconciliations/{reconciliation_id}/review", follow_redirects=True)
+
+    assert submit.status_code == 200
+    assert edit.status_code == 200
+    assert review.status_code == 200
+    with app.app_context():
+        reconciliation = db.session.get(KaewaDailyReconciliation, reconciliation_id)
+        line = db.session.get(KaewaDailyReconciliationLine, line_id)
+        assert reconciliation.status == "reviewed"
+        assert reconciliation.reviewed_by_user_id == 1
+        assert reconciliation.reviewed_at is not None
+        assert reconciliation.counted_cash is None
+        assert line.counted_stock_qty is None
+
+
+def test_reconciliation_does_not_mutate_stock_or_create_accounting_tables(monkeypatch, tmp_path):
+    app = make_kaewa_app(monkeypatch, tmp_path)
+    client = app.test_client()
+    login_admin(client)
+
+    with app.app_context():
+        product = RuralServiceProduct(name="Readonly Feed", category="animal_feed", unit="bag")
+        db.session.add(product)
+        db.session.flush()
+        db.session.add(
+            RuralServiceStockMovement(
+                product_id=product.id,
+                movement_type="opening_stock",
+                quantity=4,
+                created_at=datetime(2026, 5, 14, 9, 0, 0),
+            )
+        )
+        db.session.commit()
+        product_id = product.id
+        stock_before = rural_stock(product_id)
+        movement_count_before = RuralServiceStockMovement.query.count()
+
+    response = client.post(
+        "/admin/kaewa/reconciliations/new",
+        data={"reconciliation_date": "2026-05-14", "office_location": "Kaewa", "opening_cash": "0"},
+        follow_redirects=True,
+    )
+
+    assert response.status_code == 200
+    with app.app_context():
+        assert rural_stock(product_id) == stock_before
+        assert RuralServiceStockMovement.query.count() == movement_count_before
+        inspector = sa.inspect(db.engine)
+        assert not inspector.has_table("invoice_payments")
+        assert not inspector.has_table("sale_payments")
+        assert not inspector.has_table("kaewa_accounting_entries")

@@ -1,0 +1,58 @@
+{% extends "layouts/base_admin.html" %}
+
+{% block page_title %}Kaewa Sales Report{% endblock %}
+
+{% block breadcrumbs %}
+  <a href="{{ url_for('admin.dashboard') }}" class="font-semibold text-jungle hover:text-jungleLight transition">Dashboard</a>
+  <span>/</span><a href="{{ url_for('kaewa.dashboard') }}" class="font-semibold text-jungle hover:text-jungleLight transition">Kaewa</a>
+  <span>/</span><a href="{{ url_for('kaewa.reports_index') }}" class="font-semibold text-jungle hover:text-jungleLight transition">Reports</a>
+  <span>/</span><span>Sales</span>
+{% endblock %}
+
+{% block content %}
+  <div class="flex items-start justify-between gap-4 mb-6">
+    <div>
+      <h1 class="text-2xl font-bold text-gray-900">Sales Report</h1>
+      <p class="text-sm text-gray-600 mt-1">Completed rural services sales only. Draft and cancelled sales are excluded.</p>
+    </div>
+    <a href="{{ url_for('kaewa.rural_service_sales_index') }}" class="rounded-lg border border-gray-300 px-4 py-2 font-semibold text-gray-700 hover:bg-gray-50 transition">Sales Register</a>
+  </div>
+
+  <form method="get" class="rounded-xl border border-gray-200 bg-white p-4 shadow-sm mb-6 grid grid-cols-1 md:grid-cols-4 gap-3">
+    <input type="date" name="start_date" value="{{ filters.start_date.isoformat() if filters.start_date else '' }}" class="rounded-lg border border-gray-300 px-3 py-2 text-sm">
+    <input type="date" name="end_date" value="{{ filters.end_date.isoformat() if filters.end_date else '' }}" class="rounded-lg border border-gray-300 px-3 py-2 text-sm">
+    <select name="payment_method" class="rounded-lg border border-gray-300 px-3 py-2 text-sm">
+      <option value="">All methods</option>
+      {% for method in payment_methods %}<option value="{{ method }}" {% if filters.payment_method == method %}selected{% endif %}>{{ method|title }}</option>{% endfor %}
+    </select>
+    <button class="rounded-lg bg-jungle px-4 py-2 text-white font-semibold">Filter</button>
+  </form>
+
+  <section class="grid grid-cols-1 md:grid-cols-3 xl:grid-cols-6 gap-3 mb-6">
+    {% for method, total in totals.items() %}
+      <div class="rounded-xl border border-gray-200 bg-white p-4 shadow-sm"><p class="text-xs text-gray-500">{{ method|title }}</p><p class="mt-1 text-xl font-bold">{{ total }}</p></div>
+    {% endfor %}
+    <div class="rounded-xl border border-gray-200 bg-white p-4 shadow-sm"><p class="text-xs text-gray-500">Total</p><p class="mt-1 text-xl font-bold">{{ grand_total }}</p></div>
+  </section>
+
+  <div class="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
+    <table class="min-w-full">
+      <thead class="bg-gray-50 border-b border-gray-200 text-left text-xs font-semibold text-gray-600 uppercase">
+        <tr><th class="px-4 py-3">Sale</th><th class="px-4 py-3">Date</th><th class="px-4 py-3">Buyer</th><th class="px-4 py-3">Method</th><th class="px-4 py-3">Total</th></tr>
+      </thead>
+      <tbody class="divide-y divide-gray-100">
+        {% for sale in sales %}
+          <tr>
+            <td class="px-4 py-3 font-semibold text-gray-900">{{ sale.sale_number }}</td>
+            <td class="px-4 py-3 text-sm text-gray-700">{{ sale.sale_date }}</td>
+            <td class="px-4 py-3 text-sm text-gray-700">{{ sale.stakeholder.name if sale.stakeholder else sale.buyer_name or 'Walk-in' }}</td>
+            <td class="px-4 py-3 text-sm text-gray-700">{{ sale.payment_method|title }}</td>
+            <td class="px-4 py-3 text-sm font-semibold text-gray-900">{{ sale.total_amount }}</td>
+          </tr>
+        {% else %}
+          <tr><td colspan="5" class="px-4 py-10 text-center text-gray-600">No completed sales found.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% endblock %}

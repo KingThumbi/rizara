@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime, time, timedelta
 from decimal import Decimal, InvalidOperation
 
 import sqlalchemy as sa
@@ -16,6 +16,8 @@ from app.models import (
     HoldingPen,
     HoldingPenActivity,
     HoldingPenAssignment,
+    KaewaDailyReconciliation,
+    KaewaDailyReconciliationLine,
     RuralServiceProduct,
     RuralServiceSale,
     RuralServiceSaleItem,
@@ -74,6 +76,7 @@ RURAL_STOCK_MOVEMENT_TYPES = [
 ]
 RURAL_SALE_PAYMENT_METHODS = ["cash", "mpesa", "bank", "credit", "internal"]
 RURAL_SALE_STATUSES = ["draft", "completed", "cancelled"]
+KAEWA_RECONCILIATION_STATUSES = ["draft", "submitted", "reviewed"]
 
 
 def _clean(value: str | None) -> str | None:
@@ -86,6 +89,11 @@ def _parse_date(value: str | None) -> date | None:
     if not value:
         return None
     return date.fromisoformat(value)
+
+
+def _day_bounds(value: date) -> tuple[datetime, datetime]:
+    start = datetime.combine(value, time.min)
+    return start, start + timedelta(days=1)
 
 
 def _parse_decimal(value: str | None) -> Decimal | None:
@@ -204,6 +212,31 @@ def _product_stock_balance(product: RuralServiceProduct) -> Decimal:
     return Decimal(total_in) - Decimal(total_out)
 
 
+def _product_stock_balance_as_of(product: RuralServiceProduct, as_of_date: date) -> Decimal:
+    _, end = _day_bounds(as_of_date)
+    total_in = (
+        db.session.query(sa.func.coalesce(sa.func.sum(RuralServiceStockMovement.quantity), 0))
+        .filter(
+            RuralServiceStockMovement.product_id == product.id,
+            RuralServiceStockMovement.movement_type.in_(RURAL_STOCK_IN_TYPES),
+            RuralServiceStockMovement.created_at < end,
+        )
+        .scalar()
+        or Decimal("0")
+    )
+    total_out = (
+        db.session.query(sa.func.coalesce(sa.func.sum(RuralServiceStockMovement.quantity), 0))
+        .filter(
+            RuralServiceStockMovement.product_id == product.id,
+            RuralServiceStockMovement.movement_type.in_(RURAL_STOCK_OUT_TYPES),
+            RuralServiceStockMovement.created_at < end,
+        )
+        .scalar()
+        or Decimal("0")
+    )
+    return Decimal(total_in) - Decimal(total_out)
+
+
 def _product_summary(product: RuralServiceProduct) -> dict:
     stock = _product_stock_balance(product)
     low_stock = product.reorder_level is not None and stock <= product.reorder_level
@@ -216,6 +249,69 @@ def _next_rural_sale_number() -> str:
 
 def _sale_total(sale: RuralServiceSale) -> Decimal:
     return sum((Decimal(item.line_total or 0) for item in sale.items), Decimal("0"))
+
+
+def _completed_sales_query(start_date: date | None = None, end_date: date | None = None, payment_method: str | None = None):
+    query = RuralServiceSale.query.filter(RuralServiceSale.status == "completed")
+    if start_date:
+        query = query.filter(RuralServiceSale.sale_date >= start_date)
+    if end_date:
+        query = query.filter(RuralServiceSale.sale_date <= end_date)
+    if payment_method in RURAL_SALE_PAYMENT_METHODS:
+        query = query.filter(RuralServiceSale.payment_method == payment_method)
+    return query
+
+
+def _completed_sales_totals_by_method(target_date: date | None = None) -> dict[str, Decimal]:
+    query = _completed_sales_query(target_date, target_date) if target_date else _completed_sales_query()
+    totals = {method: Decimal("0") for method in RURAL_SALE_PAYMENT_METHODS}
+    for sale in query.all():
+        totals[sale.payment_method] = totals.get(sale.payment_method, Decimal("0")) + _sale_total(sale)
+    return totals
+
+
+def _stock_report_summaries() -> list[dict]:
+    summaries = []
+    for product in RuralServiceProduct.query.order_by(RuralServiceProduct.name.asc()).all():
+        summary = _product_summary(product)
+        movement_count = RuralServiceStockMovement.query.filter_by(product_id=product.id).count()
+        summaries.append({**summary, "movement_count": movement_count})
+    return summaries
+
+
+def _recalculate_reconciliation(reconciliation: KaewaDailyReconciliation) -> None:
+    opening_cash = Decimal(reconciliation.opening_cash or 0)
+    cash_total = Decimal(reconciliation.cash_sales_total or 0)
+    reconciliation.expected_cash_total = opening_cash + cash_total
+    if reconciliation.counted_cash is not None:
+        reconciliation.cash_variance = Decimal(reconciliation.counted_cash) - Decimal(reconciliation.expected_cash_total or 0)
+    else:
+        reconciliation.cash_variance = None
+    for line in reconciliation.lines:
+        if line.counted_stock_qty is not None:
+            line.variance_qty = Decimal(line.counted_stock_qty) - Decimal(line.system_stock_qty or 0)
+        else:
+            line.variance_qty = None
+
+
+def _apply_reconciliation_sales_totals(reconciliation: KaewaDailyReconciliation) -> None:
+    totals = _completed_sales_totals_by_method(reconciliation.reconciliation_date)
+    reconciliation.cash_sales_total = totals["cash"]
+    reconciliation.mpesa_sales_total = totals["mpesa"]
+    reconciliation.bank_sales_total = totals["bank"]
+    reconciliation.credit_sales_total = totals["credit"]
+    reconciliation.internal_sales_total = totals["internal"]
+    _recalculate_reconciliation(reconciliation)
+
+
+def _snapshot_reconciliation_lines(reconciliation: KaewaDailyReconciliation) -> None:
+    for product in RuralServiceProduct.query.order_by(RuralServiceProduct.name.asc()).all():
+        reconciliation.lines.append(
+            KaewaDailyReconciliationLine(
+                product_id=product.id,
+                system_stock_qty=_product_stock_balance_as_of(product, reconciliation.reconciliation_date),
+            )
+        )
 
 
 @kaewa_bp.route("", methods=["GET"])
@@ -268,6 +364,282 @@ def dashboard():
         holding_pen_summaries=holding_pen_summaries,
         rural_product_summaries=rural_product_summaries,
     )
+
+
+@kaewa_bp.route("/reports", methods=["GET"])
+@admin_required
+def reports_index():
+    return render_template("admin/kaewa/reports_index.html")
+
+
+@kaewa_bp.route("/reports/daily", methods=["GET"])
+@admin_required
+def reports_daily():
+    report_date = _parse_date(request.args.get("date")) or date.today()
+    start_dt, end_dt = _day_bounds(report_date)
+    stakeholder_count = Stakeholder.query.filter(
+        Stakeholder.created_at >= start_dt,
+        Stakeholder.created_at < end_dt,
+    ).count()
+    intakes = FieldLivestockIntake.query.filter(
+        FieldLivestockIntake.created_at >= start_dt,
+        FieldLivestockIntake.created_at < end_dt,
+    ).all()
+    animal_counts = {animal_type: 0 for animal_type in INTAKE_ANIMAL_TYPES}
+    for intake in intakes:
+        animal_counts[intake.animal_type] = animal_counts.get(intake.animal_type, 0) + (intake.count or 0)
+    stock_movements = RuralServiceStockMovement.query.filter(
+        RuralServiceStockMovement.created_at >= start_dt,
+        RuralServiceStockMovement.created_at < end_dt,
+    ).order_by(RuralServiceStockMovement.created_at.desc()).all()
+    low_stock_products = [summary for summary in _stock_report_summaries() if summary["low_stock"]]
+    holding_pen_summaries = [
+        _holding_pen_summary(pen)
+        for pen in HoldingPen.query.order_by(HoldingPen.status.asc(), HoldingPen.name.asc()).all()
+    ]
+    return render_template(
+        "admin/kaewa/report_daily.html",
+        report_date=report_date,
+        stakeholder_count=stakeholder_count,
+        intakes=intakes,
+        animal_counts=animal_counts,
+        holding_pen_summaries=holding_pen_summaries,
+        sales_totals=_completed_sales_totals_by_method(report_date),
+        stock_movements=stock_movements,
+        low_stock_products=low_stock_products,
+    )
+
+
+@kaewa_bp.route("/reports/stock", methods=["GET"])
+@admin_required
+def reports_stock():
+    return render_template(
+        "admin/kaewa/report_stock.html",
+        product_summaries=_stock_report_summaries(),
+    )
+
+
+@kaewa_bp.route("/reports/sales", methods=["GET"])
+@admin_required
+def reports_sales():
+    filters = {
+        "start_date": _parse_date(request.args.get("start_date")),
+        "end_date": _parse_date(request.args.get("end_date")),
+        "payment_method": _clean(request.args.get("payment_method")),
+    }
+    sales = (
+        _completed_sales_query(filters["start_date"], filters["end_date"], filters["payment_method"])
+        .order_by(RuralServiceSale.sale_date.desc(), RuralServiceSale.created_at.desc())
+        .limit(500)
+        .all()
+    )
+    totals = {method: Decimal("0") for method in RURAL_SALE_PAYMENT_METHODS}
+    grand_total = Decimal("0")
+    for sale in sales:
+        total = _sale_total(sale)
+        totals[sale.payment_method] = totals.get(sale.payment_method, Decimal("0")) + total
+        grand_total += total
+    return render_template(
+        "admin/kaewa/report_sales.html",
+        sales=sales,
+        totals=totals,
+        grand_total=grand_total,
+        payment_methods=RURAL_SALE_PAYMENT_METHODS,
+        filters=filters,
+    )
+
+
+@kaewa_bp.route("/reports/intakes", methods=["GET"])
+@admin_required
+def reports_intakes():
+    filters = {
+        "start_date": _parse_date(request.args.get("start_date")),
+        "end_date": _parse_date(request.args.get("end_date")),
+        "animal_type": _clean(request.args.get("animal_type")),
+        "status": _clean(request.args.get("status")),
+    }
+    query = FieldLivestockIntake.query
+    if filters["start_date"]:
+        query = query.filter(FieldLivestockIntake.created_at >= datetime.combine(filters["start_date"], time.min))
+    if filters["end_date"]:
+        query = query.filter(FieldLivestockIntake.created_at < datetime.combine(filters["end_date"] + timedelta(days=1), time.min))
+    if filters["animal_type"] in INTAKE_ANIMAL_TYPES:
+        query = query.filter(FieldLivestockIntake.animal_type == filters["animal_type"])
+    if filters["status"] in INTAKE_STATUSES:
+        query = query.filter(FieldLivestockIntake.intake_status == filters["status"])
+    intakes = query.order_by(FieldLivestockIntake.created_at.desc()).limit(500).all()
+    animal_counts = {animal_type: 0 for animal_type in INTAKE_ANIMAL_TYPES}
+    for intake in intakes:
+        animal_counts[intake.animal_type] = animal_counts.get(intake.animal_type, 0) + (intake.count or 0)
+    return render_template(
+        "admin/kaewa/report_intakes.html",
+        intakes=intakes,
+        animal_counts=animal_counts,
+        filters=filters,
+        animal_types=INTAKE_ANIMAL_TYPES,
+        statuses=INTAKE_STATUSES,
+    )
+
+
+@kaewa_bp.route("/reports/stakeholders", methods=["GET"])
+@admin_required
+def reports_stakeholders():
+    filters = {
+        "category": _clean(request.args.get("category")),
+        "status": _clean(request.args.get("status")),
+        "county": _clean(request.args.get("county")),
+        "sub_county": _clean(request.args.get("sub_county")),
+    }
+    query = Stakeholder.query
+    if filters["category"] in STAKEHOLDER_CATEGORIES:
+        query = query.filter(Stakeholder.category == filters["category"])
+    if filters["status"] in STAKEHOLDER_STATUSES:
+        query = query.filter(Stakeholder.status == filters["status"])
+    if filters["county"]:
+        query = query.filter(Stakeholder.county.ilike(f"%{filters['county']}%"))
+    if filters["sub_county"]:
+        query = query.filter(Stakeholder.sub_county.ilike(f"%{filters['sub_county']}%"))
+    stakeholders = query.order_by(Stakeholder.created_at.desc()).limit(500).all()
+    return render_template(
+        "admin/kaewa/report_stakeholders.html",
+        stakeholders=stakeholders,
+        filters=filters,
+        categories=STAKEHOLDER_CATEGORIES,
+        statuses=STAKEHOLDER_STATUSES,
+    )
+
+
+@kaewa_bp.route("/reconciliations", methods=["GET"])
+@admin_required
+def reconciliations_index():
+    reconciliations = KaewaDailyReconciliation.query.order_by(
+        KaewaDailyReconciliation.reconciliation_date.desc()
+    ).limit(200).all()
+    return render_template(
+        "admin/kaewa/reconciliations_index.html",
+        reconciliations=reconciliations,
+    )
+
+
+@kaewa_bp.route("/reconciliations/new", methods=["GET", "POST"])
+@admin_required
+def reconciliations_new():
+    reconciliation = KaewaDailyReconciliation(
+        reconciliation_date=date.today(),
+        office_location="Kaewa",
+        status="draft",
+        prepared_by_user_id=_current_admin_id(),
+    )
+    if request.method == "POST":
+        reconciliation_date = _parse_date(request.form.get("reconciliation_date"))
+        opening_cash = _parse_decimal(request.form.get("opening_cash"))
+        if reconciliation_date is None:
+            flash("Reconciliation date is required.", "warning")
+        elif opening_cash is not None and opening_cash < 0:
+            flash("Opening cash cannot be negative.", "warning")
+        elif KaewaDailyReconciliation.query.filter_by(reconciliation_date=reconciliation_date).first():
+            flash("A reconciliation already exists for this date.", "warning")
+        else:
+            reconciliation.reconciliation_date = reconciliation_date
+            reconciliation.office_location = _clean(request.form.get("office_location")) or "Kaewa"
+            reconciliation.opening_cash = opening_cash
+            reconciliation.counted_cash = _parse_decimal(request.form.get("counted_cash"))
+            if reconciliation.counted_cash is not None and reconciliation.counted_cash < 0:
+                flash("Counted cash cannot be negative.", "warning")
+                return render_template(
+                    "admin/kaewa/reconciliation_form.html",
+                    reconciliation=reconciliation,
+                    statuses=KAEWA_RECONCILIATION_STATUSES,
+                    action="Create",
+                )
+            reconciliation.stock_variance_notes = _clean(request.form.get("stock_variance_notes"))
+            reconciliation.general_notes = _clean(request.form.get("general_notes"))
+            _apply_reconciliation_sales_totals(reconciliation)
+            _snapshot_reconciliation_lines(reconciliation)
+            db.session.add(reconciliation)
+            if _commit_or_rollback("Daily reconciliation"):
+                return redirect(url_for("kaewa.reconciliations_detail", reconciliation_id=reconciliation.id))
+    return render_template(
+        "admin/kaewa/reconciliation_form.html",
+        reconciliation=reconciliation,
+        statuses=KAEWA_RECONCILIATION_STATUSES,
+        action="Create",
+    )
+
+
+@kaewa_bp.route("/reconciliations/<int:reconciliation_id>", methods=["GET"])
+@admin_required
+def reconciliations_detail(reconciliation_id: int):
+    reconciliation = KaewaDailyReconciliation.query.get_or_404(reconciliation_id)
+    return render_template(
+        "admin/kaewa/reconciliation_detail.html",
+        reconciliation=reconciliation,
+        lines=reconciliation.lines,
+    )
+
+
+@kaewa_bp.route("/reconciliations/<int:reconciliation_id>/edit", methods=["GET", "POST"])
+@admin_required
+def reconciliations_edit(reconciliation_id: int):
+    reconciliation = KaewaDailyReconciliation.query.get_or_404(reconciliation_id)
+    if reconciliation.status != "draft":
+        flash("Submitted or reviewed reconciliations are locked.", "warning")
+        return redirect(url_for("kaewa.reconciliations_detail", reconciliation_id=reconciliation.id))
+    if request.method == "POST":
+        counted_cash = _parse_decimal(request.form.get("counted_cash"))
+        if counted_cash is not None and counted_cash < 0:
+            flash("Counted cash cannot be negative.", "warning")
+        else:
+            reconciliation.counted_cash = counted_cash
+            reconciliation.stock_variance_notes = _clean(request.form.get("stock_variance_notes"))
+            reconciliation.general_notes = _clean(request.form.get("general_notes"))
+            for line in reconciliation.lines:
+                counted = _parse_decimal(request.form.get(f"counted_stock_qty_{line.id}"))
+                if counted is not None and counted < 0:
+                    flash("Counted stock cannot be negative.", "warning")
+                    return render_template(
+                        "admin/kaewa/reconciliation_form.html",
+                        reconciliation=reconciliation,
+                        statuses=KAEWA_RECONCILIATION_STATUSES,
+                        action="Update",
+                    )
+                line.counted_stock_qty = counted
+                line.notes = _clean(request.form.get(f"line_notes_{line.id}"))
+            _recalculate_reconciliation(reconciliation)
+            if _commit_or_rollback("Daily reconciliation"):
+                return redirect(url_for("kaewa.reconciliations_detail", reconciliation_id=reconciliation.id))
+    return render_template(
+        "admin/kaewa/reconciliation_form.html",
+        reconciliation=reconciliation,
+        statuses=KAEWA_RECONCILIATION_STATUSES,
+        action="Update",
+    )
+
+
+@kaewa_bp.route("/reconciliations/<int:reconciliation_id>/submit", methods=["POST"])
+@admin_required
+def reconciliations_submit(reconciliation_id: int):
+    reconciliation = KaewaDailyReconciliation.query.get_or_404(reconciliation_id)
+    if reconciliation.status != "draft":
+        flash("Only draft reconciliations can be submitted.", "warning")
+    else:
+        reconciliation.status = "submitted"
+        _commit_or_rollback("Daily reconciliation")
+    return redirect(url_for("kaewa.reconciliations_detail", reconciliation_id=reconciliation.id))
+
+
+@kaewa_bp.route("/reconciliations/<int:reconciliation_id>/review", methods=["POST"])
+@admin_required
+def reconciliations_review(reconciliation_id: int):
+    reconciliation = KaewaDailyReconciliation.query.get_or_404(reconciliation_id)
+    if reconciliation.status != "submitted":
+        flash("Only submitted reconciliations can be reviewed.", "warning")
+    else:
+        reconciliation.status = "reviewed"
+        reconciliation.reviewed_by_user_id = _current_admin_id()
+        reconciliation.reviewed_at = utcnow_naive()
+        _commit_or_rollback("Daily reconciliation")
+    return redirect(url_for("kaewa.reconciliations_detail", reconciliation_id=reconciliation.id))
 
 
 @kaewa_bp.route("/rural-services", methods=["GET"])

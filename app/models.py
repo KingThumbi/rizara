@@ -1398,6 +1398,58 @@ class RuralServiceSaleItem(db.Model):
     product = db.relationship("RuralServiceProduct", back_populates="sale_items", lazy="joined")
 
 
+class KaewaDailyReconciliation(db.Model):
+    __tablename__ = "kaewa_daily_reconciliation"
+
+    id = db.Column(db.Integer, primary_key=True)
+    uuid = db.Column(UUID(as_uuid=True), default=uuid.uuid4, nullable=False, unique=True, index=True)
+    reconciliation_date = db.Column(db.Date, nullable=False, unique=True, index=True)
+    office_location = db.Column(db.String(120), nullable=False, default="Kaewa", index=True)
+    opening_cash = db.Column(db.Numeric(14, 2), nullable=True)
+    cash_sales_total = db.Column(db.Numeric(14, 2), nullable=True)
+    mpesa_sales_total = db.Column(db.Numeric(14, 2), nullable=True)
+    bank_sales_total = db.Column(db.Numeric(14, 2), nullable=True)
+    credit_sales_total = db.Column(db.Numeric(14, 2), nullable=True)
+    internal_sales_total = db.Column(db.Numeric(14, 2), nullable=True)
+    expected_cash_total = db.Column(db.Numeric(14, 2), nullable=True)
+    counted_cash = db.Column(db.Numeric(14, 2), nullable=True)
+    cash_variance = db.Column(db.Numeric(14, 2), nullable=True)
+    stock_variance_notes = db.Column(db.Text, nullable=True)
+    general_notes = db.Column(db.Text, nullable=True)
+    status = db.Column(db.String(20), nullable=False, default="draft", index=True)
+    prepared_by_user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=True, index=True)
+    reviewed_by_user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=True, index=True)
+    prepared_at = db.Column(db.DateTime, default=utcnow_naive, nullable=False, index=True)
+    reviewed_at = db.Column(db.DateTime, nullable=True, index=True)
+    created_at = db.Column(db.DateTime, default=utcnow_naive, nullable=False, index=True)
+    updated_at = db.Column(db.DateTime, default=utcnow_naive, onupdate=utcnow_naive, nullable=False)
+
+    prepared_by = db.relationship("User", foreign_keys=[prepared_by_user_id], lazy="joined")
+    reviewed_by = db.relationship("User", foreign_keys=[reviewed_by_user_id], lazy="joined")
+    lines = db.relationship(
+        "KaewaDailyReconciliationLine",
+        back_populates="reconciliation",
+        cascade="all, delete-orphan",
+        lazy="select",
+        order_by="KaewaDailyReconciliationLine.id.asc()",
+    )
+
+
+class KaewaDailyReconciliationLine(db.Model):
+    __tablename__ = "kaewa_daily_reconciliation_line"
+
+    id = db.Column(db.Integer, primary_key=True)
+    reconciliation_id = db.Column(db.Integer, db.ForeignKey("kaewa_daily_reconciliation.id"), nullable=False, index=True)
+    product_id = db.Column(db.Integer, db.ForeignKey("rural_service_product.id"), nullable=False, index=True)
+    system_stock_qty = db.Column(db.Numeric(14, 2), nullable=False)
+    counted_stock_qty = db.Column(db.Numeric(14, 2), nullable=True)
+    variance_qty = db.Column(db.Numeric(14, 2), nullable=True)
+    notes = db.Column(db.Text, nullable=True)
+
+    reconciliation = db.relationship("KaewaDailyReconciliation", back_populates="lines", lazy="joined")
+    product = db.relationship("RuralServiceProduct", lazy="joined")
+
+
 # =========================================================
 # Base Animal (abstract)
 # =========================================================

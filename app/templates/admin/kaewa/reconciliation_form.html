@@ -1,0 +1,67 @@
+{% extends "layouts/base_admin.html" %}
+{% from "admin/institutional/_shared.html" import flash_messages %}
+
+{% block page_title %}{{ action }} Reconciliation{% endblock %}
+
+{% block breadcrumbs %}
+  <a href="{{ url_for('admin.dashboard') }}" class="font-semibold text-jungle hover:text-jungleLight transition">Dashboard</a>
+  <span>/</span><a href="{{ url_for('kaewa.dashboard') }}" class="font-semibold text-jungle hover:text-jungleLight transition">Kaewa</a>
+  <span>/</span><a href="{{ url_for('kaewa.reconciliations_index') }}" class="font-semibold text-jungle hover:text-jungleLight transition">Reconciliations</a>
+  <span>/</span><span>{{ action }}</span>
+{% endblock %}
+
+{% block content %}
+  {{ flash_messages() }}
+  <div class="mb-6">
+    <h1 class="text-2xl font-bold text-gray-900">{{ action }} Daily Reconciliation</h1>
+    <p class="text-sm text-gray-600 mt-1">Cash totals are derived from completed rural services sales. Stock lines are snapshots for office review.</p>
+  </div>
+
+  <form method="post" class="space-y-6">
+    <section class="rounded-xl border border-gray-200 bg-white p-5 shadow-sm grid grid-cols-1 md:grid-cols-3 gap-4">
+      <label class="block text-sm font-semibold text-gray-700">Date
+        <input type="date" name="reconciliation_date" value="{{ reconciliation.reconciliation_date.isoformat() if reconciliation.reconciliation_date else '' }}" {% if action == 'Update' %}readonly{% endif %} required class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2">
+      </label>
+      <label class="block text-sm font-semibold text-gray-700">Office
+        <input name="office_location" value="{{ reconciliation.office_location or 'Kaewa' }}" {% if action == 'Update' %}readonly{% endif %} class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2">
+      </label>
+      <label class="block text-sm font-semibold text-gray-700">Opening Cash
+        <input type="number" step="0.01" min="0" name="opening_cash" value="{{ reconciliation.opening_cash or '' }}" {% if action == 'Update' %}readonly{% endif %} class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2">
+      </label>
+      <label class="block text-sm font-semibold text-gray-700">Counted Cash
+        <input type="number" step="0.01" min="0" name="counted_cash" value="{{ reconciliation.counted_cash or '' }}" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2">
+      </label>
+      <label class="block text-sm font-semibold text-gray-700 md:col-span-3">Stock Variance Notes
+        <textarea name="stock_variance_notes" rows="2" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2">{{ reconciliation.stock_variance_notes or '' }}</textarea>
+      </label>
+      <label class="block text-sm font-semibold text-gray-700 md:col-span-3">General Notes
+        <textarea name="general_notes" rows="2" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2">{{ reconciliation.general_notes or '' }}</textarea>
+      </label>
+    </section>
+
+    {% if action == 'Update' %}
+      <section class="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
+        <table class="min-w-full">
+          <thead class="bg-gray-50 border-b border-gray-200 text-left text-xs font-semibold text-gray-600 uppercase">
+            <tr><th class="px-4 py-3">Product</th><th class="px-4 py-3">System Stock</th><th class="px-4 py-3">Counted Stock</th><th class="px-4 py-3">Notes</th></tr>
+          </thead>
+          <tbody class="divide-y divide-gray-100">
+            {% for line in reconciliation.lines %}
+              <tr>
+                <td class="px-4 py-3 font-semibold text-gray-900">{{ line.product.name }}</td>
+                <td class="px-4 py-3 text-sm text-gray-700">{{ line.system_stock_qty }}</td>
+                <td class="px-4 py-3"><input type="number" step="0.01" min="0" name="counted_stock_qty_{{ line.id }}" value="{{ line.counted_stock_qty if line.counted_stock_qty is not none else '' }}" class="w-32 rounded-lg border border-gray-300 px-3 py-2 text-sm"></td>
+                <td class="px-4 py-3"><input name="line_notes_{{ line.id }}" value="{{ line.notes or '' }}" class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"></td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </section>
+    {% endif %}
+
+    <div class="flex justify-end gap-3">
+      <a href="{{ url_for('kaewa.reconciliations_index') }}" class="rounded-lg border border-gray-300 px-4 py-2 font-semibold text-gray-700 hover:bg-gray-50 transition">Cancel</a>
+      <button class="rounded-lg bg-jungle px-4 py-2 text-white font-semibold hover:bg-jungleLight transition">{{ action }} Reconciliation</button>
+    </div>
+  </form>
+{% endblock %}

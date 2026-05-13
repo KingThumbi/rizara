@@ -1,0 +1,36 @@
+{% extends "layouts/base_admin.html" %}
+{% from "admin/institutional/_shared.html" import flash_messages %}
+
+{% block page_title %}Kaewa Reports{% endblock %}
+
+{% block breadcrumbs %}
+  <a href="{{ url_for('admin.dashboard') }}" class="font-semibold text-jungle hover:text-jungleLight transition">Dashboard</a>
+  <span>/</span><a href="{{ url_for('kaewa.dashboard') }}" class="font-semibold text-jungle hover:text-jungleLight transition">Kaewa</a>
+  <span>/</span><span>Reports</span>
+{% endblock %}
+
+{% block content %}
+  {{ flash_messages() }}
+  <div class="flex items-start justify-between gap-4 mb-6">
+    <div>
+      <h1 class="text-2xl font-bold text-gray-900">Kaewa Office Reports</h1>
+      <p class="text-sm text-gray-600 mt-1">Read-only operational summaries for office review and handover.</p>
+    </div>
+    <a href="{{ url_for('kaewa.dashboard') }}" class="rounded-lg border border-gray-300 px-4 py-2 font-semibold text-gray-700 hover:bg-gray-50 transition">Back to Kaewa</a>
+  </div>
+
+  <section class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+    {% for label, description, endpoint in [
+      ('Daily Office Summary', 'Stakeholders, intakes, holding occupancy, stock movements, and daily sales totals.', 'kaewa.reports_daily'),
+      ('Sales Report', 'Completed rural services sales filtered by date range and payment method.', 'kaewa.reports_sales'),
+      ('Stock Report', 'Current product stock, reorder thresholds, low-stock flags, and movement counts.', 'kaewa.reports_stock'),
+      ('Intake Report', 'Livestock intake records filtered by date range, animal type, and status.', 'kaewa.reports_intakes'),
+      ('Stakeholder Report', 'Stakeholder CRM records filtered by category, status, and location.', 'kaewa.reports_stakeholders')
+    ] %}
+      <a href="{{ url_for(endpoint) }}" class="rounded-xl border border-gray-200 bg-white p-5 shadow-sm hover:bg-gray-50 transition">
+        <p class="font-bold text-gray-900">{{ label }}</p>
+        <p class="mt-2 text-sm text-gray-600">{{ description }}</p>
+      </a>
+    {% endfor %}
+  </section>
+{% endblock %}
