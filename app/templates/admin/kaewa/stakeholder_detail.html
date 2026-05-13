@@ -1,0 +1,100 @@
+{% extends "layouts/base_admin.html" %}
+{% from "admin/institutional/_shared.html" import status_badge, flash_messages %}
+
+{% block page_title %}{{ stakeholder.name }}{% endblock %}
+
+{% block breadcrumbs %}
+  <a href="{{ url_for('admin.dashboard') }}" class="font-semibold text-jungle hover:text-jungleLight transition">Dashboard</a>
+  <span>/</span><a href="{{ url_for('kaewa.dashboard') }}" class="font-semibold text-jungle hover:text-jungleLight transition">Kaewa</a>
+  <span>/</span><a href="{{ url_for('kaewa.stakeholders_index') }}" class="font-semibold text-jungle hover:text-jungleLight transition">Stakeholders</a>
+  <span>/</span><span>{{ stakeholder.name }}</span>
+{% endblock %}
+
+{% block content %}
+  {{ flash_messages() }}
+  <div class="flex items-start justify-between gap-4 mb-6">
+    <div>
+      <h1 class="text-2xl font-bold text-gray-900">{{ stakeholder.name }}</h1>
+      <p class="text-sm text-gray-600 mt-1">{{ stakeholder.category|replace('_', ' ')|title }} · {{ stakeholder.phone }}</p>
+    </div>
+    <div class="flex flex-wrap gap-2">
+      <a href="{{ url_for('kaewa.intakes_new', stakeholder_id=stakeholder.id) }}" class="rounded-lg border border-gray-300 px-4 py-2 font-semibold text-gray-700 hover:bg-gray-50 transition">New Intake</a>
+      <a href="{{ url_for('kaewa.stakeholders_edit', stakeholder_id=stakeholder.id) }}" class="rounded-lg bg-jungle px-4 py-2 text-white font-semibold hover:bg-jungleLight transition">Edit</a>
+    </div>
+  </div>
+
+  <section class="mb-6 rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+    <div class="mb-4">{{ status_badge(stakeholder.status) }}</div>
+    <dl class="grid grid-cols-1 md:grid-cols-4 gap-4 text-sm">
+      <div><dt class="font-semibold text-gray-500">Email</dt><dd class="mt-1 text-gray-900">{{ stakeholder.email or '-' }}</dd></div>
+      <div><dt class="font-semibold text-gray-500">County</dt><dd class="mt-1 text-gray-900">{{ stakeholder.county or '-' }}</dd></div>
+      <div><dt class="font-semibold text-gray-500">Ward</dt><dd class="mt-1 text-gray-900">{{ stakeholder.ward or '-' }}</dd></div>
+      <div><dt class="font-semibold text-gray-500">Village</dt><dd class="mt-1 text-gray-900">{{ stakeholder.village or '-' }}</dd></div>
+    </dl>
+    <div class="mt-4">
+      <h2 class="font-bold text-gray-900">Notes</h2>
+      <p class="mt-1 whitespace-pre-line text-sm text-gray-700">{{ stakeholder.notes or '-' }}</p>
+    </div>
+  </section>
+
+  <section class="grid grid-cols-1 xl:grid-cols-2 gap-6">
+    <div class="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+      <h2 class="mb-4 text-lg font-bold text-gray-900">Record Activity</h2>
+      <form method="POST" action="{{ url_for('kaewa.stakeholder_activities_new', stakeholder_id=stakeholder.id) }}" class="space-y-3">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <select name="activity_type" class="rounded-lg border border-gray-300 px-3 py-2 bg-white">
+            {% for activity_type in activity_types %}
+              <option value="{{ activity_type }}">{{ activity_type|replace('_', ' ')|title }}</option>
+            {% endfor %}
+          </select>
+          <input type="date" name="activity_date" class="rounded-lg border border-gray-300 px-3 py-2" />
+        </div>
+        <input name="subject" placeholder="Subject" class="w-full rounded-lg border border-gray-300 px-3 py-2" />
+        <textarea name="notes" rows="4" placeholder="Activity notes" class="w-full rounded-lg border border-gray-300 px-3 py-2"></textarea>
+        <button class="rounded-lg bg-jungle px-4 py-2 font-semibold text-white hover:bg-jungleLight transition">Save Activity</button>
+      </form>
+
+      <div class="mt-6 space-y-3">
+        {% for activity in activities %}
+          <div class="rounded-lg border border-gray-100 bg-gray-50 p-4">
+            <p class="font-semibold text-gray-900">{{ activity.subject or activity.activity_type|replace('_', ' ')|title }}</p>
+            <p class="mt-1 text-sm text-gray-700 whitespace-pre-line">{{ activity.notes or '-' }}</p>
+            <p class="mt-2 text-xs text-gray-400">{{ activity.activity_date or activity.created_at.strftime('%Y-%m-%d') if activity.created_at else '-' }}</p>
+          </div>
+        {% else %}
+          <p class="text-sm text-gray-500">No activities recorded yet.</p>
+        {% endfor %}
+      </div>
+    </div>
+
+    <div class="space-y-6">
+      <div class="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+        <h2 class="mb-4 text-lg font-bold text-gray-900">Livestock Intake Records</h2>
+        <div class="space-y-3">
+          {% for intake in intakes %}
+            <a href="{{ url_for('kaewa.intakes_detail', intake_id=intake.id) }}" class="block rounded-lg border border-gray-100 bg-gray-50 p-4 hover:bg-white transition">
+              <div class="flex items-start justify-between gap-3">
+                <span><strong>{{ intake.count }} {{ intake.animal_type|title }}</strong><small class="block text-gray-500">Source {{ intake.source_location or '-' }}</small></span>
+                {{ status_badge(intake.intake_status) }}
+              </div>
+            </a>
+          {% else %}
+            <p class="text-sm text-gray-500">No livestock intake records for this stakeholder yet.</p>
+          {% endfor %}
+        </div>
+      </div>
+
+      <div class="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+        <h2 class="mb-4 text-lg font-bold text-gray-900">Documents</h2>
+        {% for document in documents %}
+          <div class="rounded-lg border border-gray-100 bg-gray-50 p-4">
+            <p class="font-semibold text-gray-900">{{ document.title }}</p>
+            <p class="text-sm text-gray-600">{{ document.document_type|replace('_', ' ')|title }}</p>
+          </div>
+        {% else %}
+          <p class="text-sm text-gray-500">No stakeholder documents registered yet.</p>
+        {% endfor %}
+      </div>
+    </div>
+  </section>
+{% endblock %}

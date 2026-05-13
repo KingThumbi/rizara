@@ -1,0 +1,81 @@
+{% extends "layouts/base_admin.html" %}
+{% from "admin/institutional/_shared.html" import status_badge, flash_messages %}
+
+{% block page_title %}Kaewa Operations{% endblock %}
+
+{% block breadcrumbs %}
+  <a href="{{ url_for('admin.dashboard') }}" class="font-semibold text-jungle hover:text-jungleLight transition">Dashboard</a>
+  <span>/</span><span>Kaewa Operations</span>
+{% endblock %}
+
+{% block content %}
+  {{ flash_messages() }}
+  <div class="flex flex-col md:flex-row md:items-start md:justify-between gap-4 mb-6">
+    <div>
+      <h1 class="text-2xl font-bold text-gray-900">Kaewa Aggregation & Liaison Office</h1>
+      <p class="text-sm text-gray-600 mt-1">Stakeholder recruitment, field intake capture, liaison notes, and verification readiness.</p>
+    </div>
+    <div class="flex flex-wrap gap-2">
+      <a href="{{ url_for('kaewa.stakeholders_new') }}" class="rounded-lg bg-jungle px-4 py-2 text-white font-semibold hover:bg-jungleLight transition">+ Stakeholder</a>
+      <a href="{{ url_for('kaewa.intakes_new') }}" class="rounded-lg border border-gray-300 px-4 py-2 font-semibold text-gray-700 hover:bg-gray-50 transition">+ Intake Record</a>
+    </div>
+  </div>
+
+  <section class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
+    {% for label, value in [
+      ('Registered Stakeholders', stats.registered_stakeholders),
+      ('Farmers', stats.farmers),
+      ('Service Providers', stats.service_providers),
+      ('Aggregation Agents', stats.aggregation_agents),
+      ('Livestock Intake Records', stats.livestock_intake_records),
+      ('Pending Verification Records', stats.pending_verification_records)
+    ] %}
+      <div class="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+        <p class="text-sm text-gray-500">{{ label }}</p>
+        <p class="mt-2 text-3xl font-bold text-gray-950">{{ value or 0 }}</p>
+      </div>
+    {% endfor %}
+  </section>
+
+  <section class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+    <div class="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+      <div class="flex items-center justify-between mb-4">
+        <h2 class="text-lg font-bold text-gray-900">Recent Activities</h2>
+        <a href="{{ url_for('kaewa.stakeholders_index') }}" class="text-sm font-semibold text-jungle hover:underline">Stakeholders</a>
+      </div>
+      <div class="space-y-3">
+        {% for activity in recent_activities %}
+          <a href="{{ url_for('kaewa.stakeholders_detail', stakeholder_id=activity.stakeholder_id) }}" class="block rounded-lg border border-gray-100 bg-gray-50 p-4 hover:bg-white transition">
+            <p class="font-semibold text-gray-900">{{ activity.subject or activity.activity_type|replace('_', ' ')|title }}</p>
+            <p class="text-sm text-gray-600 mt-1">{{ activity.stakeholder.name }}</p>
+            <p class="text-xs text-gray-400 mt-1">{{ activity.created_at.strftime('%Y-%m-%d') if activity.created_at else '-' }}</p>
+          </a>
+        {% else %}
+          <p class="text-sm text-gray-500">No stakeholder activities yet.</p>
+        {% endfor %}
+      </div>
+    </div>
+
+    <div class="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+      <div class="flex items-center justify-between mb-4">
+        <h2 class="text-lg font-bold text-gray-900">Recent Livestock Intakes</h2>
+        <a href="{{ url_for('kaewa.intakes_index') }}" class="text-sm font-semibold text-jungle hover:underline">View all</a>
+      </div>
+      <div class="space-y-3">
+        {% for intake in recent_intakes %}
+          <a href="{{ url_for('kaewa.intakes_detail', intake_id=intake.id) }}" class="block rounded-lg border border-gray-100 bg-gray-50 p-4 hover:bg-white transition">
+            <div class="flex items-start justify-between gap-3">
+              <div>
+                <p class="font-semibold text-gray-900">{{ intake.count }} {{ intake.animal_type|title }}</p>
+                <p class="text-sm text-gray-600 mt-1">{{ intake.source_location or 'Source not captured' }}</p>
+              </div>
+              {{ status_badge(intake.intake_status) }}
+            </div>
+          </a>
+        {% else %}
+          <p class="text-sm text-gray-500">No livestock intake records yet.</p>
+        {% endfor %}
+      </div>
+    </div>
+  </section>
+{% endblock %}

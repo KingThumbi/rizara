@@ -1,0 +1,44 @@
+{% extends "layouts/base_admin.html" %}
+{% from "admin/institutional/_shared.html" import text_input, textarea, select_input, flash_messages %}
+
+{% block page_title %}{{ action }} Intake Record{% endblock %}
+
+{% block breadcrumbs %}
+  <a href="{{ url_for('admin.dashboard') }}" class="font-semibold text-jungle hover:text-jungleLight transition">Dashboard</a>
+  <span>/</span><a href="{{ url_for('kaewa.dashboard') }}" class="font-semibold text-jungle hover:text-jungleLight transition">Kaewa</a>
+  <span>/</span><a href="{{ url_for('kaewa.intakes_index') }}" class="font-semibold text-jungle hover:text-jungleLight transition">Livestock Intakes</a>
+  <span>/</span><span>{{ action }}</span>
+{% endblock %}
+
+{% block content %}
+  {{ flash_messages() }}
+  <div class="mb-6">
+    <h1 class="text-2xl font-bold text-gray-900">{{ action }} Livestock Intake</h1>
+    <p class="text-sm text-gray-600 mt-1">Capture a field intake lead. No animals or aggregation batches are created from this form.</p>
+  </div>
+
+  <form method="POST" class="space-y-5 rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <label class="block">
+        <span class="block text-xs font-semibold text-gray-600 mb-1">Stakeholder</span>
+        <select name="stakeholder_id" class="w-full rounded-lg border border-gray-300 px-3 py-2 bg-white">
+          <option value="">No linked stakeholder</option>
+          {% for stakeholder in stakeholders %}
+            <option value="{{ stakeholder.id }}" {% if stakeholder.id == intake.stakeholder_id %}selected{% endif %}>{{ stakeholder.name }} · {{ stakeholder.phone }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      {{ text_input('office_location', 'Office Location', intake.office_location or 'Kaewa') }}
+      {{ select_input('animal_type', 'Animal Type', animal_types, intake.animal_type or 'goat') }}
+      {{ text_input('count', 'Count', intake.count, 'number', required=true) }}
+      {{ text_input('estimated_total_weight_kg', 'Estimated Total Weight Kg', intake.estimated_total_weight_kg, 'number') }}
+      {{ text_input('source_location', 'Source Location', intake.source_location) }}
+      {{ select_input('intake_status', 'Status', statuses, intake.intake_status or 'draft') }}
+    </div>
+    {{ textarea('notes', 'Notes', intake.notes, 4) }}
+    <div class="flex items-center gap-3 pt-2">
+      <button class="rounded-lg bg-jungle px-4 py-2 text-white font-semibold hover:bg-jungleLight transition" type="submit">{{ action }} Intake</button>
+      <a href="{{ url_for('kaewa.intakes_index') }}" class="rounded-lg border border-gray-300 px-4 py-2 font-semibold text-gray-700 hover:bg-gray-50 transition">Cancel</a>
+    </div>
+  </form>
+{% endblock %}

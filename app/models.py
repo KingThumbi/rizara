@@ -1088,6 +1088,104 @@ class Farmer(db.Model):
         return f"<Farmer {self.id} {self.name}>"
 
 
+class Stakeholder(db.Model):
+    __tablename__ = "stakeholder"
+
+    id = db.Column(db.Integer, primary_key=True)
+    uuid = db.Column(UUID(as_uuid=True), default=uuid.uuid4, nullable=False, unique=True, index=True)
+    name = db.Column(db.String(160), nullable=False)
+    phone = db.Column(db.String(30), nullable=False, index=True)
+    email = db.Column(db.String(120), nullable=True)
+    category = db.Column(db.String(40), nullable=False, default="farmer", index=True)
+    county = db.Column(db.String(100), nullable=True, index=True)
+    sub_county = db.Column(db.String(100), nullable=True, index=True)
+    ward = db.Column(db.String(100), nullable=True, index=True)
+    village = db.Column(db.String(120), nullable=True)
+    national_id = db.Column(db.String(60), nullable=True)
+    notes = db.Column(db.Text, nullable=True)
+    status = db.Column(db.String(30), nullable=False, default="pending_verification", index=True)
+    created_by_user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=True, index=True)
+    created_at = db.Column(db.DateTime, default=utcnow_naive, nullable=False, index=True)
+    updated_at = db.Column(db.DateTime, default=utcnow_naive, onupdate=utcnow_naive, nullable=False)
+
+    created_by = db.relationship("User", foreign_keys=[created_by_user_id], lazy="joined")
+    activities = db.relationship(
+        "StakeholderActivity",
+        back_populates="stakeholder",
+        lazy="select",
+        order_by="desc(StakeholderActivity.created_at)",
+    )
+    documents = db.relationship(
+        "StakeholderDocument",
+        back_populates="stakeholder",
+        lazy="select",
+        order_by="desc(StakeholderDocument.created_at)",
+    )
+    livestock_intakes = db.relationship("FieldLivestockIntake", back_populates="stakeholder", lazy="select")
+
+    def __repr__(self) -> str:
+        return f"<Stakeholder {self.id} {self.name}>"
+
+
+class StakeholderActivity(db.Model):
+    __tablename__ = "stakeholder_activity"
+
+    id = db.Column(db.Integer, primary_key=True)
+    uuid = db.Column(UUID(as_uuid=True), default=uuid.uuid4, nullable=False, unique=True, index=True)
+    stakeholder_id = db.Column(db.Integer, db.ForeignKey("stakeholder.id"), nullable=False, index=True)
+    activity_type = db.Column(db.String(40), nullable=False, default="note", index=True)
+    subject = db.Column(db.String(180), nullable=True)
+    notes = db.Column(db.Text, nullable=True)
+    activity_date = db.Column(db.Date, nullable=True, index=True)
+    created_by_user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=True, index=True)
+    created_at = db.Column(db.DateTime, default=utcnow_naive, nullable=False, index=True)
+
+    stakeholder = db.relationship("Stakeholder", back_populates="activities", lazy="joined")
+    created_by = db.relationship("User", foreign_keys=[created_by_user_id], lazy="joined")
+
+
+class StakeholderDocument(db.Model):
+    __tablename__ = "stakeholder_document"
+
+    id = db.Column(db.Integer, primary_key=True)
+    uuid = db.Column(UUID(as_uuid=True), default=uuid.uuid4, nullable=False, unique=True, index=True)
+    stakeholder_id = db.Column(db.Integer, db.ForeignKey("stakeholder.id"), nullable=False, index=True)
+    title = db.Column(db.String(180), nullable=False)
+    document_type = db.Column(db.String(60), nullable=False, default="other", index=True)
+    file_path = db.Column(db.String(255), nullable=True)
+    external_url = db.Column(db.String(500), nullable=True)
+    notes = db.Column(db.Text, nullable=True)
+    created_by_user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=True, index=True)
+    created_at = db.Column(db.DateTime, default=utcnow_naive, nullable=False, index=True)
+
+    stakeholder = db.relationship("Stakeholder", back_populates="documents", lazy="joined")
+    created_by = db.relationship("User", foreign_keys=[created_by_user_id], lazy="joined")
+
+
+class FieldLivestockIntake(db.Model):
+    __tablename__ = "field_livestock_intake"
+
+    id = db.Column(db.Integer, primary_key=True)
+    uuid = db.Column(UUID(as_uuid=True), default=uuid.uuid4, nullable=False, unique=True, index=True)
+    stakeholder_id = db.Column(db.Integer, db.ForeignKey("stakeholder.id"), nullable=True, index=True)
+    office_location = db.Column(db.String(120), nullable=False, default="Kaewa", index=True)
+    animal_type = db.Column(db.String(20), nullable=False, index=True)
+    count = db.Column(db.Integer, nullable=False)
+    estimated_total_weight_kg = db.Column(db.Numeric(14, 2), nullable=True)
+    source_location = db.Column(db.String(180), nullable=True, index=True)
+    intake_status = db.Column(db.String(40), nullable=False, default="draft", index=True)
+    notes = db.Column(db.Text, nullable=True)
+    created_by_user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=True, index=True)
+    created_at = db.Column(db.DateTime, default=utcnow_naive, nullable=False, index=True)
+    updated_at = db.Column(db.DateTime, default=utcnow_naive, onupdate=utcnow_naive, nullable=False)
+
+    stakeholder = db.relationship("Stakeholder", back_populates="livestock_intakes", lazy="joined")
+    created_by = db.relationship("User", foreign_keys=[created_by_user_id], lazy="joined")
+
+    def __repr__(self) -> str:
+        return f"<FieldLivestockIntake {self.id} {self.animal_type} {self.count}>"
+
+
 # =========================================================
 # Base Animal (abstract)
 # =========================================================
