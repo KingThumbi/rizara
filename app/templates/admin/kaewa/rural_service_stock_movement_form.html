@@ -1,0 +1,42 @@
+{% extends "layouts/base_admin.html" %}
+{% from "admin/institutional/_shared.html" import text_input, textarea, flash_messages %}
+
+{% block page_title %}{{ action }} Stock Movement{% endblock %}
+
+{% block breadcrumbs %}
+  <a href="{{ url_for('admin.dashboard') }}" class="font-semibold text-jungle hover:text-jungleLight transition">Dashboard</a>
+  <span>/</span><a href="{{ url_for('kaewa.dashboard') }}" class="font-semibold text-jungle hover:text-jungleLight transition">Kaewa</a>
+  <span>/</span><a href="{{ url_for('kaewa.rural_services_index') }}" class="font-semibold text-jungle hover:text-jungleLight transition">Rural Services</a>
+  <span>/</span><a href="{{ url_for('kaewa.rural_service_products_detail', product_id=product.id) }}" class="font-semibold text-jungle hover:text-jungleLight transition">{{ product.name }}</a>
+  <span>/</span><span>{{ action }} Movement</span>
+{% endblock %}
+
+{% block content %}
+  {{ flash_messages() }}
+  <div class="mb-6">
+    <h1 class="text-2xl font-bold text-gray-900">{{ action }} Stock Movement</h1>
+    <p class="text-sm text-gray-600 mt-1">{{ product.name }} · inventory ledger only, no sale or payment action.</p>
+  </div>
+
+  <form method="POST" class="space-y-5 rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <label class="block">
+        <span class="block text-xs font-semibold text-gray-600 mb-1">Movement Type</span>
+        <select name="movement_type" required class="w-full rounded-lg border border-gray-300 px-3 py-2 bg-white">
+          {% for movement_type in movement_types %}
+            <option value="{{ movement_type }}" {% if movement_type == movement.movement_type %}selected{% endif %}>{{ movement_type|replace('_', ' ')|title }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      {{ text_input('quantity', 'Quantity', movement.quantity, 'number', required=true) }}
+      {{ text_input('unit_cost', 'Unit Cost', movement.unit_cost, 'number') }}
+      {{ text_input('supplier_name', 'Supplier Name', movement.supplier_name) }}
+      {{ text_input('reference', 'Reference', movement.reference) }}
+    </div>
+    {{ textarea('notes', 'Notes', movement.notes, 4) }}
+    <div class="flex items-center gap-3 pt-2">
+      <button class="rounded-lg bg-jungle px-4 py-2 text-white font-semibold hover:bg-jungleLight transition" type="submit">{{ action }} Movement</button>
+      <a href="{{ url_for('kaewa.rural_service_products_detail', product_id=product.id) }}" class="rounded-lg border border-gray-300 px-4 py-2 font-semibold text-gray-700 hover:bg-gray-50 transition">Cancel</a>
+    </div>
+  </form>
+{% endblock %}

@@ -20,6 +20,8 @@ from app.models import (
     HoldingPenAssignment,
     ProcurementRecord,
     ProcurementSource,
+    RuralServiceProduct,
+    RuralServiceStockMovement,
     Sheep,
     Stakeholder,
     StakeholderActivity,
@@ -44,6 +46,8 @@ KAEWA_TABLES = [
     HoldingPen.__table__,
     HoldingPenAssignment.__table__,
     HoldingPenActivity.__table__,
+    RuralServiceProduct.__table__,
+    RuralServiceStockMovement.__table__,
 ]
 
 
@@ -83,23 +87,48 @@ def make_kaewa_app(monkeypatch, tmp_path: Path):
             "recent_intakes",
             "active_assignments",
             "released_assignments",
+            "movements",
         ):
             for item in context.get(key, []):
-                for attr in ("name", "subject", "title", "animal_type", "source_location", "intake_status", "status"):
+                for attr in (
+                    "name",
+                    "subject",
+                    "title",
+                    "animal_type",
+                    "source_location",
+                    "intake_status",
+                    "status",
+                    "movement_type",
+                    "reference",
+                ):
                     value = getattr(item, attr, None)
                     if value:
                         labels.append(str(value))
                 if getattr(item, "count", None) is not None:
                     labels.append(str(item.count))
+                if getattr(item, "quantity", None) is not None:
+                    labels.append(str(item.quantity))
         for key in ("pen_summaries", "holding_pen_summaries"):
             for summary in context.get(key, []):
                 pen = summary["pen"]
                 labels.extend([pen.name, str(summary["occupancy"])])
+        if "product_summaries" in context:
+            for summary in context["product_summaries"]:
+                product = summary["product"]
+                labels.extend([product.name, str(summary["stock"])])
+                if summary["low_stock"]:
+                    labels.append("Low Stock")
+        if "rural_product_summaries" in context:
+            for summary in context["rural_product_summaries"]:
+                product = summary["product"]
+                labels.extend([product.name, str(summary["stock"])])
+                if summary["low_stock"]:
+                    labels.append("Low Stock")
         if "aggregation_batches" in context:
             labels.extend(batch.site_name for batch in context["aggregation_batches"])
         if "handoff_events" in context:
             labels.extend(event.event_type for event in context["handoff_events"])
-        for key in ("stakeholder", "intake", "pen"):
+        for key in ("stakeholder", "intake", "pen", "product"):
             item = context.get(key)
             if item is not None:
                 for attr in (
@@ -111,10 +140,17 @@ def make_kaewa_app(monkeypatch, tmp_path: Path):
                     "intake_status",
                     "handoff_status",
                     "status",
+                    "sku",
+                    "category",
+                    "unit",
                 ):
                     value = getattr(item, attr, None)
                     if value:
                         labels.append(str(value))
+        if "stock" in context:
+            labels.append(str(context["stock"]))
+        if context.get("low_stock"):
+            labels.append("Low Stock")
         return "\n".join(labels)
 
     monkeypatch.setattr(kaewa_routes, "render_template", fake_render_template)
@@ -151,7 +187,13 @@ def test_kaewa_routes_require_login(monkeypatch, tmp_path):
     app = make_kaewa_app(monkeypatch, tmp_path)
     client = app.test_client()
 
-    for path in ("/admin/kaewa", "/admin/kaewa/stakeholders", "/admin/kaewa/intakes", "/admin/kaewa/holding-pens"):
+    for path in (
+        "/admin/kaewa",
+        "/admin/kaewa/stakeholders",
+        "/admin/kaewa/intakes",
+        "/admin/kaewa/holding-pens",
+        "/admin/kaewa/rural-services",
+    ):
         response = client.get(path)
         assert response.status_code in (302, 401)
 
@@ -160,6 +202,7 @@ def test_kaewa_routes_require_login(monkeypatch, tmp_path):
         "/admin/kaewa/intakes/1/handoff/link-batch",
         "/admin/kaewa/holding-pens/1/assign",
         "/admin/kaewa/holding-assignments/1/release",
+        "/admin/kaewa/rural-services/products/1/stock-movements/new",
     ):
         response = client.post(path)
         assert response.status_code in (302, 401)
@@ -552,3 +595,168 @@ def test_release_assignment_and_occupancy_excludes_released(monkeypatch, tmp_pat
         assert active_occupancy == 0
         assert HoldingPenActivity.query.filter_by(holding_pen_id=pen_id, activity_type="release").count() == 1
         assert_animal_tables_not_created(db.engine)
+
+
+def test_create_rural_service_product(monkeypatch, tmp_path):
+    app = make_kaewa_app(monkeypatch, tmp_path)
+    client = app.test_client()
+    login_admin(client)
+
+    response = client.post(
+        "/admin/kaewa/rural-services/products/new",
+        data={
+            "name": "Goat Finisher Feed",
+            "category": "animal_feed",
+            "unit": "bag",
+            "sku": "KAEWA-FEED-001",
+            "reorder_level": "5",
+            "active": "1",
+            "description": "Approved feed stock.",
+        },
+        follow_redirects=True,
+    )
+
+    assert response.status_code == 200
+    assert "Goat Finisher Feed" in response.get_data(as_text=True)
+    with app.app_context():
+        product = RuralServiceProduct.query.filter_by(sku="KAEWA-FEED-001").one()
+        assert product.uuid is not None
+        assert product.category == "animal_feed"
+
+
+def test_rural_service_stock_movements_calculate_balance(monkeypatch, tmp_path):
+    app = make_kaewa_app(monkeypatch, tmp_path)
+    client = app.test_client()
+    login_admin(client)
+
+    with app.app_context():
+        product = RuralServiceProduct(
+            name="Mineral Supplement",
+            category="mineral_supplement",
+            unit="packet",
+            reorder_level=5,
+        )
+        db.session.add(product)
+        db.session.commit()
+        product_id = product.id
+
+    response = client.post(
+        f"/admin/kaewa/rural-services/products/{product_id}/stock-movements/new",
+        data={
+            "movement_type": "opening_stock",
+            "quantity": "15",
+            "unit_cost": "120",
+            "supplier_name": "Local Supplier",
+            "reference": "OPEN-001",
+        },
+        follow_redirects=True,
+    )
+    assert response.status_code == 200
+    assert "15.00" in response.get_data(as_text=True)
+
+    response = client.post(
+        f"/admin/kaewa/rural-services/products/{product_id}/stock-movements/new",
+        data={
+            "movement_type": "issued_internal",
+            "quantity": "4",
+            "reference": "ISSUE-001",
+        },
+        follow_redirects=True,
+    )
+    body = response.get_data(as_text=True)
+
+    assert response.status_code == 200
+    assert "11.00" in body
+    with app.app_context():
+        assert RuralServiceStockMovement.query.filter_by(product_id=product_id).count() == 2
+
+
+def test_rural_service_stock_movement_rejects_zero_or_negative_quantity(monkeypatch, tmp_path):
+    app = make_kaewa_app(monkeypatch, tmp_path)
+    client = app.test_client()
+    login_admin(client)
+
+    with app.app_context():
+        product = RuralServiceProduct(name="Hoof Tool", category="farm_tool", unit="piece")
+        db.session.add(product)
+        db.session.commit()
+        product_id = product.id
+
+    for quantity in ("0", "-2"):
+        response = client.post(
+            f"/admin/kaewa/rural-services/products/{product_id}/stock-movements/new",
+            data={"movement_type": "opening_stock", "quantity": quantity},
+            follow_redirects=True,
+        )
+        assert response.status_code == 200
+
+    with app.app_context():
+        assert RuralServiceStockMovement.query.filter_by(product_id=product_id).count() == 0
+
+
+def test_rural_service_low_stock_flag_appears(monkeypatch, tmp_path):
+    app = make_kaewa_app(monkeypatch, tmp_path)
+    client = app.test_client()
+    login_admin(client)
+
+    with app.app_context():
+        product = RuralServiceProduct(
+            name="Salt Lick",
+            category="mineral_supplement",
+            unit="piece",
+            reorder_level=10,
+        )
+        db.session.add(product)
+        db.session.flush()
+        db.session.add(
+            RuralServiceStockMovement(
+                product_id=product.id,
+                movement_type="opening_stock",
+                quantity=8,
+                created_by_user_id=1,
+            )
+        )
+        db.session.commit()
+
+    response = client.get("/admin/kaewa/rural-services")
+    body = response.get_data(as_text=True)
+
+    assert response.status_code == 200
+    assert "Salt Lick" in body
+    assert "Low Stock" in body
+
+
+def test_inactive_rural_service_product_only_allows_adjustment_out(monkeypatch, tmp_path):
+    app = make_kaewa_app(monkeypatch, tmp_path)
+    client = app.test_client()
+    login_admin(client)
+
+    with app.app_context():
+        product = RuralServiceProduct(name="Inactive Feed", category="animal_feed", unit="bag", active=False)
+        db.session.add(product)
+        db.session.commit()
+        product_id = product.id
+
+    blocked = client.post(
+        f"/admin/kaewa/rural-services/products/{product_id}/stock-movements/new",
+        data={"movement_type": "purchase", "quantity": "5"},
+        follow_redirects=True,
+    )
+    allowed = client.post(
+        f"/admin/kaewa/rural-services/products/{product_id}/stock-movements/new",
+        data={"movement_type": "adjustment_out", "quantity": "1"},
+        follow_redirects=True,
+    )
+
+    assert blocked.status_code == 200
+    assert allowed.status_code == 200
+    with app.app_context():
+        movement = RuralServiceStockMovement.query.filter_by(product_id=product_id).one()
+        assert movement.movement_type == "adjustment_out"
+
+
+def test_rural_services_does_not_add_payment_or_sale_routes(monkeypatch, tmp_path):
+    app = make_kaewa_app(monkeypatch, tmp_path)
+    routes = {rule.rule for rule in app.url_map.iter_rules()}
+    assert "/admin/kaewa/rural-services/checkout" not in routes
+    assert "/admin/kaewa/rural-services/payments" not in routes

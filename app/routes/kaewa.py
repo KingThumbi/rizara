@@ -16,6 +16,8 @@ from app.models import (
     HoldingPen,
     HoldingPenActivity,
     HoldingPenAssignment,
+    RuralServiceProduct,
+    RuralServiceStockMovement,
     Stakeholder,
     StakeholderActivity,
     utcnow_naive,
@@ -45,6 +47,27 @@ HOLDING_PEN_STATUSES = ["active", "inactive", "maintenance"]
 HOLDING_ASSIGNMENT_STATUSES = ["active", "released"]
 HOLDING_RELEASE_REASONS = ["transferred_to_aggregation", "rejected", "sold", "dead_loss", "other"]
 HOLDING_ACTIVITY_TYPES = ["assignment", "release", "feeding", "treatment", "inspection", "mortality", "note"]
+RURAL_PRODUCT_CATEGORIES = [
+    "animal_feed",
+    "mineral_supplement",
+    "farm_tool",
+    "livestock_equipment",
+    "veterinary_basic",
+    "rizara_merchandise",
+    "other",
+]
+RURAL_PRODUCT_UNITS = ["bag", "kg", "litre", "piece", "packet", "bale", "other"]
+RURAL_STOCK_IN_TYPES = {"opening_stock", "purchase", "adjustment_in"}
+RURAL_STOCK_OUT_TYPES = {"adjustment_out", "damaged", "expired", "issued_internal"}
+RURAL_STOCK_MOVEMENT_TYPES = [
+    "opening_stock",
+    "purchase",
+    "adjustment_in",
+    "adjustment_out",
+    "damaged",
+    "expired",
+    "issued_internal",
+]
 
 
 def _clean(value: str | None) -> str | None:
@@ -153,6 +176,34 @@ def _record_holding_pen_activity(
     )
 
 
+def _product_stock_balance(product: RuralServiceProduct) -> Decimal:
+    total_in = (
+        db.session.query(sa.func.coalesce(sa.func.sum(RuralServiceStockMovement.quantity), 0))
+        .filter(
+            RuralServiceStockMovement.product_id == product.id,
+            RuralServiceStockMovement.movement_type.in_(RURAL_STOCK_IN_TYPES),
+        )
+        .scalar()
+        or Decimal("0")
+    )
+    total_out = (
+        db.session.query(sa.func.coalesce(sa.func.sum(RuralServiceStockMovement.quantity), 0))
+        .filter(
+            RuralServiceStockMovement.product_id == product.id,
+            RuralServiceStockMovement.movement_type.in_(RURAL_STOCK_OUT_TYPES),
+        )
+        .scalar()
+        or Decimal("0")
+    )
+    return Decimal(total_in) - Decimal(total_out)
+
+
+def _product_summary(product: RuralServiceProduct) -> dict:
+    stock = _product_stock_balance(product)
+    low_stock = product.reorder_level is not None and stock <= product.reorder_level
+    return {"product": product, "stock": stock, "low_stock": low_stock}
+
+
 @kaewa_bp.route("", methods=["GET"])
 @admin_required
 def dashboard():
@@ -180,6 +231,10 @@ def dashboard():
         .filter(HoldingPenAssignment.status == "active")
         .scalar()
         or 0,
+        "rural_service_products": RuralServiceProduct.query.count(),
+        "low_stock_products": sum(
+            1 for product in RuralServiceProduct.query.filter_by(active=True).all() if _product_summary(product)["low_stock"]
+        ),
     }
     recent_activities = StakeholderActivity.query.order_by(StakeholderActivity.created_at.desc()).limit(8).all()
     recent_intakes = FieldLivestockIntake.query.order_by(FieldLivestockIntake.created_at.desc()).limit(6).all()
@@ -187,13 +242,133 @@ def dashboard():
         _holding_pen_summary(pen)
         for pen in HoldingPen.query.order_by(HoldingPen.status.asc(), HoldingPen.name.asc()).limit(6).all()
     ]
+    rural_product_summaries = [
+        _product_summary(product)
+        for product in RuralServiceProduct.query.order_by(RuralServiceProduct.name.asc()).limit(6).all()
+    ]
     return render_template(
         "admin/kaewa/dashboard.html",
         stats=stats,
         recent_activities=recent_activities,
         recent_intakes=recent_intakes,
         holding_pen_summaries=holding_pen_summaries,
+        rural_product_summaries=rural_product_summaries,
     )
+
+
+@kaewa_bp.route("/rural-services", methods=["GET"])
+@admin_required
+def rural_services_index():
+    products = RuralServiceProduct.query.order_by(
+        RuralServiceProduct.active.desc(),
+        RuralServiceProduct.name.asc(),
+    ).all()
+    return render_template(
+        "admin/kaewa/rural_services_index.html",
+        product_summaries=[_product_summary(product) for product in products],
+    )
+
+
+@kaewa_bp.route("/rural-services/products/new", methods=["GET", "POST"])
+@admin_required
+def rural_service_products_new():
+    product = RuralServiceProduct(active=True)
+    if request.method == "POST":
+        _populate_rural_service_product(product)
+        db.session.add(product)
+        if _commit_or_rollback("Rural service product"):
+            return redirect(url_for("kaewa.rural_service_products_detail", product_id=product.id))
+    return render_template(
+        "admin/kaewa/rural_service_product_form.html",
+        product=product,
+        categories=RURAL_PRODUCT_CATEGORIES,
+        units=RURAL_PRODUCT_UNITS,
+        action="Create",
+    )
+
+
+@kaewa_bp.route("/rural-services/products/<int:product_id>", methods=["GET"])
+@admin_required
+def rural_service_products_detail(product_id: int):
+    product = RuralServiceProduct.query.get_or_404(product_id)
+    return render_template(
+        "admin/kaewa/rural_service_product_detail.html",
+        product=product,
+        stock=_product_stock_balance(product),
+        low_stock=_product_summary(product)["low_stock"],
+        movements=product.stock_movements,
+    )
+
+
+@kaewa_bp.route("/rural-services/products/<int:product_id>/edit", methods=["GET", "POST"])
+@admin_required
+def rural_service_products_edit(product_id: int):
+    product = RuralServiceProduct.query.get_or_404(product_id)
+    if request.method == "POST":
+        _populate_rural_service_product(product)
+        if _commit_or_rollback("Rural service product"):
+            return redirect(url_for("kaewa.rural_service_products_detail", product_id=product.id))
+    return render_template(
+        "admin/kaewa/rural_service_product_form.html",
+        product=product,
+        categories=RURAL_PRODUCT_CATEGORIES,
+        units=RURAL_PRODUCT_UNITS,
+        action="Update",
+    )
+
+
+@kaewa_bp.route("/rural-services/products/<int:product_id>/stock-movements/new", methods=["GET", "POST"])
+@admin_required
+def rural_service_stock_movements_new(product_id: int):
+    product = RuralServiceProduct.query.get_or_404(product_id)
+    movement = RuralServiceStockMovement(product_id=product.id)
+    if request.method == "POST":
+        movement_type = request.form.get("movement_type")
+        quantity = _parse_decimal(request.form.get("quantity"))
+        if movement_type not in RURAL_STOCK_MOVEMENT_TYPES:
+            flash("Choose a valid stock movement type.", "warning")
+        elif quantity is None or quantity <= 0:
+            flash("Stock movement quantity must be greater than zero.", "warning")
+        elif not product.active and movement_type != "adjustment_out":
+            flash("Inactive products can only receive adjustment-out movements.", "warning")
+        else:
+            _populate_rural_service_stock_movement(movement, movement_type, quantity)
+            db.session.add(movement)
+            if _commit_or_rollback("Stock movement"):
+                return redirect(url_for("kaewa.rural_service_products_detail", product_id=product.id))
+    return render_template(
+        "admin/kaewa/rural_service_stock_movement_form.html",
+        product=product,
+        movement=movement,
+        movement_types=RURAL_STOCK_MOVEMENT_TYPES,
+        action="Add",
+    )
+
+
+def _populate_rural_service_product(product: RuralServiceProduct) -> None:
+    product.name = _clean(request.form.get("name")) or "Unnamed product"
+    product.category = (
+        request.form.get("category") if request.form.get("category") in RURAL_PRODUCT_CATEGORIES else "other"
+    )
+    product.unit = request.form.get("unit") if request.form.get("unit") in RURAL_PRODUCT_UNITS else "piece"
+    product.sku = _clean(request.form.get("sku"))
+    product.description = _clean(request.form.get("description"))
+    product.reorder_level = _parse_decimal(request.form.get("reorder_level"))
+    product.active = request.form.get("active") == "1"
+
+
+def _populate_rural_service_stock_movement(
+    movement: RuralServiceStockMovement,
+    movement_type: str,
+    quantity: Decimal,
+) -> None:
+    movement.movement_type = movement_type
+    movement.quantity = quantity
+    movement.unit_cost = _parse_decimal(request.form.get("unit_cost"))
+    movement.supplier_name = _clean(request.form.get("supplier_name"))
+    movement.reference = _clean(request.form.get("reference"))
+    movement.notes = _clean(request.form.get("notes"))
+    movement.created_by_user_id = _current_admin_id()
 
 
 @kaewa_bp.route("/holding-pens", methods=["GET"])

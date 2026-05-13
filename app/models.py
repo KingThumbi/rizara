@@ -1305,6 +1305,51 @@ class HoldingPenActivity(db.Model):
     created_by = db.relationship("User", foreign_keys=[created_by_user_id], lazy="joined")
 
 
+class RuralServiceProduct(db.Model):
+    __tablename__ = "rural_service_product"
+
+    id = db.Column(db.Integer, primary_key=True)
+    uuid = db.Column(UUID(as_uuid=True), default=uuid.uuid4, nullable=False, unique=True, index=True)
+    name = db.Column(db.String(180), nullable=False)
+    category = db.Column(db.String(40), nullable=False, default="other", index=True)
+    unit = db.Column(db.String(20), nullable=False, default="piece", index=True)
+    sku = db.Column(db.String(80), nullable=True, unique=True, index=True)
+    description = db.Column(db.Text, nullable=True)
+    reorder_level = db.Column(db.Numeric(14, 2), nullable=True)
+    active = db.Column(db.Boolean, nullable=False, default=True, index=True)
+    created_at = db.Column(db.DateTime, default=utcnow_naive, nullable=False, index=True)
+    updated_at = db.Column(db.DateTime, default=utcnow_naive, onupdate=utcnow_naive, nullable=False)
+
+    stock_movements = db.relationship(
+        "RuralServiceStockMovement",
+        back_populates="product",
+        lazy="select",
+        order_by="desc(RuralServiceStockMovement.created_at)",
+    )
+
+    def __repr__(self) -> str:
+        return f"<RuralServiceProduct {self.id} {self.name}>"
+
+
+class RuralServiceStockMovement(db.Model):
+    __tablename__ = "rural_service_stock_movement"
+
+    id = db.Column(db.Integer, primary_key=True)
+    uuid = db.Column(UUID(as_uuid=True), default=uuid.uuid4, nullable=False, unique=True, index=True)
+    product_id = db.Column(db.Integer, db.ForeignKey("rural_service_product.id"), nullable=False, index=True)
+    movement_type = db.Column(db.String(40), nullable=False, index=True)
+    quantity = db.Column(db.Numeric(14, 2), nullable=False)
+    unit_cost = db.Column(db.Numeric(14, 2), nullable=True)
+    supplier_name = db.Column(db.String(180), nullable=True)
+    reference = db.Column(db.String(120), nullable=True, index=True)
+    notes = db.Column(db.Text, nullable=True)
+    created_by_user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=True, index=True)
+    created_at = db.Column(db.DateTime, default=utcnow_naive, nullable=False, index=True)
+
+    product = db.relationship("RuralServiceProduct", back_populates="stock_movements", lazy="joined")
+    created_by = db.relationship("User", foreign_keys=[created_by_user_id], lazy="joined")
+
+
 # =========================================================
 # Base Animal (abstract)
 # =========================================================
