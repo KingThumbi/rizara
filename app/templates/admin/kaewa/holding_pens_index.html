@@ -1,0 +1,43 @@
+{% extends "layouts/base_admin.html" %}
+{% from "admin/institutional/_shared.html" import status_badge, flash_messages %}
+
+{% block page_title %}Kaewa Holding Pens{% endblock %}
+
+{% block breadcrumbs %}
+  <a href="{{ url_for('admin.dashboard') }}" class="font-semibold text-jungle hover:text-jungleLight transition">Dashboard</a>
+  <span>/</span><a href="{{ url_for('kaewa.dashboard') }}" class="font-semibold text-jungle hover:text-jungleLight transition">Kaewa</a>
+  <span>/</span><span>Holding Pens</span>
+{% endblock %}
+
+{% block content %}
+  {{ flash_messages() }}
+  <div class="flex items-start justify-between gap-4 mb-6">
+    <div>
+      <h1 class="text-2xl font-bold text-gray-900">Holding Pens</h1>
+      <p class="text-sm text-gray-600 mt-1">Track livestock temporarily held at or around Kaewa before transfer or aggregation.</p>
+    </div>
+    <a href="{{ url_for('kaewa.holding_pens_new') }}" class="rounded-lg bg-jungle px-4 py-2 text-white font-semibold hover:bg-jungleLight transition">+ New Pen</a>
+  </div>
+
+  <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+    {% for summary in pen_summaries %}
+      {% set pen = summary.pen %}
+      <a href="{{ url_for('kaewa.holding_pens_detail', pen_id=pen.id) }}" class="rounded-xl border border-gray-200 bg-white p-5 shadow-sm hover:shadow-md transition">
+        <div class="flex items-start justify-between gap-3">
+          <div>
+            <h2 class="font-bold text-gray-900">{{ pen.name }}</h2>
+            <p class="text-sm text-gray-600 mt-1">{{ pen.office_location }} · {{ pen.animal_type|title }}</p>
+          </div>
+          {{ status_badge(pen.status) }}
+        </div>
+        <dl class="grid grid-cols-3 gap-3 mt-5 text-sm">
+          <div><dt class="text-gray-500">Occupancy</dt><dd class="font-bold text-gray-900">{{ summary.occupancy }}</dd></div>
+          <div><dt class="text-gray-500">Capacity</dt><dd class="font-bold text-gray-900">{{ pen.capacity_count or '-' }}</dd></div>
+          <div><dt class="text-gray-500">Utilization</dt><dd class="font-bold text-gray-900">{{ summary.utilization if summary.utilization is not none else '-' }}{% if summary.utilization is not none %}%{% endif %}</dd></div>
+        </dl>
+      </a>
+    {% else %}
+      <div class="rounded-xl border border-gray-200 bg-white p-8 text-center text-gray-600 md:col-span-2 xl:col-span-3">No holding pens configured yet.</div>
+    {% endfor %}
+  </div>
+{% endblock %}

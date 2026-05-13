@@ -1218,6 +1218,93 @@ class FieldLivestockIntakeActivity(db.Model):
     created_by = db.relationship("User", foreign_keys=[created_by_user_id], lazy="joined")
 
 
+class HoldingPen(db.Model):
+    __tablename__ = "holding_pen"
+
+    id = db.Column(db.Integer, primary_key=True)
+    uuid = db.Column(UUID(as_uuid=True), default=uuid.uuid4, nullable=False, unique=True, index=True)
+    name = db.Column(db.String(160), nullable=False)
+    office_location = db.Column(db.String(120), nullable=False, default="Kaewa", index=True)
+    animal_type = db.Column(db.String(20), nullable=False, default="mixed", index=True)
+    capacity_count = db.Column(db.Integer, nullable=True)
+    status = db.Column(db.String(30), nullable=False, default="active", index=True)
+    notes = db.Column(db.Text, nullable=True)
+    created_at = db.Column(db.DateTime, default=utcnow_naive, nullable=False, index=True)
+    updated_at = db.Column(db.DateTime, default=utcnow_naive, onupdate=utcnow_naive, nullable=False)
+
+    assignments = db.relationship(
+        "HoldingPenAssignment",
+        back_populates="holding_pen",
+        lazy="select",
+        order_by="desc(HoldingPenAssignment.assigned_at)",
+    )
+    activities = db.relationship(
+        "HoldingPenActivity",
+        back_populates="holding_pen",
+        lazy="select",
+        order_by="desc(HoldingPenActivity.created_at)",
+    )
+
+    @property
+    def active_occupancy_count(self) -> int:
+        return sum((assignment.count or 0) for assignment in self.assignments if assignment.status == "active")
+
+    @property
+    def utilization_percent(self) -> int | None:
+        if not self.capacity_count:
+            return None
+        return round((self.active_occupancy_count / self.capacity_count) * 100)
+
+    def __repr__(self) -> str:
+        return f"<HoldingPen {self.id} {self.name}>"
+
+
+class HoldingPenAssignment(db.Model):
+    __tablename__ = "holding_pen_assignment"
+
+    id = db.Column(db.Integer, primary_key=True)
+    uuid = db.Column(UUID(as_uuid=True), default=uuid.uuid4, nullable=False, unique=True, index=True)
+    holding_pen_id = db.Column(db.Integer, db.ForeignKey("holding_pen.id"), nullable=False, index=True)
+    field_livestock_intake_id = db.Column(db.Integer, db.ForeignKey("field_livestock_intake.id"), nullable=True, index=True)
+    animal_type = db.Column(db.String(20), nullable=False, index=True)
+    count = db.Column(db.Integer, nullable=False)
+    estimated_total_weight_kg = db.Column(db.Numeric(14, 2), nullable=True)
+    assigned_at = db.Column(db.DateTime, default=utcnow_naive, nullable=False, index=True)
+    released_at = db.Column(db.DateTime, nullable=True, index=True)
+    release_reason = db.Column(db.String(40), nullable=True, index=True)
+    status = db.Column(db.String(20), nullable=False, default="active", index=True)
+    notes = db.Column(db.Text, nullable=True)
+    created_by_user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=True, index=True)
+    updated_at = db.Column(db.DateTime, default=utcnow_naive, onupdate=utcnow_naive, nullable=False)
+
+    holding_pen = db.relationship("HoldingPen", back_populates="assignments", lazy="joined")
+    field_livestock_intake = db.relationship("FieldLivestockIntake", lazy="joined")
+    created_by = db.relationship("User", foreign_keys=[created_by_user_id], lazy="joined")
+    activities = db.relationship(
+        "HoldingPenActivity",
+        back_populates="assignment",
+        lazy="select",
+        order_by="desc(HoldingPenActivity.created_at)",
+    )
+
+
+class HoldingPenActivity(db.Model):
+    __tablename__ = "holding_pen_activity"
+
+    id = db.Column(db.Integer, primary_key=True)
+    uuid = db.Column(UUID(as_uuid=True), default=uuid.uuid4, nullable=False, unique=True, index=True)
+    holding_pen_id = db.Column(db.Integer, db.ForeignKey("holding_pen.id"), nullable=False, index=True)
+    holding_pen_assignment_id = db.Column(db.Integer, db.ForeignKey("holding_pen_assignment.id"), nullable=True, index=True)
+    activity_type = db.Column(db.String(40), nullable=False, default="note", index=True)
+    description = db.Column(db.Text, nullable=True)
+    created_by_user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=True, index=True)
+    created_at = db.Column(db.DateTime, default=utcnow_naive, nullable=False, index=True)
+
+    holding_pen = db.relationship("HoldingPen", back_populates="activities", lazy="joined")
+    assignment = db.relationship("HoldingPenAssignment", back_populates="activities", lazy="joined")
+    created_by = db.relationship("User", foreign_keys=[created_by_user_id], lazy="joined")
+
+
 # =========================================================
 # Base Animal (abstract)
 # =========================================================

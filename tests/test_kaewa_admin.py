@@ -9,10 +9,17 @@ from werkzeug.security import generate_password_hash
 
 from app.extensions import db
 from app.models import (
+    AggregationBatch,
     Cattle,
     Farmer,
     FieldLivestockIntake,
+    FieldLivestockIntakeActivity,
     Goat,
+    HoldingPen,
+    HoldingPenActivity,
+    HoldingPenAssignment,
+    ProcurementRecord,
+    ProcurementSource,
     Sheep,
     Stakeholder,
     StakeholderActivity,
@@ -26,10 +33,17 @@ from app.routes.kaewa import kaewa_bp
 KAEWA_TABLES = [
     User.__table__,
     Farmer.__table__,
+    AggregationBatch.__table__,
+    ProcurementSource.__table__,
+    ProcurementRecord.__table__,
     Stakeholder.__table__,
     StakeholderActivity.__table__,
     StakeholderDocument.__table__,
     FieldLivestockIntake.__table__,
+    FieldLivestockIntakeActivity.__table__,
+    HoldingPen.__table__,
+    HoldingPenAssignment.__table__,
+    HoldingPenActivity.__table__,
 ]
 
 
@@ -60,16 +74,44 @@ def make_kaewa_app(monkeypatch, tmp_path: Path):
         labels = [template]
         if "stats" in context:
             labels.extend(str(value) for value in context["stats"].values())
-        for key in ("stakeholders", "activities", "documents", "intakes", "recent_activities", "recent_intakes"):
+        for key in (
+            "stakeholders",
+            "activities",
+            "documents",
+            "intakes",
+            "recent_activities",
+            "recent_intakes",
+            "active_assignments",
+            "released_assignments",
+        ):
             for item in context.get(key, []):
-                for attr in ("name", "subject", "title", "animal_type", "source_location", "intake_status"):
+                for attr in ("name", "subject", "title", "animal_type", "source_location", "intake_status", "status"):
                     value = getattr(item, attr, None)
                     if value:
                         labels.append(str(value))
-        for key in ("stakeholder", "intake"):
+                if getattr(item, "count", None) is not None:
+                    labels.append(str(item.count))
+        for key in ("pen_summaries", "holding_pen_summaries"):
+            for summary in context.get(key, []):
+                pen = summary["pen"]
+                labels.extend([pen.name, str(summary["occupancy"])])
+        if "aggregation_batches" in context:
+            labels.extend(batch.site_name for batch in context["aggregation_batches"])
+        if "handoff_events" in context:
+            labels.extend(event.event_type for event in context["handoff_events"])
+        for key in ("stakeholder", "intake", "pen"):
             item = context.get(key)
             if item is not None:
-                for attr in ("name", "phone", "category", "animal_type", "source_location", "intake_status"):
+                for attr in (
+                    "name",
+                    "phone",
+                    "category",
+                    "animal_type",
+                    "source_location",
+                    "intake_status",
+                    "handoff_status",
+                    "status",
+                ):
                     value = getattr(item, attr, None)
                     if value:
                         labels.append(str(value))
@@ -98,12 +140,28 @@ def login_admin(client):
         session["_fresh"] = True
 
 
+def assert_animal_tables_not_created(engine):
+    inspector = sa.inspect(engine)
+    assert not inspector.has_table(Goat.__tablename__)
+    assert not inspector.has_table(Sheep.__tablename__)
+    assert not inspector.has_table(Cattle.__tablename__)
+
+
 def test_kaewa_routes_require_login(monkeypatch, tmp_path):
     app = make_kaewa_app(monkeypatch, tmp_path)
     client = app.test_client()
 
-    for path in ("/admin/kaewa", "/admin/kaewa/stakeholders", "/admin/kaewa/intakes"):
+    for path in ("/admin/kaewa", "/admin/kaewa/stakeholders", "/admin/kaewa/intakes", "/admin/kaewa/holding-pens"):
         response = client.get(path)
+        assert response.status_code in (302, 401)
+
+    for path in (
+        "/admin/kaewa/intakes/1/handoff/ready",
+        "/admin/kaewa/intakes/1/handoff/link-batch",
+        "/admin/kaewa/holding-pens/1/assign",
+        "/admin/kaewa/holding-assignments/1/release",
+    ):
+        response = client.post(path)
         assert response.status_code in (302, 401)
 
 
@@ -192,10 +250,7 @@ def test_intake_creation_and_status_update_without_animals(monkeypatch, tmp_path
         db.session.add(stakeholder)
         db.session.commit()
         stakeholder_id = stakeholder.id
-        inspector = sa.inspect(db.engine)
-        assert not inspector.has_table(Goat.__tablename__)
-        assert not inspector.has_table(Sheep.__tablename__)
-        assert not inspector.has_table(Cattle.__tablename__)
+        assert_animal_tables_not_created(db.engine)
 
     response = client.post(
         "/admin/kaewa/intakes/new",
@@ -220,10 +275,8 @@ def test_intake_creation_and_status_update_without_animals(monkeypatch, tmp_path
         intake_id = intake.id
         assert intake.uuid is not None
         assert intake.stakeholder_id == stakeholder_id
-        inspector = sa.inspect(db.engine)
-        assert not inspector.has_table(Goat.__tablename__)
-        assert not inspector.has_table(Sheep.__tablename__)
-        assert not inspector.has_table(Cattle.__tablename__)
+        assert intake.handoff_status == "none"
+        assert_animal_tables_not_created(db.engine)
 
     response = client.post(
         f"/admin/kaewa/intakes/{intake_id}/status",
@@ -235,7 +288,267 @@ def test_intake_creation_and_status_update_without_animals(monkeypatch, tmp_path
     with app.app_context():
         intake = db.session.get(FieldLivestockIntake, intake_id)
         assert intake.intake_status == "accepted"
-        inspector = sa.inspect(db.engine)
-        assert not inspector.has_table(Goat.__tablename__)
-        assert not inspector.has_table(Sheep.__tablename__)
-        assert not inspector.has_table(Cattle.__tablename__)
+        assert_animal_tables_not_created(db.engine)
+
+
+def test_draft_intake_cannot_be_handed_off(monkeypatch, tmp_path):
+    app = make_kaewa_app(monkeypatch, tmp_path)
+    client = app.test_client()
+    login_admin(client)
+
+    with app.app_context():
+        intake = FieldLivestockIntake(
+            animal_type="goat",
+            count=5,
+            intake_status="draft",
+            source_location="Kaewa Ward",
+        )
+        db.session.add(intake)
+        db.session.commit()
+        intake_id = intake.id
+
+    response = client.post(
+        f"/admin/kaewa/intakes/{intake_id}/handoff/ready",
+        data={"handoff_notes": "Premature review"},
+        follow_redirects=True,
+    )
+
+    assert response.status_code == 200
+    with app.app_context():
+        intake = db.session.get(FieldLivestockIntake, intake_id)
+        assert intake.handoff_status == "none"
+        assert intake.reviewed_by_user_id is None
+        assert FieldLivestockIntakeActivity.query.filter_by(intake_id=intake_id).count() == 0
+
+
+def test_accepted_intake_can_be_marked_ready(monkeypatch, tmp_path):
+    app = make_kaewa_app(monkeypatch, tmp_path)
+    client = app.test_client()
+    login_admin(client)
+
+    with app.app_context():
+        intake = FieldLivestockIntake(
+            animal_type="sheep",
+            count=8,
+            intake_status="accepted",
+            source_location="Kaewa Ward",
+        )
+        db.session.add(intake)
+        db.session.commit()
+        intake_id = intake.id
+
+    response = client.post(
+        f"/admin/kaewa/intakes/{intake_id}/handoff/ready",
+        data={"handoff_notes": "Verified by field office."},
+        follow_redirects=True,
+    )
+
+    assert response.status_code == 200
+    assert "ready_for_aggregation" in response.get_data(as_text=True)
+    with app.app_context():
+        intake = db.session.get(FieldLivestockIntake, intake_id)
+        assert intake.handoff_status == "ready_for_aggregation"
+        assert intake.reviewed_by_user_id == 1
+        assert intake.reviewed_at is not None
+        event = FieldLivestockIntakeActivity.query.filter_by(intake_id=intake_id).one()
+        assert event.from_status == "none"
+        assert event.to_status == "ready_for_aggregation"
+
+
+def test_ready_intake_can_link_to_existing_aggregation_batch_without_animals(monkeypatch, tmp_path):
+    app = make_kaewa_app(monkeypatch, tmp_path)
+    client = app.test_client()
+    login_admin(client)
+
+    with app.app_context():
+        batch = AggregationBatch(
+            animal_type="goat",
+            site_name="Kaewa Aggregation Yard",
+            created_by_user_id=1,
+        )
+        intake = FieldLivestockIntake(
+            animal_type="goat",
+            count=12,
+            intake_status="accepted",
+            handoff_status="ready_for_aggregation",
+            source_location="Kaewa Ward",
+        )
+        db.session.add_all([batch, intake])
+        db.session.commit()
+        batch_id = batch.id
+        intake_id = intake.id
+        assert_animal_tables_not_created(db.engine)
+
+    response = client.post(
+        f"/admin/kaewa/intakes/{intake_id}/handoff/link-batch",
+        data={
+            "aggregation_batch_id": str(batch_id),
+            "handoff_notes": "Linked after office review.",
+        },
+        follow_redirects=True,
+    )
+
+    assert response.status_code == 200
+    assert "handed_off" in response.get_data(as_text=True)
+    with app.app_context():
+        intake = db.session.get(FieldLivestockIntake, intake_id)
+        assert intake.linked_aggregation_batch_id == batch_id
+        assert intake.handoff_status == "handed_off"
+        assert intake.intake_status == "transferred_to_aggregation"
+        event = FieldLivestockIntakeActivity.query.filter_by(intake_id=intake_id).one()
+        assert event.to_status == "handed_off"
+        assert_animal_tables_not_created(db.engine)
+
+
+def test_create_holding_pen(monkeypatch, tmp_path):
+    app = make_kaewa_app(monkeypatch, tmp_path)
+    client = app.test_client()
+    login_admin(client)
+
+    response = client.post(
+        "/admin/kaewa/holding-pens/new",
+        data={
+            "name": "Kaewa Goat Pen A",
+            "office_location": "Kaewa",
+            "animal_type": "goat",
+            "capacity_count": "20",
+            "status": "active",
+            "notes": "Near office yard.",
+        },
+        follow_redirects=True,
+    )
+
+    assert response.status_code == 200
+    assert "Kaewa Goat Pen A" in response.get_data(as_text=True)
+    with app.app_context():
+        pen = HoldingPen.query.filter_by(name="Kaewa Goat Pen A").one()
+        assert pen.uuid is not None
+        assert pen.capacity_count == 20
+
+
+def test_assign_intake_to_active_holding_pen(monkeypatch, tmp_path):
+    app = make_kaewa_app(monkeypatch, tmp_path)
+    client = app.test_client()
+    login_admin(client)
+
+    with app.app_context():
+        pen = HoldingPen(name="Kaewa Mixed Pen", animal_type="mixed", capacity_count=20, status="active")
+        intake = FieldLivestockIntake(
+            animal_type="goat",
+            count=12,
+            estimated_total_weight_kg=360,
+            intake_status="accepted",
+            source_location="Kaewa Ward",
+        )
+        db.session.add_all([pen, intake])
+        db.session.commit()
+        pen_id = pen.id
+        intake_id = intake.id
+        assert_animal_tables_not_created(db.engine)
+
+    response = client.post(
+        f"/admin/kaewa/holding-pens/{pen_id}/assign",
+        data={
+            "field_livestock_intake_id": str(intake_id),
+            "notes": "Holding before market-day aggregation.",
+        },
+        follow_redirects=True,
+    )
+
+    assert response.status_code == 200
+    assert "Kaewa Mixed Pen" in response.get_data(as_text=True)
+    with app.app_context():
+        assignment = HoldingPenAssignment.query.filter_by(holding_pen_id=pen_id).one()
+        assert assignment.field_livestock_intake_id == intake_id
+        assert assignment.count == 12
+        assert assignment.status == "active"
+        assert HoldingPenActivity.query.filter_by(holding_pen_id=pen_id, activity_type="assignment").count() == 1
+        assert_animal_tables_not_created(db.engine)
+
+
+def test_block_holding_assignment_beyond_capacity(monkeypatch, tmp_path):
+    app = make_kaewa_app(monkeypatch, tmp_path)
+    client = app.test_client()
+    login_admin(client)
+
+    with app.app_context():
+        pen = HoldingPen(name="Small Goat Pen", animal_type="goat", capacity_count=5, status="active")
+        intake = FieldLivestockIntake(animal_type="goat", count=6, intake_status="accepted")
+        db.session.add_all([pen, intake])
+        db.session.commit()
+        pen_id = pen.id
+        intake_id = intake.id
+
+    response = client.post(
+        f"/admin/kaewa/holding-pens/{pen_id}/assign",
+        data={"field_livestock_intake_id": str(intake_id)},
+        follow_redirects=True,
+    )
+
+    assert response.status_code == 200
+    with app.app_context():
+        assert HoldingPenAssignment.query.count() == 0
+
+
+def test_block_holding_assignment_animal_type_mismatch(monkeypatch, tmp_path):
+    app = make_kaewa_app(monkeypatch, tmp_path)
+    client = app.test_client()
+    login_admin(client)
+
+    with app.app_context():
+        pen = HoldingPen(name="Sheep Pen", animal_type="sheep", capacity_count=20, status="active")
+        intake = FieldLivestockIntake(animal_type="goat", count=4, intake_status="accepted")
+        db.session.add_all([pen, intake])
+        db.session.commit()
+        pen_id = pen.id
+        intake_id = intake.id
+
+    response = client.post(
+        f"/admin/kaewa/holding-pens/{pen_id}/assign",
+        data={"field_livestock_intake_id": str(intake_id)},
+        follow_redirects=True,
+    )
+
+    assert response.status_code == 200
+    with app.app_context():
+        assert HoldingPenAssignment.query.count() == 0
+
+
+def test_release_assignment_and_occupancy_excludes_released(monkeypatch, tmp_path):
+    app = make_kaewa_app(monkeypatch, tmp_path)
+    client = app.test_client()
+    login_admin(client)
+
+    with app.app_context():
+        pen = HoldingPen(name="Release Pen", animal_type="mixed", capacity_count=10, status="active")
+        db.session.add(pen)
+        db.session.flush()
+        assignment = HoldingPenAssignment(
+            holding_pen_id=pen.id,
+            animal_type="cattle",
+            count=3,
+            status="active",
+            created_by_user_id=1,
+        )
+        db.session.add(assignment)
+        db.session.commit()
+        pen_id = pen.id
+        assignment_id = assignment.id
+
+    response = client.post(
+        f"/admin/kaewa/holding-assignments/{assignment_id}/release",
+        data={"release_reason": "transferred_to_aggregation", "notes": "Moved out."},
+        follow_redirects=True,
+    )
+
+    assert response.status_code == 200
+    with app.app_context():
+        assignment = db.session.get(HoldingPenAssignment, assignment_id)
+        pen = db.session.get(HoldingPen, pen_id)
+        active_occupancy = sum(item.count for item in pen.assignments if item.status == "active")
+        assert assignment.status == "released"
+        assert assignment.released_at is not None
+        assert assignment.release_reason == "transferred_to_aggregation"
+        assert active_occupancy == 0
+        assert HoldingPenActivity.query.filter_by(holding_pen_id=pen_id, activity_type="release").count() == 1
+        assert_animal_tables_not_created(db.engine)
