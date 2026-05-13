@@ -1,0 +1,37 @@
+{% extends "layouts/base_admin.html" %}
+{% from "admin/institutional/_shared.html" import text_input, textarea, select_input, flash_messages %}
+
+{% block page_title %}{{ action }} Research Project{% endblock %}
+
+{% block breadcrumbs %}
+  <a href="{{ url_for('admin.dashboard') }}" class="font-semibold text-jungle hover:text-jungleLight transition">Dashboard</a>
+  <span>/</span><a href="{{ url_for('institutional.research_index') }}" class="font-semibold text-jungle hover:text-jungleLight transition">Research</a>
+  <span>/</span><span>{{ action }}</span>
+{% endblock %}
+
+{% block content %}
+  {{ flash_messages() }}
+  <div class="mb-6">
+    <h1 class="text-2xl font-bold text-gray-900">{{ action }} Research Project</h1>
+    <p class="text-sm text-gray-600 mt-1">Capture the institutional question, expected learning, and livestock context.</p>
+  </div>
+
+  <form method="POST" class="bg-white rounded-xl shadow-sm border border-gray-200 p-5 space-y-5">
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      {{ text_input('title', 'Title', project.title, required=true) }}
+      {{ text_input('code', 'Code / Reference', project.code) }}
+      {{ select_input('category', 'Category', categories, project.category or 'other') }}
+      {{ select_input('status', 'Status', statuses, project.status or 'idea') }}
+      {{ text_input('location', 'County / Location', project.location) }}
+      {{ text_input('start_date', 'Start Date', project.start_date, 'date') }}
+      {{ text_input('end_date', 'End Date', project.end_date, 'date') }}
+    </div>
+    {{ textarea('objective', 'Objective', project.objective, 4) }}
+    {{ textarea('hypothesis', 'Hypothesis', project.hypothesis, 4) }}
+    {{ textarea('notes', 'Notes', project.notes, 4) }}
+    <div class="flex items-center gap-3 pt-2">
+      <button class="rounded-lg bg-jungle px-4 py-2 text-white font-semibold hover:bg-jungleLight transition" type="submit">{{ action }} Project</button>
+      <a href="{{ url_for('institutional.research_index') }}" class="rounded-lg border border-gray-300 px-4 py-2 font-semibold text-gray-700 hover:bg-gray-50 transition">Cancel</a>
+    </div>
+  </form>
+{% endblock %}

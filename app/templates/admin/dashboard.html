@@ -250,10 +250,13 @@
       <div class="module-panel">
         <h2 class="text-xl font-bold text-gray-950">Administration</h2>
         <p class="text-sm text-gray-500 mt-1">
-          Users, messages, and buyer requests.
+          Users, institutional modules, messages, and buyer requests.
         </p>
 
         <div class="mt-5 grid grid-cols-1 gap-3">
+          <a href="{{ url_for('institutional.research_index') }}" class="module-link">Research Intelligence</a>
+          <a href="{{ url_for('institutional.grants_index') }}" class="module-link">Grants & Funding</a>
+          <a href="{{ url_for('institutional.projects_index') }}" class="module-link">Strategic Projects</a>
           <a href="{{ url_for('auth.admin_list_users') }}" class="module-link">Users</a>
           <a href="{{ url_for('auth.admin_create_user') }}" class="module-link">Create User</a>
           <a href="{{ url_for('main.contact_messages') }}" class="module-link">Contact Messages</a>

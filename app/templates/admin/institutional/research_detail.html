@@ -1,0 +1,32 @@
+{% extends "layouts/base_admin.html" %}
+{% from "admin/institutional/_shared.html" import status_badge %}
+
+{% block page_title %}{{ project.title }}{% endblock %}
+
+{% block breadcrumbs %}
+  <a href="{{ url_for('admin.dashboard') }}" class="font-semibold text-jungle hover:text-jungleLight transition">Dashboard</a>
+  <span>/</span><a href="{{ url_for('institutional.research_index') }}" class="font-semibold text-jungle hover:text-jungleLight transition">Research</a>
+  <span>/</span><span>{{ project.title }}</span>
+{% endblock %}
+
+{% block content %}
+  <div class="flex items-start justify-between gap-4 mb-6">
+    <div>
+      <h1 class="text-2xl font-bold text-gray-900">{{ project.title }}</h1>
+      <p class="text-sm text-gray-600 mt-1">{{ project.code or 'No reference code' }} · {{ project.category|replace('_', ' ')|title }}</p>
+    </div>
+    <a href="{{ url_for('institutional.research_edit', project_id=project.id) }}" class="rounded-lg bg-jungle px-4 py-2 text-white font-semibold hover:bg-jungleLight transition">Edit</a>
+  </div>
+
+  <section class="bg-white rounded-xl shadow-sm border border-gray-200 p-5 space-y-4">
+    <div>{{ status_badge(project.status) }}</div>
+    <dl class="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+      <div><dt class="font-semibold text-gray-500">Location</dt><dd class="text-gray-900 mt-1">{{ project.location or '-' }}</dd></div>
+      <div><dt class="font-semibold text-gray-500">Start</dt><dd class="text-gray-900 mt-1">{{ project.start_date or '-' }}</dd></div>
+      <div><dt class="font-semibold text-gray-500">End</dt><dd class="text-gray-900 mt-1">{{ project.end_date or '-' }}</dd></div>
+    </dl>
+    <div><h2 class="font-bold text-gray-900">Objective</h2><p class="text-sm text-gray-700 mt-1 whitespace-pre-line">{{ project.objective or '-' }}</p></div>
+    <div><h2 class="font-bold text-gray-900">Hypothesis</h2><p class="text-sm text-gray-700 mt-1 whitespace-pre-line">{{ project.hypothesis or '-' }}</p></div>
+    <div><h2 class="font-bold text-gray-900">Notes</h2><p class="text-sm text-gray-700 mt-1 whitespace-pre-line">{{ project.notes or '-' }}</p></div>
+  </section>
+{% endblock %}

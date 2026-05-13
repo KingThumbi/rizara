@@ -2856,3 +2856,348 @@ class ProductCatalog(db.Model):
 
     def __repr__(self):
         return f"<ProductCatalog {self.name}>"
+
+
+# =========================================================
+# Institutional Foundations
+# R&D, grants, and strategic execution records are intentionally
+# additive and linked back to existing users only through nullable FKs.
+# =========================================================
+class ResearchProject(db.Model):
+    __tablename__ = "research_project"
+
+    id = db.Column(db.Integer, primary_key=True)
+    uuid = db.Column(UUID(as_uuid=True), default=uuid.uuid4, nullable=False, unique=True, index=True)
+    title = db.Column(db.String(180), nullable=False)
+    code = db.Column(db.String(80), nullable=True, index=True)
+    category = db.Column(db.String(40), nullable=False, default="other", index=True)
+    status = db.Column(db.String(30), nullable=False, default="idea", index=True)
+    is_archived = db.Column(db.Boolean, nullable=False, default=False, index=True)
+    objective = db.Column(db.Text, nullable=True)
+    hypothesis = db.Column(db.Text, nullable=True)
+    location = db.Column(db.String(160), nullable=True)
+    start_date = db.Column(db.Date, nullable=True)
+    end_date = db.Column(db.Date, nullable=True)
+    owner_user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=True, index=True)
+    notes = db.Column(db.Text, nullable=True)
+    created_at = db.Column(db.DateTime, default=utcnow_naive, nullable=False, index=True)
+    updated_at = db.Column(db.DateTime, default=utcnow_naive, onupdate=utcnow_naive, nullable=False)
+
+    owner = db.relationship("User", foreign_keys=[owner_user_id], lazy="joined")
+    observations = db.relationship("FieldObservation", back_populates="research_project", lazy="select")
+    documents = db.relationship("ResearchDocument", back_populates="research_project", lazy="select")
+
+    __table_args__ = (
+        db.CheckConstraint(
+            "category in ('breed_yield','climate_resilience','market_intelligence','processing_efficiency','animal_health','feed_nutrition','export_compliance','other')",
+            name="ck_research_project_category",
+        ),
+        db.CheckConstraint(
+            "status in ('idea','active','paused','completed','archived')",
+            name="ck_research_project_status",
+        ),
+    )
+
+
+class FieldObservation(db.Model):
+    __tablename__ = "field_observation"
+
+    id = db.Column(db.Integer, primary_key=True)
+    uuid = db.Column(UUID(as_uuid=True), default=uuid.uuid4, nullable=False, unique=True, index=True)
+    research_project_id = db.Column(db.Integer, db.ForeignKey("research_project.id"), nullable=True, index=True)
+    observation_date = db.Column(db.Date, nullable=True, index=True)
+    location = db.Column(db.String(160), nullable=True)
+    animal_type = db.Column(db.String(20), nullable=True, index=True)
+    observation_type = db.Column(db.String(30), nullable=False, default="other", index=True)
+    description = db.Column(db.Text, nullable=True)
+    findings = db.Column(db.Text, nullable=True)
+    recommended_action = db.Column(db.Text, nullable=True)
+    created_by_user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=True, index=True)
+    created_at = db.Column(db.DateTime, default=utcnow_naive, nullable=False, index=True)
+
+    research_project = db.relationship("ResearchProject", back_populates="observations", lazy="joined")
+    created_by = db.relationship("User", foreign_keys=[created_by_user_id], lazy="joined")
+
+
+class MarketInsight(db.Model):
+    __tablename__ = "market_insight"
+
+    id = db.Column(db.Integer, primary_key=True)
+    uuid = db.Column(UUID(as_uuid=True), default=uuid.uuid4, nullable=False, unique=True, index=True)
+    title = db.Column(db.String(180), nullable=False)
+    market_region = db.Column(db.String(30), nullable=False, default="local", index=True)
+    is_archived = db.Column(db.Boolean, nullable=False, default=False, index=True)
+    product_focus = db.Column(db.String(160), nullable=True)
+    insight_date = db.Column(db.Date, nullable=True, index=True)
+    summary = db.Column(db.Text, nullable=True)
+    source = db.Column(db.String(255), nullable=True)
+    opportunity_level = db.Column(db.String(20), nullable=False, default="medium", index=True)
+    notes = db.Column(db.Text, nullable=True)
+    created_at = db.Column(db.DateTime, default=utcnow_naive, nullable=False, index=True)
+
+
+class InnovationProposal(db.Model):
+    __tablename__ = "innovation_proposal"
+
+    id = db.Column(db.Integer, primary_key=True)
+    uuid = db.Column(UUID(as_uuid=True), default=uuid.uuid4, nullable=False, unique=True, index=True)
+    title = db.Column(db.String(180), nullable=False)
+    problem_statement = db.Column(db.Text, nullable=True)
+    proposed_solution = db.Column(db.Text, nullable=True)
+    expected_benefit = db.Column(db.Text, nullable=True)
+    status = db.Column(db.String(30), nullable=False, default="proposed", index=True)
+    priority = db.Column(db.String(20), nullable=False, default="medium", index=True)
+    is_archived = db.Column(db.Boolean, nullable=False, default=False, index=True)
+    owner_user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=True, index=True)
+    created_at = db.Column(db.DateTime, default=utcnow_naive, nullable=False, index=True)
+    updated_at = db.Column(db.DateTime, default=utcnow_naive, onupdate=utcnow_naive, nullable=False)
+
+    owner = db.relationship("User", foreign_keys=[owner_user_id], lazy="joined")
+
+
+class ResearchDocument(db.Model):
+    __tablename__ = "research_document"
+
+    id = db.Column(db.Integer, primary_key=True)
+    uuid = db.Column(UUID(as_uuid=True), default=uuid.uuid4, nullable=False, unique=True, index=True)
+    title = db.Column(db.String(180), nullable=False)
+    document_type = db.Column(db.String(80), nullable=True)
+    file_path = db.Column(db.String(255), nullable=True)
+    external_url = db.Column(db.String(500), nullable=True)
+    notes = db.Column(db.Text, nullable=True)
+    research_project_id = db.Column(db.Integer, db.ForeignKey("research_project.id"), nullable=True, index=True)
+    created_at = db.Column(db.DateTime, default=utcnow_naive, nullable=False, index=True)
+
+    research_project = db.relationship("ResearchProject", back_populates="documents", lazy="joined")
+
+
+class DonorOrganization(db.Model):
+    __tablename__ = "donor_organization"
+
+    id = db.Column(db.Integer, primary_key=True)
+    uuid = db.Column(UUID(as_uuid=True), default=uuid.uuid4, nullable=False, unique=True, index=True)
+    name = db.Column(db.String(180), nullable=False, index=True)
+    organization_type = db.Column(db.String(40), nullable=False, default="donor", index=True)
+    is_archived = db.Column(db.Boolean, nullable=False, default=False, index=True)
+    country = db.Column(db.String(100), nullable=True)
+    website = db.Column(db.String(255), nullable=True)
+    contact_name = db.Column(db.String(160), nullable=True)
+    contact_email = db.Column(db.String(160), nullable=True)
+    notes = db.Column(db.Text, nullable=True)
+    created_at = db.Column(db.DateTime, default=utcnow_naive, nullable=False, index=True)
+
+    opportunities = db.relationship("GrantOpportunity", back_populates="donor_organization", lazy="select")
+
+
+class GrantOpportunity(db.Model):
+    __tablename__ = "grant_opportunity"
+
+    id = db.Column(db.Integer, primary_key=True)
+    uuid = db.Column(UUID(as_uuid=True), default=uuid.uuid4, nullable=False, unique=True, index=True)
+    donor_organization_id = db.Column(db.Integer, db.ForeignKey("donor_organization.id"), nullable=True, index=True)
+    title = db.Column(db.String(200), nullable=False)
+    focus_area = db.Column(db.String(160), nullable=True, index=True)
+    funding_size_min = db.Column(db.Numeric(14, 2), nullable=True)
+    funding_size_max = db.Column(db.Numeric(14, 2), nullable=True)
+    currency = db.Column(db.String(10), nullable=False, default="USD")
+    deadline = db.Column(db.Date, nullable=True, index=True)
+    opportunity_url = db.Column(db.String(500), nullable=True)
+    status = db.Column(db.String(30), nullable=False, default="identified", index=True)
+    is_archived = db.Column(db.Boolean, nullable=False, default=False, index=True)
+    eligibility_notes = db.Column(db.Text, nullable=True)
+    strategic_fit_notes = db.Column(db.Text, nullable=True)
+    created_at = db.Column(db.DateTime, default=utcnow_naive, nullable=False, index=True)
+    updated_at = db.Column(db.DateTime, default=utcnow_naive, onupdate=utcnow_naive, nullable=False)
+
+    donor_organization = db.relationship("DonorOrganization", back_populates="opportunities", lazy="joined")
+    applications = db.relationship("GrantApplication", back_populates="grant_opportunity", lazy="select")
+    documents = db.relationship("GrantDocument", back_populates="grant_opportunity", lazy="select")
+
+
+class GrantApplication(db.Model):
+    __tablename__ = "grant_application"
+
+    id = db.Column(db.Integer, primary_key=True)
+    uuid = db.Column(UUID(as_uuid=True), default=uuid.uuid4, nullable=False, unique=True, index=True)
+    grant_opportunity_id = db.Column(db.Integer, db.ForeignKey("grant_opportunity.id"), nullable=False, index=True)
+    title = db.Column(db.String(200), nullable=False)
+    application_status = db.Column(db.String(30), nullable=False, default="drafting", index=True)
+    is_archived = db.Column(db.Boolean, nullable=False, default=False, index=True)
+    submission_date = db.Column(db.Date, nullable=True)
+    requested_amount = db.Column(db.Numeric(14, 2), nullable=True)
+    awarded_amount = db.Column(db.Numeric(14, 2), nullable=True)
+    currency = db.Column(db.String(10), nullable=False, default="USD")
+    project_title = db.Column(db.String(200), nullable=True)
+    summary = db.Column(db.Text, nullable=True)
+    internal_owner_user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=True, index=True)
+    notes = db.Column(db.Text, nullable=True)
+    created_at = db.Column(db.DateTime, default=utcnow_naive, nullable=False, index=True)
+    updated_at = db.Column(db.DateTime, default=utcnow_naive, onupdate=utcnow_naive, nullable=False)
+
+    grant_opportunity = db.relationship("GrantOpportunity", back_populates="applications", lazy="joined")
+    internal_owner = db.relationship("User", foreign_keys=[internal_owner_user_id], lazy="joined")
+    milestones = db.relationship("GrantMilestone", back_populates="grant_application", lazy="select")
+    reports = db.relationship("GrantReport", back_populates="grant_application", lazy="select")
+    documents = db.relationship("GrantDocument", back_populates="grant_application", lazy="select")
+
+
+class GrantMilestone(db.Model):
+    __tablename__ = "grant_milestone"
+
+    id = db.Column(db.Integer, primary_key=True)
+    uuid = db.Column(UUID(as_uuid=True), default=uuid.uuid4, nullable=False, unique=True, index=True)
+    grant_application_id = db.Column(db.Integer, db.ForeignKey("grant_application.id"), nullable=False, index=True)
+    title = db.Column(db.String(180), nullable=False)
+    due_date = db.Column(db.Date, nullable=True, index=True)
+    status = db.Column(db.String(30), nullable=False, default="pending", index=True)
+    description = db.Column(db.Text, nullable=True)
+    completion_notes = db.Column(db.Text, nullable=True)
+    created_at = db.Column(db.DateTime, default=utcnow_naive, nullable=False, index=True)
+    updated_at = db.Column(db.DateTime, default=utcnow_naive, onupdate=utcnow_naive, nullable=False)
+
+    grant_application = db.relationship("GrantApplication", back_populates="milestones", lazy="joined")
+
+
+class GrantReport(db.Model):
+    __tablename__ = "grant_report"
+
+    id = db.Column(db.Integer, primary_key=True)
+    uuid = db.Column(UUID(as_uuid=True), default=uuid.uuid4, nullable=False, unique=True, index=True)
+    grant_application_id = db.Column(db.Integer, db.ForeignKey("grant_application.id"), nullable=False, index=True)
+    report_type = db.Column(db.String(30), nullable=False, default="narrative", index=True)
+    reporting_period_start = db.Column(db.Date, nullable=True)
+    reporting_period_end = db.Column(db.Date, nullable=True)
+    due_date = db.Column(db.Date, nullable=True, index=True)
+    submitted_date = db.Column(db.Date, nullable=True)
+    status = db.Column(db.String(30), nullable=False, default="draft", index=True)
+    summary = db.Column(db.Text, nullable=True)
+    notes = db.Column(db.Text, nullable=True)
+    created_at = db.Column(db.DateTime, default=utcnow_naive, nullable=False, index=True)
+    updated_at = db.Column(db.DateTime, default=utcnow_naive, onupdate=utcnow_naive, nullable=False)
+
+    grant_application = db.relationship("GrantApplication", back_populates="reports", lazy="joined")
+
+
+class GrantDocument(db.Model):
+    __tablename__ = "grant_document"
+
+    id = db.Column(db.Integer, primary_key=True)
+    uuid = db.Column(UUID(as_uuid=True), default=uuid.uuid4, nullable=False, unique=True, index=True)
+    grant_application_id = db.Column(db.Integer, db.ForeignKey("grant_application.id"), nullable=True, index=True)
+    grant_opportunity_id = db.Column(db.Integer, db.ForeignKey("grant_opportunity.id"), nullable=True, index=True)
+    title = db.Column(db.String(180), nullable=False)
+    document_type = db.Column(db.String(40), nullable=False, default="other", index=True)
+    file_path = db.Column(db.String(255), nullable=True)
+    external_url = db.Column(db.String(500), nullable=True)
+    notes = db.Column(db.Text, nullable=True)
+    created_at = db.Column(db.DateTime, default=utcnow_naive, nullable=False, index=True)
+
+    grant_application = db.relationship("GrantApplication", back_populates="documents", lazy="joined")
+    grant_opportunity = db.relationship("GrantOpportunity", back_populates="documents", lazy="joined")
+
+
+class StrategicProject(db.Model):
+    __tablename__ = "strategic_project"
+
+    id = db.Column(db.Integer, primary_key=True)
+    uuid = db.Column(UUID(as_uuid=True), default=uuid.uuid4, nullable=False, unique=True, index=True)
+    title = db.Column(db.String(200), nullable=False)
+    project_code = db.Column(db.String(80), nullable=True, index=True)
+    category = db.Column(db.String(40), nullable=False, default="other", index=True)
+    status = db.Column(db.String(30), nullable=False, default="planned", index=True)
+    priority = db.Column(db.String(20), nullable=False, default="medium", index=True)
+    is_archived = db.Column(db.Boolean, nullable=False, default=False, index=True)
+    start_date = db.Column(db.Date, nullable=True)
+    end_date = db.Column(db.Date, nullable=True)
+    location = db.Column(db.String(160), nullable=True)
+    description = db.Column(db.Text, nullable=True)
+    objective = db.Column(db.Text, nullable=True)
+    owner_user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=True, index=True)
+    linked_grant_application_id = db.Column(db.Integer, db.ForeignKey("grant_application.id"), nullable=True, index=True)
+    linked_research_project_id = db.Column(db.Integer, db.ForeignKey("research_project.id"), nullable=True, index=True)
+    created_at = db.Column(db.DateTime, default=utcnow_naive, nullable=False, index=True)
+    updated_at = db.Column(db.DateTime, default=utcnow_naive, onupdate=utcnow_naive, nullable=False)
+
+    owner = db.relationship("User", foreign_keys=[owner_user_id], lazy="joined")
+    linked_grant_application = db.relationship("GrantApplication", foreign_keys=[linked_grant_application_id], lazy="joined")
+    linked_research_project = db.relationship("ResearchProject", foreign_keys=[linked_research_project_id], lazy="joined")
+    workstreams = db.relationship("ProjectWorkstream", back_populates="strategic_project", lazy="select")
+    milestones = db.relationship("ProjectMilestone", back_populates="strategic_project", lazy="select")
+    tasks = db.relationship("ProjectTask", back_populates="strategic_project", lazy="select")
+    documents = db.relationship("ProjectDocument", back_populates="strategic_project", lazy="select")
+
+
+class ProjectWorkstream(db.Model):
+    __tablename__ = "project_workstream"
+
+    id = db.Column(db.Integer, primary_key=True)
+    uuid = db.Column(UUID(as_uuid=True), default=uuid.uuid4, nullable=False, unique=True, index=True)
+    strategic_project_id = db.Column(db.Integer, db.ForeignKey("strategic_project.id"), nullable=False, index=True)
+    title = db.Column(db.String(180), nullable=False)
+    category = db.Column(db.String(30), nullable=False, default="other", index=True)
+    owner_user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=True, index=True)
+    status = db.Column(db.String(30), nullable=False, default="planned", index=True)
+    notes = db.Column(db.Text, nullable=True)
+    created_at = db.Column(db.DateTime, default=utcnow_naive, nullable=False, index=True)
+    updated_at = db.Column(db.DateTime, default=utcnow_naive, onupdate=utcnow_naive, nullable=False)
+
+    strategic_project = db.relationship("StrategicProject", back_populates="workstreams", lazy="joined")
+    owner = db.relationship("User", foreign_keys=[owner_user_id], lazy="joined")
+
+
+class ProjectMilestone(db.Model):
+    __tablename__ = "project_milestone"
+
+    id = db.Column(db.Integer, primary_key=True)
+    uuid = db.Column(UUID(as_uuid=True), default=uuid.uuid4, nullable=False, unique=True, index=True)
+    strategic_project_id = db.Column(db.Integer, db.ForeignKey("strategic_project.id"), nullable=False, index=True)
+    workstream_id = db.Column(db.Integer, db.ForeignKey("project_workstream.id"), nullable=True, index=True)
+    title = db.Column(db.String(180), nullable=False)
+    due_date = db.Column(db.Date, nullable=True, index=True)
+    status = db.Column(db.String(30), nullable=False, default="pending", index=True)
+    description = db.Column(db.Text, nullable=True)
+    completion_notes = db.Column(db.Text, nullable=True)
+    created_at = db.Column(db.DateTime, default=utcnow_naive, nullable=False, index=True)
+    updated_at = db.Column(db.DateTime, default=utcnow_naive, onupdate=utcnow_naive, nullable=False)
+
+    strategic_project = db.relationship("StrategicProject", back_populates="milestones", lazy="joined")
+    workstream = db.relationship("ProjectWorkstream", lazy="joined")
+
+
+class ProjectTask(db.Model):
+    __tablename__ = "project_task"
+
+    id = db.Column(db.Integer, primary_key=True)
+    uuid = db.Column(UUID(as_uuid=True), default=uuid.uuid4, nullable=False, unique=True, index=True)
+    strategic_project_id = db.Column(db.Integer, db.ForeignKey("strategic_project.id"), nullable=False, index=True)
+    workstream_id = db.Column(db.Integer, db.ForeignKey("project_workstream.id"), nullable=True, index=True)
+    milestone_id = db.Column(db.Integer, db.ForeignKey("project_milestone.id"), nullable=True, index=True)
+    title = db.Column(db.String(180), nullable=False)
+    description = db.Column(db.Text, nullable=True)
+    assigned_to_user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=True, index=True)
+    due_date = db.Column(db.Date, nullable=True, index=True)
+    status = db.Column(db.String(30), nullable=False, default="todo", index=True)
+    priority = db.Column(db.String(20), nullable=False, default="medium", index=True)
+    created_at = db.Column(db.DateTime, default=utcnow_naive, nullable=False, index=True)
+    updated_at = db.Column(db.DateTime, default=utcnow_naive, onupdate=utcnow_naive, nullable=False)
+
+    strategic_project = db.relationship("StrategicProject", back_populates="tasks", lazy="joined")
+    workstream = db.relationship("ProjectWorkstream", lazy="joined")
+    milestone = db.relationship("ProjectMilestone", lazy="joined")
+    assigned_to = db.relationship("User", foreign_keys=[assigned_to_user_id], lazy="joined")
+
+
+class ProjectDocument(db.Model):
+    __tablename__ = "project_document"
+
+    id = db.Column(db.Integer, primary_key=True)
+    uuid = db.Column(UUID(as_uuid=True), default=uuid.uuid4, nullable=False, unique=True, index=True)
+    strategic_project_id = db.Column(db.Integer, db.ForeignKey("strategic_project.id"), nullable=False, index=True)
+    title = db.Column(db.String(180), nullable=False)
+    document_type = db.Column(db.String(80), nullable=True)
+    file_path = db.Column(db.String(255), nullable=True)
+    external_url = db.Column(db.String(500), nullable=True)
+    notes = db.Column(db.Text, nullable=True)
+    created_at = db.Column(db.DateTime, default=utcnow_naive, nullable=False, index=True)
+
+    strategic_project = db.relationship("StrategicProject", back_populates="documents", lazy="joined")

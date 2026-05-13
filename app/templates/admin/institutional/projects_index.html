@@ -1,0 +1,54 @@
+{% extends "layouts/base_admin.html" %}
+{% from "admin/institutional/_shared.html" import status_badge, flash_messages %}
+
+{% block page_title %}Strategic Projects{% endblock %}
+
+{% block breadcrumbs %}
+  <a href="{{ url_for('admin.dashboard') }}" class="font-semibold text-jungle hover:text-jungleLight transition">Dashboard</a>
+  <span>/</span><span>Projects</span>
+{% endblock %}
+
+{% block content %}
+  {{ flash_messages() }}
+  <div class="flex items-start justify-between gap-4 mb-6">
+    <div>
+      <h1 class="text-2xl font-bold text-gray-900">Strategic Project Management</h1>
+      <p class="text-sm text-gray-600 mt-1">Coordinate grants, research pilots, traceability work, export readiness, and institutional execution.</p>
+    </div>
+    <a href="{{ url_for('institutional.projects_new') }}" class="rounded-lg bg-jungle px-4 py-2 text-white font-semibold hover:bg-jungleLight transition">+ New Project</a>
+  </div>
+
+  <section class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+    <div class="metric-card"><p>Active Projects</p><strong>{{ stats.active_projects }}</strong></div>
+    <div class="metric-card"><p>Overdue Milestones</p><strong>{{ stats.overdue_milestones }}</strong></div>
+    <div class="metric-card"><p>Overdue Tasks</p><strong>{{ stats.overdue_tasks }}</strong></div>
+    <div class="metric-card"><p>Linked Records</p><strong>{{ stats.linked_records }}</strong></div>
+  </section>
+
+  <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+    <table class="min-w-full">
+      <thead class="bg-gray-50 border-b border-gray-200 text-left text-xs font-semibold text-gray-600 uppercase">
+        <tr><th class="px-4 py-3">Project</th><th class="px-4 py-3">Category</th><th class="px-4 py-3">Priority</th><th class="px-4 py-3">Status</th><th class="px-4 py-3"></th></tr>
+      </thead>
+      <tbody class="divide-y divide-gray-100">
+        {% for project in projects %}
+          <tr class="hover:bg-gray-50">
+            <td class="px-4 py-3"><div class="font-semibold text-gray-900">{{ project.title }}</div><div class="text-xs text-gray-500">{{ project.project_code or 'No reference' }}</div></td>
+            <td class="px-4 py-3 text-sm text-gray-700">{{ project.category|replace('_', ' ')|title }}</td>
+            <td class="px-4 py-3 text-sm text-gray-700">{{ project.priority|title }}</td>
+            <td class="px-4 py-3">{{ status_badge(project.status) }}</td>
+            <td class="px-4 py-3 text-right"><a class="text-sm font-semibold text-jungle hover:underline" href="{{ url_for('institutional.projects_detail', project_id=project.id) }}">Open</a></td>
+          </tr>
+        {% else %}
+          <tr><td colspan="5" class="px-4 py-10 text-center text-gray-600">No strategic projects yet.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <style>
+    .metric-card { border: 1px solid #e5e7eb; border-radius: .75rem; background: white; padding: 1rem; }
+    .metric-card p { font-size: .875rem; color: #6b7280; }
+    .metric-card strong { display: block; margin-top: .35rem; font-size: 1.75rem; color: #111827; }
+  </style>
+{% endblock %}

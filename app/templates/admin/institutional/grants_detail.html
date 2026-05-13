@@ -1,0 +1,31 @@
+{% extends "layouts/base_admin.html" %}
+{% from "admin/institutional/_shared.html" import status_badge %}
+
+{% block page_title %}{{ opportunity.title }}{% endblock %}
+
+{% block breadcrumbs %}
+  <a href="{{ url_for('admin.dashboard') }}" class="font-semibold text-jungle hover:text-jungleLight transition">Dashboard</a>
+  <span>/</span><a href="{{ url_for('institutional.grants_index') }}" class="font-semibold text-jungle hover:text-jungleLight transition">Grants</a>
+  <span>/</span><span>{{ opportunity.title }}</span>
+{% endblock %}
+
+{% block content %}
+  <div class="flex items-start justify-between gap-4 mb-6">
+    <div>
+      <h1 class="text-2xl font-bold text-gray-900">{{ opportunity.title }}</h1>
+      <p class="text-sm text-gray-600 mt-1">{{ opportunity.focus_area or 'No focus area' }}</p>
+    </div>
+    <a href="{{ url_for('institutional.grants_edit', opportunity_id=opportunity.id) }}" class="rounded-lg bg-jungle px-4 py-2 text-white font-semibold hover:bg-jungleLight transition">Edit</a>
+  </div>
+
+  <section class="bg-white rounded-xl shadow-sm border border-gray-200 p-5 space-y-4">
+    <div>{{ status_badge(opportunity.status) }}</div>
+    <dl class="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+      <div><dt class="font-semibold text-gray-500">Deadline</dt><dd class="text-gray-900 mt-1">{{ opportunity.deadline or '-' }}</dd></div>
+      <div><dt class="font-semibold text-gray-500">Funding Range</dt><dd class="text-gray-900 mt-1">{{ opportunity.currency }} {{ opportunity.funding_size_min or '-' }}{% if opportunity.funding_size_max %} - {{ opportunity.funding_size_max }}{% endif %}</dd></div>
+      <div><dt class="font-semibold text-gray-500">Source</dt><dd class="text-gray-900 mt-1">{% if opportunity.opportunity_url %}<a class="text-jungle hover:underline" href="{{ opportunity.opportunity_url }}">Open link</a>{% else %}-{% endif %}</dd></div>
+    </dl>
+    <div><h2 class="font-bold text-gray-900">Eligibility</h2><p class="text-sm text-gray-700 mt-1 whitespace-pre-line">{{ opportunity.eligibility_notes or '-' }}</p></div>
+    <div><h2 class="font-bold text-gray-900">Strategic Fit</h2><p class="text-sm text-gray-700 mt-1 whitespace-pre-line">{{ opportunity.strategic_fit_notes or '-' }}</p></div>
+  </section>
+{% endblock %}

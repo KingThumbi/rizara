@@ -1,0 +1,37 @@
+{% extends "layouts/base_admin.html" %}
+{% from "admin/institutional/_shared.html" import text_input, textarea, select_input, flash_messages %}
+
+{% block page_title %}{{ action }} Grant Opportunity{% endblock %}
+
+{% block breadcrumbs %}
+  <a href="{{ url_for('admin.dashboard') }}" class="font-semibold text-jungle hover:text-jungleLight transition">Dashboard</a>
+  <span>/</span><a href="{{ url_for('institutional.grants_index') }}" class="font-semibold text-jungle hover:text-jungleLight transition">Grants</a>
+  <span>/</span><span>{{ action }}</span>
+{% endblock %}
+
+{% block content %}
+  {{ flash_messages() }}
+  <div class="mb-6">
+    <h1 class="text-2xl font-bold text-gray-900">{{ action }} Grant Opportunity</h1>
+    <p class="text-sm text-gray-600 mt-1">Record fit, eligibility, funding range, and submission timing.</p>
+  </div>
+
+  <form method="POST" class="bg-white rounded-xl shadow-sm border border-gray-200 p-5 space-y-5">
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      {{ text_input('title', 'Title', opportunity.title, required=true) }}
+      {{ text_input('focus_area', 'Focus Area', opportunity.focus_area) }}
+      {{ select_input('status', 'Status', statuses, opportunity.status or 'identified') }}
+      {{ text_input('deadline', 'Deadline', opportunity.deadline, 'date') }}
+      {{ text_input('funding_size_min', 'Funding Size Min', opportunity.funding_size_min, 'number') }}
+      {{ text_input('funding_size_max', 'Funding Size Max', opportunity.funding_size_max, 'number') }}
+      {{ text_input('currency', 'Currency', opportunity.currency or 'USD') }}
+      {{ text_input('opportunity_url', 'Opportunity URL', opportunity.opportunity_url, 'url') }}
+    </div>
+    {{ textarea('eligibility_notes', 'Eligibility Notes', opportunity.eligibility_notes, 4) }}
+    {{ textarea('strategic_fit_notes', 'Strategic Fit Notes', opportunity.strategic_fit_notes, 4) }}
+    <div class="flex items-center gap-3 pt-2">
+      <button class="rounded-lg bg-jungle px-4 py-2 text-white font-semibold hover:bg-jungleLight transition" type="submit">{{ action }} Opportunity</button>
+      <a href="{{ url_for('institutional.grants_index') }}" class="rounded-lg border border-gray-300 px-4 py-2 font-semibold text-gray-700 hover:bg-gray-50 transition">Cancel</a>
+    </div>
+  </form>
+{% endblock %}
